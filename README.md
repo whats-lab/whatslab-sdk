@@ -26,6 +26,7 @@ downstream code never re-maps axes.
 
 - [Main features](#main-features)
 - [Installation](#installation)
+- [Compatibility](#compatibility)
 - [Quick start](#quick-start)
 - [Examples & tools](#examples--tools)
 - [Documentation](#documentation)
@@ -38,11 +39,6 @@ downstream code never re-maps axes.
 - pure Python, zero ROS dependency — used in-process from MuJoCo, Isaac Sim, or ROS2
 - provides composable parts; the consumer owns the pipeline
 - strict dependency direction (`receiver → core`, `model → core·robot`)
-
-**whatslab is pip-only:**
-- hand, arm, receiver and viz all share one pip `pinocchio` (double `pin`) — no conda-forge
-- arm IK uses an analytic Jacobian + DLS, not casadi/IPOPT
-- pinned to `numpy<2` for consistency across the stack (dex-retargeting, Isaac Sim 5.1)
 
 **whatslab is retargeting-first:**
 - hand: dex-retargeting two-stage (vector + position) IK with deterministic termination
@@ -66,6 +62,12 @@ pip install -e '.[all]'   # editable, for development
 Robot/rig configs are bundled. URDF and meshes are provided by the separate
 single-source package [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf),
 pulled in by the `hand`/`arm` extras; override the asset tree with `WHATSLAB_MODELS_ROOT`.
+
+## Compatibility
+
+Data-glove teleoperation goes through **Spine**, WHATs LAB's glove middleware.
+Supported Spine versions: **below 2.3.1** (2.3.1 and newer are not yet supported).
+Controller / hand-tracking (Quest) paths do not require Spine.
 
 ## Quick start
 
