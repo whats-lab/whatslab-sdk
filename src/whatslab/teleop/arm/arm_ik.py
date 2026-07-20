@@ -142,8 +142,10 @@ class ArmIK:
         # ee frame 이 addFrame 으로 추가된 뒤의 model 에 맞춰 data 재생성
         # (기존 self.data 는 프레임 추가 전 생성돼 oMf[ee_id] 가 없다)
         self.data = self.model.createData()
-        self.init_data = np.zeros(self.model.nq)
-        self.history_data = np.zeros(self.model.nq)
+        # warm-start 시드는 중립 자세로 시작 — zeros 는 URDF 에 따라 뒤틀린 자세라
+        # cold-start basin(첫 solve_robust 후보)이 나빠질 수 있다.
+        self.init_data = self._q_neutral.copy()
+        self.history_data = self._q_neutral.copy()
         self._fk_data = self.model.createData()
 
     @classmethod
@@ -380,11 +382,17 @@ class ArmIK:
         lo = self.model.lowerPositionLimit
         hi = self.model.upperPositionLimit
 
-        best_q = None
-        best_score = np.inf
-        # 1번째 시도는 직전해(warm), 이후는 관절범위 내 랜덤
-        candidates = [self.history_data.copy()]
-        candidates += [lo + (hi - lo) * rng.random(self.nq) for _ in range(max(0, restarts - 1))]
+        # EE 허용오차를 만족하는 해들 중 '자세가 가장 중립에 가까운' 것을 고른다.
+        # (같은 EE 위치에 팔꿈치 up/down·어깨 flip 등 여러 해가 존재 — EE오차만으로
+        #  고르면 첫 타깃 운에 따라 뒤틀린 해가 채택돼 첫 자세 과의존/간헐 이상 발생.)
+        # 자세는 EE 정확도를 희생하지 않도록 '허용오차 통과 해들 사이의 tie-break'로만
+        # 쓰고, 통과 해가 없으면 최소 EE오차 해로 폴백한다.
+        best_feasible, best_feasible_post = None, np.inf
+        best_any, best_any_ee = None, np.inf
+        # 후보: 직전해(warm) + 중립 자세 + 관절범위 내 결정론적 랜덤 재시작
+        candidates = [self.history_data.copy(), self._q_neutral.copy()]
+        candidates += [lo + (hi - lo) * rng.random(self.nq)
+                       for _ in range(max(0, restarts - len(candidates)))]
 
         for q0 in candidates:
             self.init_data = q0
@@ -394,12 +402,15 @@ class ArmIK:
             except Exception:
                 continue
             pe, oe = self.pose_error(q, target_pose)
-            score = pe + 0.1 * oe
-            if score < best_score:
-                best_score, best_q = score, q
+            ee = pe + 0.1 * oe
+            if ee < best_any_ee:
+                best_any_ee, best_any = ee, q
             if pe <= pos_tol and oe <= ori_tol:
-                break
+                post = float(np.linalg.norm(pin.difference(self.model, self._q_neutral, q)))
+                if post < best_feasible_post:
+                    best_feasible_post, best_feasible = post, q
 
+        best_q = best_feasible if best_feasible is not None else best_any
         if best_q is None:
             raise RuntimeError("IK 가 어떤 초기값에서도 해를 찾지 못했습니다.")
         self.init_data = best_q
