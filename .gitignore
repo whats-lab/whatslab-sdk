@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+.pytest_cache/
+.venv/
+venv/
+*.so
+.vscode/
+.idea/
+
+# Quest 앱 바이너리: zip 및 임의 apk 는 제외하되, 내장 배포용 apk 만 예외 허용
+*.zip
+*.apk
+!assets/quest/*.apk
+.ruff_cache
+.superpowers

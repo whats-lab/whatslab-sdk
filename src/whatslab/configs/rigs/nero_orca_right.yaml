@@ -1,0 +1,33 @@
+name: nero_orca_right
+robots:
+  arm: robots/nero.yaml
+  hand: robots/orca_right.yaml
+mount:
+  xyz:
+  - 0.0
+  - 0.0
+  - 0.0
+  rpy:
+  - 0.0
+  - 0.0
+  - 0.0
+attach:
+  xyz:
+  - 0.0
+  - 0.0
+  - 0.0
+  rpy:
+  - 0.0
+  - 0.0
+  - 3.1416
+lock_joints:
+- joint7
+solver:
+  backend: diff
+  w_pos: 20.0
+  w_ori: 10.0
+  max_joint_velocity: 5.0
+  reach_max: 0.9204
+calibration:
+  enabled: true
+  input_reach: 0.8305
