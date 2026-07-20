@@ -1,0 +1,4 @@
+# sdist 에 런타임 자산 + 문서 포함 (wheel 은 pyproject package-data 가 담당).
+graft src/whatslab/configs
+include README.md
+global-exclude __pycache__ *.py[cod]

@@ -1,0 +1,9 @@
+# orca 오른손 — robot 으로서의 hand
+name: orca_right
+kind: hand
+urdf: orca_hand/urdf/right.urdf
+retarget: orca_hand                           # 리타게팅 config(CONFIG_REGISTRY) — Model 이 rig 에서 유도
+axis_align: {xyz: [0.0, -0.01, 0.07], rpy: [1.5708, 0.0000, -1.5708]}   # 튜너 1단계 확정
+ee_align: {rpy: [0.0000, -1.5708, 1.5708]}
+
+base_frame: R-Carpals_8d1f1041               # 손목 — target_ee(IK 추종) fallback 프레임

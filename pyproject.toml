@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whatslab-sdk"
+version = "0.2.0"
+description = "WHATs LAB teleoperation core — receiver / hand & arm retargeting (ROS-independent)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "WHATs LAB Corp" }]
+# 공개 source-available SDK — git clone 후 pip install 로 배포한다 (PyPI 미업로드).
+# "Private :: Do Not Upload" 는 실수로 PyPI upload 시 거부되게 하는 안전장치(공개여도 유지).
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    # numpy<2 로 고정: 공유 SDK 이므로 소비자 스택(dex-retargeting·Isaac Sim 5.1 모두
+    # numpy<2 요구)과 일관되게 맞춘다. 상한 없으면 fresh 설치가 numpy2 를 끌어와 소비자
+    # env 를 오염시킴. (dex_vla / dex_mj / ROS 와 동일 핀.)
+    "numpy>=1.24,<2",
+    "scipy>=1.10",
+    "pyyaml",          # robot/rig config 로더
+]
+
+[project.optional-dependencies]
+# 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
+# (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
+receiver = ["python-osc"]
+# dex-retargeting 0.5+ 는 torch 를 런타임에 요구(직접 선언 안 함) → 명시.
+# GPU 불필요: CPU 휠로 충분(`pip install torch --index-url .../cpu` 로 경량 설치 가능).
+hand     = ["dex-retargeting", "pin", "nlopt", "torch",
+            "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
+arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
+            "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
+viz      = ["viser", "trimesh", "pin"]           # 3D 씬 viz + 정렬 튜너 (viser, pinocchio FK)
+# lerobot 라이브러리 없이 v2.1 데이터셋을 기록하는 경량 sink (isaacsim numpy1.26 env 비오염 목적).
+data     = ["pyarrow>=14", "imageio[ffmpeg]>=2.30"]
+all      = ["whatslab-sdk[receiver,hand,arm,viz]"]
+dev      = ["pytest"]
+
+[tool.setuptools]
+# 자산은 아래 package-data 로만 명시적으로 담는다 (MANIFEST 자동수집 비활성).
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# whatslab 은 PEP 420 네임스페이스 패키지 (src/whatslab 에 __init__.py 없음)
+include = ["whatslab*"]
+
+# 런타임 자산 — wheel/sdist 에 동봉해 non-editable `pip install .` 로도 동작.
+# configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
+# 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
+[tool.setuptools.package-data]
+whatslab = ["configs/**"]
+
+[tool.setuptools.exclude-package-data]
+whatslab = ["**/__pycache__/**", "**/*.py[cod]"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

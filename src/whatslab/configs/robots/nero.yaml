@@ -1,0 +1,8 @@
+# nero 7축 팔 — "이 로봇이 무엇인가" (설치 무관 물리 스펙)
+name: nero
+kind: arm
+urdf: agx_arm_description/agx_arm_urdf/nero/urdf/nero_with_gripper_flange_description.urdf
+axis_align: {xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 3.1416]}   # 튜너 1단계 확정 (URDF 가 -x 를 봄)
+ee:
+  parent: gripper_flange_joint
+  origin: {xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}   # 플랜지 프레임에 직접 부착 — 오프셋 불필요
