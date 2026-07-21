@@ -272,31 +272,36 @@ class ArmIK:
         out[near] *= scale[near]
         return out
 
-    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        """4x4 목표 pose -> 관절각(rad). 가중 최소노름 DLS + soft 관절한계.
+    def _damped_dq(self, e, J, d_pos, d_ori, w=None):
+        """가중 6D damped 최소노름 DLS 스텝. `dq = -(WJ)⁺(W·e)`, 감쇠
+        D=diag([d_pos]*3 + [d_ori]*3). w 를 주면 태스크 가중을 덮어쓴다(적응형 가중용).
+        dq_task 와 여유자유도 null-space N 반환.
+        """
+        if w is None:
+            w = self._task_w
+        we = w * e
+        WJ = w[:, None] * J
+        D = np.diag([d_pos, d_pos, d_pos, d_ori, d_ori, d_ori])
+        Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + D)
+        dq_task = -Jpinv @ we
+        N = np.eye(self.model.nq) - Jpinv @ WJ
+        return dq_task, N
 
-        dq = -(WJ)⁺(W·e) + N·(k·∇limit). 주태스크는 damped 최소노름(위치/자세 우선순위
-        W), 여유자유도(null-space N)로 한계에서 서서히 밀어냄(∇limit). 한계 '쪽' 속도는
-        여유가 줄수록 감쇠(soft) → hard clip 없이 부드럽게 정지. warm-start 시간 평활.
-        safe=True: 수렴 실패/NaN 시 직전 해 반환(라이브 루프 보호).
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
+        """4x4 목표 pose -> 관절각(rad). 가중 DLS(`_damped_dq`) + soft 관절한계.
+
+        위치·방위 동일 감쇠(표준 DLS). 여유자유도(null-space N)로 관절한계에서 서서히
+        밀어냄. 한계 '쪽' 속도는 여유가 줄수록 감쇠(soft). safe=True: 실패/NaN 시 직전 해.
         """
         T = np.asarray(target_pose, dtype=float)
         q = np.array(self.history_data, dtype=float)
-        w = self._task_w
         damp2 = self._damp * self._damp
-        I6 = np.eye(6)
-        In = np.eye(self.model.nq)
         try:
             for _ in range(self.max_iter):
                 e, J = self._error_and_jac(q, T)
                 if np.linalg.norm(e) < self.tol:
                     break
-                we = w * e
-                WJ = w[:, None] * J
-                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)  # damped 유사역
-                dq_task = -Jpinv @ we
-                # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
-                N = In - Jpinv @ WJ
+                dq_task, N = self._damped_dq(e, J, damp2, damp2)
                 dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
                 n = np.linalg.norm(dq)
@@ -366,7 +371,7 @@ class ArmIK:
     def solve_robust(
         self,
         target_pose: np.ndarray,
-        restarts: int = 12,
+        restarts: int = 30,
         pos_tol: float = 1e-3,
         ori_tol: float = 1e-2,
         seed: int = 0,
@@ -456,6 +461,7 @@ class DiffArmIK(ArmIK):
     dtheta_max = 0.25        # [rad] 틱당 목표 자세 최대 접근량
     k_posture = 0.05         # null-space 선호자세 이득
     sugihara_bias = 1e-4     # 감쇠 바이어스 (0 방지)
+    k_ori_deprio = 200.0     # 방위 도달 어려울수록 방위 가중↓ (위치 우선). 0=순수 가중
 
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
@@ -483,23 +489,22 @@ class DiffArmIK(ArmIK):
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         T_goal = np.asarray(target_pose, dtype=float)
         q = np.array(self.history_data, dtype=float)
-        w = self._task_w
-        I6 = np.eye(6)
-        In = np.eye(self.model.nq)
         try:
             T = self._rate_limited_target(q, T_goal)
             for _ in range(self.iters_per_call):
                 e, J = self._error_and_jac(q, T)
                 if np.linalg.norm(e) < self.tol:
                     break
-                we = w * e
-                WJ = w[:, None] * J
-                # Sugihara 오차적응 감쇠 — 오차 클수록(도달불가) 강하게 감쇠
-                damp2 = float(we @ we) + self.sugihara_bias
-                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)
-                dq_task = -Jpinv @ we
-                # null-space: 선호자세 + 관절한계 회피 (주태스크 불간섭)
-                N = In - Jpinv @ WJ
+                # 적응형 방위 가중: 방위 오차가 클수록(=팔이 그 방위를 못 냄) 방위
+                # 가중을 낮춰 **위치가 이기게** 한다. 도달 가능(방위오차→0)하면 가중이
+                # 그대로라 둘 다 정확히 수렴. 도달 불가면 위치 정확 + 방위 best-effort.
+                # (감쇠는 우선순위를 못 바꾼다 — 방위 오차가 목적함수에 남아 위치를
+                #  끌어당기므로, 지렛대는 damping 이 아니라 weight 다.)
+                w = self._task_w.copy()
+                eo2 = float(e[3:] @ e[3:])
+                w[3:] = w[3:] / (1.0 + self.k_ori_deprio * eo2)
+                d2 = float((w * e) @ (w * e)) + self.sugihara_bias   # Sugihara(적응가중 반영)
+                dq_task, N = self._damped_dq(e, J, d2, d2, w=w)
                 dq_null = (self.k_posture * (self.q_posture - q)
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)

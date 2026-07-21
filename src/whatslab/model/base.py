@@ -192,12 +192,20 @@ class TeleopModel(ABC):
 
     def calibrate_yaw(self) -> Dict[str, bool]:
         """yaw 정렬 스냅샷(즉시) — 양쪽 calib 모델에 위임 → {side: 성공여부}.
-        (도달반경 캘리브는 calibrate_reach.)"""
+        (도달반경 캘리브는 calibrate_reach.)
+
+        캘리브는 목표 방위를 W·G 로 **불연속 변경**하므로, 성공한 side 의 팔 IK 를
+        재시드(reseed)한다 — mid-session 캘리 시 warm-start 가 이전 basin 에 갇혀
+        새 목표로 못 넘어가는 것을 방지(가능한 IK 컴포넌트에만)."""
         data = self.get_data()
         out: Dict[str, bool] = {}
         for s in self.SIDES:
             calib = self.calib.get(s)
-            out[s] = bool(calib.capture(data[s])) if calib is not None else False
+            ok = bool(calib.capture(data[s])) if calib is not None else False
+            out[s] = ok
+            ik = self.ik.get(s)
+            if ok and ik is not None and hasattr(ik, "reseed"):
+                ik.reseed()
         return out
 
     def calibrate_reach(self, duration: float = 8.0, rate_hz: float = 60.0,
