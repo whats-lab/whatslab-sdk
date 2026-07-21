@@ -194,9 +194,9 @@ class TeleopModel(ABC):
         """yaw 정렬 스냅샷(즉시) — 양쪽 calib 모델에 위임 → {side: 성공여부}.
         (도달반경 캘리브는 calibrate_reach.)
 
-        캘리브는 목표 방위를 W·G 로 **불연속 변경**하므로, 성공한 side 의 팔 IK 를
-        재시드(reseed)한다 — mid-session 캘리 시 warm-start 가 이전 basin 에 갇혀
-        새 목표로 못 넘어가는 것을 방지(가능한 IK 컴포넌트에만)."""
+        캘리브는 목표 방위를 불연속 변경하므로, 성공한 side 의 팔 IK 를 재시드해
+        (다음 solve 가 solve_robust 로 basin 재탐색) warm-start 가 이전 basin 에
+        갇혀 새 목표로 못 넘어가는 것을 방지한다(가능한 IK 컴포넌트에만)."""
         data = self.get_data()
         out: Dict[str, bool] = {}
         for s in self.SIDES:

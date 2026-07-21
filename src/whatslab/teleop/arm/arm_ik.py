@@ -142,10 +142,8 @@ class ArmIK:
         # ee frame 이 addFrame 으로 추가된 뒤의 model 에 맞춰 data 재생성
         # (기존 self.data 는 프레임 추가 전 생성돼 oMf[ee_id] 가 없다)
         self.data = self.model.createData()
-        # warm-start 시드는 중립 자세로 시작 — zeros 는 URDF 에 따라 뒤틀린 자세라
-        # cold-start basin(첫 solve_robust 후보)이 나빠질 수 있다.
-        self.init_data = self._q_neutral.copy()
-        self.history_data = self._q_neutral.copy()
+        self.init_data = np.zeros(self.model.nq)
+        self.history_data = np.zeros(self.model.nq)
         self._fk_data = self.model.createData()
 
     @classmethod
@@ -272,36 +270,31 @@ class ArmIK:
         out[near] *= scale[near]
         return out
 
-    def _damped_dq(self, e, J, d_pos, d_ori, w=None):
-        """가중 6D damped 최소노름 DLS 스텝. `dq = -(WJ)⁺(W·e)`, 감쇠
-        D=diag([d_pos]*3 + [d_ori]*3). w 를 주면 태스크 가중을 덮어쓴다(적응형 가중용).
-        dq_task 와 여유자유도 null-space N 반환.
-        """
-        if w is None:
-            w = self._task_w
-        we = w * e
-        WJ = w[:, None] * J
-        D = np.diag([d_pos, d_pos, d_pos, d_ori, d_ori, d_ori])
-        Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + D)
-        dq_task = -Jpinv @ we
-        N = np.eye(self.model.nq) - Jpinv @ WJ
-        return dq_task, N
-
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        """4x4 목표 pose -> 관절각(rad). 가중 DLS(`_damped_dq`) + soft 관절한계.
+        """4x4 목표 pose -> 관절각(rad). 가중 최소노름 DLS + soft 관절한계.
 
-        위치·방위 동일 감쇠(표준 DLS). 여유자유도(null-space N)로 관절한계에서 서서히
-        밀어냄. 한계 '쪽' 속도는 여유가 줄수록 감쇠(soft). safe=True: 실패/NaN 시 직전 해.
+        dq = -(WJ)⁺(W·e) + N·(k·∇limit). 주태스크는 damped 최소노름(위치/자세 우선순위
+        W), 여유자유도(null-space N)로 한계에서 서서히 밀어냄(∇limit). 한계 '쪽' 속도는
+        여유가 줄수록 감쇠(soft) → hard clip 없이 부드럽게 정지. warm-start 시간 평활.
+        safe=True: 수렴 실패/NaN 시 직전 해 반환(라이브 루프 보호).
         """
         T = np.asarray(target_pose, dtype=float)
         q = np.array(self.history_data, dtype=float)
+        w = self._task_w
         damp2 = self._damp * self._damp
+        I6 = np.eye(6)
+        In = np.eye(self.model.nq)
         try:
             for _ in range(self.max_iter):
                 e, J = self._error_and_jac(q, T)
                 if np.linalg.norm(e) < self.tol:
                     break
-                dq_task, N = self._damped_dq(e, J, damp2, damp2)
+                we = w * e
+                WJ = w[:, None] * J
+                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)  # damped 유사역
+                dq_task = -Jpinv @ we
+                # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
+                N = In - Jpinv @ WJ
                 dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
                 n = np.linalg.norm(dq)
@@ -371,7 +364,7 @@ class ArmIK:
     def solve_robust(
         self,
         target_pose: np.ndarray,
-        restarts: int = 30,
+        restarts: int = 12,
         pos_tol: float = 1e-3,
         ori_tol: float = 1e-2,
         seed: int = 0,
@@ -387,17 +380,11 @@ class ArmIK:
         lo = self.model.lowerPositionLimit
         hi = self.model.upperPositionLimit
 
-        # EE 허용오차를 만족하는 해들 중 '자세가 가장 중립에 가까운' 것을 고른다.
-        # (같은 EE 위치에 팔꿈치 up/down·어깨 flip 등 여러 해가 존재 — EE오차만으로
-        #  고르면 첫 타깃 운에 따라 뒤틀린 해가 채택돼 첫 자세 과의존/간헐 이상 발생.)
-        # 자세는 EE 정확도를 희생하지 않도록 '허용오차 통과 해들 사이의 tie-break'로만
-        # 쓰고, 통과 해가 없으면 최소 EE오차 해로 폴백한다.
-        best_feasible, best_feasible_post = None, np.inf
-        best_any, best_any_ee = None, np.inf
-        # 후보: 직전해(warm) + 중립 자세 + 관절범위 내 결정론적 랜덤 재시작
-        candidates = [self.history_data.copy(), self._q_neutral.copy()]
-        candidates += [lo + (hi - lo) * rng.random(self.nq)
-                       for _ in range(max(0, restarts - len(candidates)))]
+        best_q = None
+        best_score = np.inf
+        # 1번째 시도는 직전해(warm), 이후는 관절범위 내 랜덤
+        candidates = [self.history_data.copy()]
+        candidates += [lo + (hi - lo) * rng.random(self.nq) for _ in range(max(0, restarts - 1))]
 
         for q0 in candidates:
             self.init_data = q0
@@ -407,15 +394,12 @@ class ArmIK:
             except Exception:
                 continue
             pe, oe = self.pose_error(q, target_pose)
-            ee = pe + 0.1 * oe
-            if ee < best_any_ee:
-                best_any_ee, best_any = ee, q
+            score = pe + 0.1 * oe
+            if score < best_score:
+                best_score, best_q = score, q
             if pe <= pos_tol and oe <= ori_tol:
-                post = float(np.linalg.norm(pin.difference(self.model, self._q_neutral, q)))
-                if post < best_feasible_post:
-                    best_feasible_post, best_feasible = post, q
+                break
 
-        best_q = best_feasible if best_feasible is not None else best_any
         if best_q is None:
             raise RuntimeError("IK 가 어떤 초기값에서도 해를 찾지 못했습니다.")
         self.init_data = best_q
@@ -488,18 +472,23 @@ class DiffArmIK(ArmIK):
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         T_goal = np.asarray(target_pose, dtype=float)
         q = np.array(self.history_data, dtype=float)
+        w = self._task_w
+        I6 = np.eye(6)
+        In = np.eye(self.model.nq)
         try:
             T = self._rate_limited_target(q, T_goal)
             for _ in range(self.iters_per_call):
                 e, J = self._error_and_jac(q, T)
                 if np.linalg.norm(e) < self.tol:
                     break
-                # 표준 가중 DLS. 위치/자세 상대 우선순위는 rig 의 w_pos:w_ori(=_task_w)
-                # 고정 비율로만 정한다 — 예측 가능(순간 오차에 가중을 흔들지 않음).
-                # Sugihara 오차적응 감쇠 λ²=‖W·e‖²+bias 로 도달 불가에서도 발산 억제.
-                we = self._task_w * e
-                d2 = float(we @ we) + self.sugihara_bias
-                dq_task, N = self._damped_dq(e, J, d2, d2)
+                we = w * e
+                WJ = w[:, None] * J
+                # Sugihara 오차적응 감쇠 — 오차 클수록(도달불가) 강하게 감쇠
+                damp2 = float(we @ we) + self.sugihara_bias
+                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)
+                dq_task = -Jpinv @ we
+                # null-space: 선호자세 + 관절한계 회피 (주태스크 불간섭)
+                N = In - Jpinv @ WJ
                 dq_null = (self.k_posture * (self.q_posture - q)
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
