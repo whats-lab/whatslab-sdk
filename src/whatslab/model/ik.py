@@ -46,6 +46,12 @@ class RobotArmIK:
                 "rig/solver 관절 구성 불일치")
         return q
 
+    def reseed(self) -> None:
+        """다음 solve 에서 solve_robust(다중 재시작)로 basin 을 다시 잡게 한다.
+        캘리브 등으로 목표 프레임이 불연속으로 바뀔 때 호출 — warm-start 가 이전
+        basin(다른 elbow/어깨 branch)에 갇혀 못 빠져나오는 것을 방지."""
+        self._seeded = False
+
     def sync_state(self, q_arm) -> None:
         self._robot.sync_state(q_arm)
 
