@@ -461,7 +461,6 @@ class DiffArmIK(ArmIK):
     dtheta_max = 0.25        # [rad] 틱당 목표 자세 최대 접근량
     k_posture = 0.05         # null-space 선호자세 이득
     sugihara_bias = 1e-4     # 감쇠 바이어스 (0 방지)
-    k_ori_deprio = 200.0     # 방위 도달 어려울수록 방위 가중↓ (위치 우선). 0=순수 가중
 
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
@@ -495,16 +494,12 @@ class DiffArmIK(ArmIK):
                 e, J = self._error_and_jac(q, T)
                 if np.linalg.norm(e) < self.tol:
                     break
-                # 적응형 방위 가중: 방위 오차가 클수록(=팔이 그 방위를 못 냄) 방위
-                # 가중을 낮춰 **위치가 이기게** 한다. 도달 가능(방위오차→0)하면 가중이
-                # 그대로라 둘 다 정확히 수렴. 도달 불가면 위치 정확 + 방위 best-effort.
-                # (감쇠는 우선순위를 못 바꾼다 — 방위 오차가 목적함수에 남아 위치를
-                #  끌어당기므로, 지렛대는 damping 이 아니라 weight 다.)
-                w = self._task_w.copy()
-                eo2 = float(e[3:] @ e[3:])
-                w[3:] = w[3:] / (1.0 + self.k_ori_deprio * eo2)
-                d2 = float((w * e) @ (w * e)) + self.sugihara_bias   # Sugihara(적응가중 반영)
-                dq_task, N = self._damped_dq(e, J, d2, d2, w=w)
+                # 표준 가중 DLS. 위치/자세 상대 우선순위는 rig 의 w_pos:w_ori(=_task_w)
+                # 고정 비율로만 정한다 — 예측 가능(순간 오차에 가중을 흔들지 않음).
+                # Sugihara 오차적응 감쇠 λ²=‖W·e‖²+bias 로 도달 불가에서도 발산 억제.
+                we = self._task_w * e
+                d2 = float(we @ we) + self.sugihara_bias
+                dq_task, N = self._damped_dq(e, J, d2, d2)
                 dq_null = (self.k_posture * (self.q_posture - q)
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
