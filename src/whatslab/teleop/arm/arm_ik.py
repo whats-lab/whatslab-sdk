@@ -365,7 +365,7 @@ class ArmIK:
     def solve_robust(
         self,
         target_pose: np.ndarray,
-        restarts: int = 12,
+        restarts: int = 30,
         pos_tol: float = 1e-3,
         ori_tol: float = 1e-2,
         seed: int = 0,
@@ -441,15 +441,16 @@ class DiffArmIK(ArmIK):
     """
 
     # 텔레옵 스텝 파라미터 (인스턴스에서 덮어쓰기 가능)
-    iters_per_call = 2       # 틱당 IK 스텝 수
-    dp_max = 0.05            # [m]   틱당 목표 위치 최대 접근량
-    dtheta_max = 0.25        # [rad] 틱당 목표 자세 최대 접근량
-    k_posture = 0.05         # null-space 선호자세 이득
+    iters_per_call = 30      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
+    dp_max = 1.0             # [m]   틱당 목표 위치 최대 접근량 (사실상 off; 관절캡이 지배)
+    dtheta_max = 3.15        # [rad] 틱당 목표 자세 최대 접근량 (사실상 off; 관절캡이 지배)
+    dq_max_tick = 0.5        # [rad] 틱당 **총** 관절 스텝 상한(연속성/안전; iters 무관)
+    k_posture = 0.05         # null-space 선호자세 이득 (팔꿈치 방황 방지 — 연속 안정성)
     sugihara_bias = 1e-4     # 감쇠 바이어스 (0 방지)
 
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
-        self._smooth = 0.0                       # 출력 EMA 불필요 (rate-limit 로 대체)
+        self._smooth = 0.05                      # 출력 EMA(이전 5%만) — 가벼운 떨림 억제
         self.q_posture = self._q_neutral.copy()  # 선호 자세 (기본 중립)
 
     def _rate_limited_target(self, q: np.ndarray, T_goal: np.ndarray) -> np.ndarray:
@@ -472,7 +473,8 @@ class DiffArmIK(ArmIK):
 
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         T_goal = np.asarray(target_pose, dtype=float)
-        q = np.array(self.history_data, dtype=float)
+        q_start = np.array(self.history_data, dtype=float)
+        q = q_start.copy()
         w = self._task_w
         I6 = np.eye(6)
         In = np.eye(self.model.nq)
@@ -494,10 +496,17 @@ class DiffArmIK(ArmIK):
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
                 n = np.linalg.norm(dq)
-                if n > 0.5:                      # 틱당 관절 스텝 제한
+                if n > 0.5:                      # 이터레이션당 스텝 제한(발산 방지)
                     dq *= 0.5 / n
                 q = pin.integrate(self.model, q, dq)
+            # 틱당 **총** 관절 스텝 상한 — iters 무관하게 연속성/안전 보장(큰 점프 억제)
+            step = q - q_start
+            sn = np.linalg.norm(step)
+            if sn > self.dq_max_tick:
+                q = q_start + step * (self.dq_max_tick / sn)
             sol_q = np.clip(q, self._lo, self._hi)
+            if self._smooth > 0.0:               # 출력 EMA(이전 _smooth 만) — 가벼운 떨림 억제
+                sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
             if not np.all(np.isfinite(sol_q)):
                 raise ValueError("IK 해에 NaN")
         except Exception:
