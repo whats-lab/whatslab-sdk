@@ -47,10 +47,16 @@ class RobotArmIK:
         return q
 
     def reseed(self) -> None:
-        """다음 solve 에서 solve_robust(다중 재시작)로 basin 을 다시 잡게 한다.
-        캘리브 등으로 목표 프레임이 불연속으로 바뀔 때 호출 — warm-start 가 이전
-        basin(다른 elbow/어깨 branch)에 갇혀 못 빠져나오는 것을 방지."""
+        """캘리브 등으로 목표 프레임이 불연속으로 바뀔 때 호출 — IK 맥락을 초기화한다.
+        ① `_seeded=False` → 다음 solve 가 solve_robust(다중 재시작)로 basin 재탐색.
+        ② solver warm-start(history/init)를 **중립으로 리셋** → 이전 포즈(맥락)를
+           solve_robust 후보에서 아예 배제해, 이전 basin(elbow/어깨 branch)에 갇히는
+           것을 확실히 방지. (캘리 시점의 의도된 리셋이라 포즈 점프는 허용.)"""
         self._seeded = False
+        solver = getattr(self._robot, "solver", None)
+        if solver is not None and hasattr(solver, "sync_state") \
+                and hasattr(solver, "_q_neutral"):
+            solver.sync_state(solver._q_neutral)     # warm-start(이전 맥락) → 중립
 
     def sync_state(self, q_arm) -> None:
         self._robot.sync_state(q_arm)
