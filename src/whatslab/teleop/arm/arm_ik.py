@@ -137,7 +137,8 @@ class ArmIK:
                             self.model.upperPositionLimit, np.pi)
         self._limit_margin = 0.20         # [rad] 한계 근처 soft 존 폭
         self._k_limit = 0.15              # 여유자유도 한계회피 이득(낮을수록 덜 진동)
-        self._smooth = 0.5                # 출력 EMA 평활 [0=off..1). 떨림 억제(약간 지연)
+        self._smooth = 0.0                # 출력 EMA 평활 [0=off..1). 0=지연 없이 바로 수렴
+                                          # (떨림 나면 0.2~0.3 로. diff 백엔드는 rate-limit 사용)
         self._q_neutral = pin.neutral(self.model)
         # ee frame 이 addFrame 으로 추가된 뒤의 model 에 맞춰 data 재생성
         # (기존 self.data 는 프레임 추가 전 생성돼 oMf[ee_id] 가 없다)
