@@ -17,11 +17,20 @@ import numpy as np
 class RobotArmIK:
     """RobotModel 기반 기본 IK 컴포넌트 (정준 T → q_arm, reach 스케일 없음)."""
 
+    # 스톨 자동 reseed — 연속(local) solve 가 다른 분기에 갇혀 EE 오차를 못 닫을 때,
+    # 전역 solve_robust 로 탈출시켜 "무조건 수렴"에 가깝게 만든다.
+    stall_pos_tol = 0.02     # [m]   이 이상 남으면 스톨 후보
+    stall_ori_tol = 0.15     # [rad] 이 이상 남으면 스톨 후보 (~8.6°)
+    stall_ticks = 3          # 연속 이만큼 스톨이어야 발동 (일시적 lag 오탐 방지)
+    reseed_cooldown = 10     # 발동 후 이만큼 틱은 재발동 금지 (도달불가서 매틱 낭비 방지)
+
     def __init__(self, robot):
         assert robot.has_arm, "arm 없는 rig 로 RobotArmIK 불가"
         self._robot = robot
         self.joint_names = list(robot.arm_joint_names)
         self._seeded = False       # 첫 유효 타깃에서 solve_robust 로 좋은 basin 을 한 번 잡는다
+        self._stall = 0            # 연속 스톨 틱 카운터
+        self._cooldown = 0         # 재발동 쿨다운 잔여 틱
 
     def solve(self, T_canonical: np.ndarray) -> np.ndarray:
         r = self._robot
@@ -40,10 +49,30 @@ class RobotArmIK:
             self._seeded = True
         else:
             q = np.asarray(solver.solve(T_b), dtype=float)
+            q = self._recover_if_stalled(solver, q, T_b)   # 스톨 → 전역 탈출
         if q.shape[0] != len(self.joint_names):            # 관절 수 불일치 → 조용한 절단 방지
             raise ValueError(
                 f"IK 해({q.shape[0]}) != arm_joint_names({len(self.joint_names)}) — "
                 "rig/solver 관절 구성 불일치")
+        return q
+
+    def _recover_if_stalled(self, solver, q, T_b):
+        """연속 solve 가 스톨(다른 분기 필요)이면 solve_robust 로 전역 탈출.
+        stall_ticks 연속 스톨에만 발동(일시 lag 무시), 발동 후 reseed_cooldown 틱 대기."""
+        if not (hasattr(solver, "solve_robust") and hasattr(solver, "pose_error")):
+            return q
+        if self._cooldown > 0:
+            self._cooldown -= 1
+            return q
+        pe, oe = solver.pose_error(q, T_b)
+        if pe > self.stall_pos_tol or oe > self.stall_ori_tol:
+            self._stall += 1
+        else:
+            self._stall = 0
+        if self._stall >= self.stall_ticks:
+            q = np.asarray(solver.solve_robust(T_b), dtype=float)
+            self._stall = 0
+            self._cooldown = self.reseed_cooldown
         return q
 
     def reseed(self) -> None:
@@ -53,6 +82,8 @@ class RobotArmIK:
            solve_robust 후보에서 아예 배제해, 이전 basin(elbow/어깨 branch)에 갇히는
            것을 확실히 방지. (캘리 시점의 의도된 리셋이라 포즈 점프는 허용.)"""
         self._seeded = False
+        self._stall = 0
+        self._cooldown = 0
         solver = getattr(self._robot, "solver", None)
         if solver is not None and hasattr(solver, "sync_state") \
                 and hasattr(solver, "_q_neutral"):
