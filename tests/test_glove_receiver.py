@@ -12,7 +12,7 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 from whatslab.core.interfaces import Receiver
 from whatslab.core.types import InputSample
 from whatslab.receiver import GloveHumanHandReceiver
-from whatslab.receiver.glove_human_hand import parse_aga_raw, wrist_to_canonical
+from whatslab.receiver.glove.human_hand import parse_aga_raw, wrist_to_canonical
 
 
 def _packet(address: str, *args) -> bytes:

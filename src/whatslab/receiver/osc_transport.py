@@ -1,10 +1,3 @@
-"""포트당 단일 OSC UDP 서버 — 여러 receiver 가 같은 포트를 공유.
-
-같은 device 의 여러 modality receiver(예: 손가락/컨트롤러)가 각자 UDP 서버를
-띄우면 포트를 두고 서로 경합한다. SharedOscServer 는 포트별로 get-or-create 되는
-단일 인스턴스로, 여러 소비자가 dispatcher 에 핸들러를 등록하고 refcount 로
-start/stop 을 공유한다 — 마지막 stop() 에서만 실제로 서버를 종료한다.
-"""
 from __future__ import annotations
 
 import logging
@@ -21,10 +14,6 @@ _registry_lock = threading.Lock()
 
 
 class SharedOscServer:
-    """포트 하나에 대응하는 단일 pythonosc UDP 서버 (get-or-create + refcount).
-
-    직접 생성하지 말 것 — `SharedOscServer.get(port)` 를 통해서만 얻는다.
-    """
 
     def __init__(self, listen_ip: str, port: int):
         self._listen_ip = listen_ip

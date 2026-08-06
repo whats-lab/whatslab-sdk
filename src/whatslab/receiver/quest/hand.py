@@ -1,15 +1,3 @@
-"""QuestHandReceiver — /hand/{left,right}/{pos,rot,joints/pos,joints/rot} modality receiver.
-
-손 트래킹 파싱(root=finger_quats[0], joints/rot → FINGER_JOINT_ORDER 16관절,
-joints/pos 미사용)만 담당하고, 컨트롤러는 다루지 않는다 — QuestReceiverBase 를
-통해 다른 modality receiver(컨트롤러 등)와 OSC 포트(SharedOscServer)를 공유한다.
-
-프로토콜(Unity QuestOscSender 합의, 좌표는 HMD 로컬):
-  /hand/<left|right>/pos          float x,y,z       (손목 root)
-  /hand/<left|right>/rot          float x,y,z,w
-  /hand/<left|right>/joints/pos   float[16*3]       (미사용 — 회전만 리타게팅에 쓴다)
-  /hand/<left|right>/joints/rot   float[16*4]       (FINGER_JOINT_ORDER)
-"""
 from __future__ import annotations
 
 import time
@@ -18,16 +6,11 @@ from typing import Callable, Optional
 import numpy as np
 
 from whatslab.core.types import HandPose, InputSample, Pose
-from .base import NUM_FINGER_JOINTS, neutral_finger_quats, norm_quat
-from .quest_base import QUEST_OSC_PORT, QuestReceiverBase
+from ..base import NUM_FINGER_JOINTS, neutral_finger_quats, norm_quat
+from .base import QUEST_OSC_PORT, QuestReceiverBase
 
 
 class QuestHandReceiver(QuestReceiverBase):
-    """손목 pos/rot + 손가락 joints 만 수신 (컨트롤러 없음). side 별 상태 독립.
-
-    `on_update(side)` 콜백은 새 joints/rot 프레임(=한 손 프레임 완성) 수신 시
-    호출된다 (이벤트 구동 소비자용).
-    """
 
     def __init__(self, quest_port: int = QUEST_OSC_PORT, listen_ip: str = "0.0.0.0",
                  stale_timeout: float = 0.0,

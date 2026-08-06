@@ -1,13 +1,3 @@
-"""GloveHumanHandReceiver — AGA 글러브 OSC 입력 소스 (GloveReceiverBase modality).
-
-글러브는 손가락 회전(17×4, [0]=손목 root)만 제공한다. 팔 pose(controller)는
-주지 않으므로 InputSample.controller/hand_root 는 None 이다.
-구 `AirGloveReceiver`(atlas_hand_core/sources/atlas_glove.py 이식본)를
-GloveReceiverBase 위 modality receiver 로 재배치한 것 — 파싱/출력은 동일하다.
-
-RECEIVER 는 입력 전용 계약이다: 리타게팅/IK/캘리브레이션은 여기 두지 않는다
-(Model 계층 소관, 별도 작업).
-"""
 from __future__ import annotations
 
 import time
@@ -17,7 +7,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.types import HandPose, InputSample
-from .glove_base import GLOVE_OSC_PORT, GLOVE_TARGET_IP, GLOVE_CLIENT_PORT, GloveReceiverBase
+from .base import GLOVE_OSC_PORT, GLOVE_TARGET_IP, GLOVE_CLIENT_PORT, GloveReceiverBase
 
 
 # ── AGA OSC 프로토콜 상수 (atlas_hand_core/config.py 계승) ──
@@ -37,17 +27,11 @@ _CANONICAL_M = np.array([[1.0, 0.0, 0.0],
 
 
 def parse_aga_raw(raw_floats) -> np.ndarray:
-    """AGA 원시 데이터(72 floats / 18×4) → 17×4 쿼터니언 ([0]=손목). pinky_0 제거."""
     arr = np.asarray(raw_floats, dtype=np.float32).reshape(18, 4)
     return np.delete(arr, AGA_SKIP_JOINT, axis=0)
 
 
 def wrist_to_canonical(quat) -> np.ndarray:
-    """글러브 손목 회전(글러브 프레임) → 정준 프레임: M·R·Mᵀ.
-
-    손목 회전 q[0] 만 팔 EE 방향(GloveModel._arm_pose_raw)으로 쓰이므로 컨트롤러 pos
-    (이미 정준)와 같은 프레임이어야 한다. 손가락 관절 회전([1:])은 리타게팅용 상대값
-    이라 변환하지 않는다(Quest 손 receiver 와 동일한 원칙)."""
     R = Rotation.from_quat(np.asarray(quat, dtype=float)).as_matrix()
     return Rotation.from_matrix(_CANONICAL_M @ R @ _CANONICAL_M.T).as_quat()
 
@@ -59,13 +43,6 @@ def _neutral() -> np.ndarray:
 
 
 class GloveHumanHandReceiver(GloveReceiverBase):
-    """AGA 글러브 손가락 회전 수신 + 최신 샘플 pull (core.Receiver 프로토콜).
-
-    side 는 물리적 글러브의 좌/우 — 재해석 금지 (크로스핸드 조합은 Model 의 arm_side/hand_side).
-
-    - 손가락 17×4 회전을 손별 버퍼에 누적, get(side) 로 pull
-    - send_haptic(side, values) 로 햅틱 명령 송신
-    """
 
     def __init__(
         self,
