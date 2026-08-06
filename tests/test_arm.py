@@ -242,3 +242,59 @@ def test_diff_backend_no_divergence_on_unreachable():
     q2 = s.solve(T)
     assert np.linalg.norm(q2 - q) < 0.05
 
+
+
+# ─────────────────────────────────────────── calibration.enabled 게이트
+def _cal_pose(pos, quat=(0.0, 0.0, 0.0, 1.0)):
+    from whatslab.core.types import Pose
+    return Pose(pos=np.array(pos, dtype=float), quat=np.array(quat, dtype=float))
+
+
+def test_calib_disabled_passes_pose_through():
+    """enabled=False → reach 스케일도 yaw W 도 걸지 않고 리시버 좌표를 그대로 쓴다."""
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=False)
+    q = Rotation.from_euler("z", 0.9).as_quat()
+    cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})      # 캡처해도 무시
+    T = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
+    assert T[:3, 3] == pytest.approx([0.3, -0.1, 0.2])            # 스케일 2.0 미적용
+    assert T[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())   # W 미적용
+
+
+def test_calib_enabled_applies_scale_and_yaw():
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=True)
+    q = Rotation.from_euler("z", 0.9).as_quat()
+    cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})
+    T = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
+    assert T[:3, 3] == pytest.approx([0.6, -0.2, 0.4])            # scale 2.0
+    # yaw 캡처 자세에서 다시 재면 방위가 yaw-0 으로 정렬된다
+    T0 = cal.apply({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})["arm_target"]
+    assert T0[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
+
+
+def test_calib_enabled_flag_reaches_teleop_path():
+    """rig 의 enabled 가 실제로 텔레옵 목표를 바꿔야 한다(예전엔 무시됐다)."""
+    pytest.importorskip("pinocchio")
+    from whatslab.model.quest import QuestModel
+    from whatslab.robot import RobotModel, load_rig
+
+    pose = _cal_pose([0.45, -0.10, 0.05])
+    out = {}
+    for flag in (True, False):
+        rig = load_rig("rigs/nero_orca_right.yaml")
+        rig.calibration.enabled = flag
+        m = QuestModel(RobotModel(rig))
+        assert m.calib["right"].enabled is flag
+        out[flag] = m.calib["right"].apply({"arm_pose": pose})["arm_target"][:3, 3]
+
+    assert out[False] == pytest.approx(pose.pos)                  # 그대로 통과
+    scale = rig.solver.reach_max / rig.calibration.input_reach
+    assert out[True] == pytest.approx(np.asarray(pose.pos) * scale)
+    assert not np.allclose(out[True], out[False])                 # 실제로 갈린다
