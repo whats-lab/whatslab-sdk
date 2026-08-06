@@ -50,7 +50,7 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세. `connected(side)`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
 | `GloveHumanHandReceiver` | `InputSample(hand=HandPose)` | AirGlove 손가락 회전. `send_haptic(side, values)`. |
-| `GloveRobotHandReceiver` | `InputSample(hand=…, q=…)` | 로봇 관절각을 직접 주는 글러브(IK 바이패스). |
+| `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
 
