@@ -121,7 +121,7 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 - 기본 OSC 포트: Quest 9000(`receiver/quest_base.py`), 글러브 수신 4040 / 송신 4042
   (`receiver/glove_base.py`). 포트별 서버는 `osc_transport._registry` 싱글턴을 공유하므로,
   테스트는 `tests/conftest.py` 의 autouse 픽스처가 매번 레지스트리를 비운다.
-- 데이터 글러브 경로는 Spine **2.3.1 미만**만 지원(Quest 경로는 Spine 무관).
+- 데이터 글러브 경로는 Spine **2.3.1 이하**만 지원(Quest 경로는 Spine 무관).
 - 글러브 OSC 주소·페이로드의 정본은 **Spine `docs/OSC_Protocol.md`** 다. 여기서 임의로
   주소를 바꾸지 말 것 — `GloveHumanHandReceiver` 는 `/{side}/quat/get`,
   `GloveRobotHandReceiver` 는 `/{side}/joint_angles/get` + `/{side}/wrist/get` 을 받는다.
