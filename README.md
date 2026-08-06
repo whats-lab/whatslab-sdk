@@ -66,8 +66,13 @@ pulled in by the `hand`/`arm` extras; override the asset tree with `WHATSLAB_MOD
 ## Compatibility
 
 Data-glove teleoperation goes through **Spine**, WHATs LAB's glove middleware.
-Supported Spine versions: **below 2.3.1** (2.3.1 and newer are not yet supported).
+Supported Spine versions: **2.3.1 and below** (newer versions are not yet supported).
 Controller / hand-tracking (Quest) paths do not require Spine.
+
+The glove path follows Spine's OSC contract as documented in Spine's
+`docs/OSC_Protocol.md`: `GloveHumanHandReceiver` consumes `/{side}/quat/get`, and
+`GloveRobotHandReceiver` consumes `/{side}/joint_angles/get` (name/angle pairs) plus
+`/{side}/wrist/get`. Every Spine message carries the message type in `args[0]`.
 
 ## Quick start
 

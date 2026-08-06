@@ -68,8 +68,13 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 ## 호환성
 
 데이터 글러브 텔레옵은 왓츠랩의 글러브 미들웨어 **Spine** 을 거칩니다. 지원하는 Spine
-버전은 **2.3.1 미만**입니다(2.3.1 이상은 아직 지원하지 않습니다). 컨트롤러·
+버전은 **2.3.1 이하**입니다(그보다 새 버전은 아직 지원하지 않습니다). 컨트롤러·
 핸드트래킹(Quest) 경로는 Spine 이 필요 없습니다.
+
+글러브 경로는 Spine `docs/OSC_Protocol.md` 의 OSC 계약을 그대로 따릅니다 —
+`GloveHumanHandReceiver` 는 `/{side}/quat/get`, `GloveRobotHandReceiver` 는
+`/{side}/joint_angles/get`((이름, 각도) 쌍) + `/{side}/wrist/get` 을 받습니다.
+모든 Spine 메시지는 `args[0]` 에 messageType 헤더를 싣습니다.
 
 ## 빠른 시작
 
