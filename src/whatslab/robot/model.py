@@ -1,17 +1,6 @@
-"""RobotModel — "로봇이 무엇인가"의 단일 출처 (무상태, 정준 샌드위치).
-
-  · rig config 로 arm/hand 를 부분 조립 (둘 다 optional)
-  · 데카르트 입력(목표 pose)은 정준 프레임 — 내부에서 [정준→베이스] 후 IK
-  · q 출력은 무변환(관절공간은 프레임 무관)
-  · 데카르트 출력(ee_pose 등)은 요청 시에만 [베이스→정준] (lazy)
-
-무상태 원칙: 이 클래스는 정의 + 기하 함수만 가진다. 현재 q·목표·평활 같은
-상태는 드라이버/파이프라인 소유. (IK 백엔드 내부의 warm-start history 는
-솔버 구현 세부 — 모델 밖에서 공유 금지)
-"""
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pinocchio as pin
@@ -22,8 +11,19 @@ from whatslab.teleop.arm.builders import backend_cls
 from .config import RigConfig, load_rig
 
 
+def clamp_reach(T_base: np.ndarray, reach_max: Optional[float]) -> np.ndarray:
+    T_b = np.asarray(T_base, dtype=float)
+    if not reach_max:
+        return T_b
+    n = float(np.linalg.norm(T_b[:3, 3]))
+    if n <= reach_max:
+        return T_b
+    T_b = T_b.copy()
+    T_b[:3, 3] *= reach_max / n
+    return T_b
+
+
 class RobotModel:
-    """rig 조립 결과. 공개 데카르트 API 는 전부 정준 프레임."""
 
     def __init__(self, rig: RigConfig):
         self.rig = rig
@@ -39,7 +39,17 @@ class RobotModel:
         self.arm_joint_names: List[str] = []
         if self.has_arm:
             self.solver = self._build_arm_solver()
+            self._apply_solver_tuning(self.solver)
             self.arm_joint_names = list(self.solver.active_joint_names())
+
+    def _apply_solver_tuning(self, solver) -> None:
+        sol = self.rig.solver
+        for attr, val in (("max_iter", sol.max_iter),
+                          ("iters_per_call", sol.iters_per_call),
+                          ("tol", sol.tol),
+                          ("sugihara_bias", sol.sugihara_bias)):
+            if val is not None and hasattr(solver, attr):
+                setattr(solver, attr, val)
 
     # ---------------------------------------------------------------- build
     def _build_arm_solver(self):
@@ -49,12 +59,7 @@ class RobotModel:
         common = dict(w_pos=rig.solver.w_pos, w_ori=rig.solver.w_ori)
 
         if self.has_hand:
-            # 결합 모델: arm ee.parent 프레임에 [ee.origin ∘ attach] 로 손 부착.
-            # 방향 정렬은 전부 config(URDF origin 표기) — 하드코딩 회전 없음.
-            # 부착 체인 = ee.origin ∘ attach ∘ hand.axis_align
-            # (1단계에서 손을 원점 정합해 두면 attach ≈ 항등)
-            # 활성 조인트는 from_appended 가 지지 체인(universe→target_ee)에서
-            # 산출 — 손목 구동 관절(orca 카펄 등)도 잠금이 아니면 팔 IK 대상.
+
             aMb_T = arm.ee_origin.T @ rig.attach.T @ rig.hand.axis_align.T
             rpy = Rotation.from_matrix(aMb_T[:3, :3]).as_euler("xyz")
             return cls.from_appended(
@@ -65,8 +70,6 @@ class RobotModel:
                 mount_xyz=aMb_T[:3, 3].tolist(),
                 mount_rpy=rpy.tolist(),
                 locked_joints=rig.lock_joints,
-                # target_ee 프레임 정렬은 hand config(ee_align)가 소유 —
-                # 메쉬 불변, IK 제어 프레임 축만 회전 (align_frames ee 모드로 튜닝)
                 ee_local_rpy=list(rig.hand.ee_align.rpy),
                 **common,
             )
@@ -105,26 +108,17 @@ class RobotModel:
         return cls(load_rig(path))
 
     def make_hand_controller(self, config_name: str, side: str):
-        """리타게팅 드라이버용 컨트롤러 (CONFIG_REGISTRY 이름 참조 — 모델과 분리)."""
         from whatslab.teleop.hand import HandRetargetController
         return HandRetargetController(side, config_name)
 
     # ------------------------------------------------------ 정준 데카르트 API
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:
-        """정준 pose → 베이스 pose (in-leg)."""
         return self._M_inv @ np.asarray(T_canonical, dtype=float)
 
     def to_canonical(self, T_base: np.ndarray) -> np.ndarray:
-        """베이스 pose → 정준 pose (out-leg, lazy 용)."""
         return self._M @ np.asarray(T_base, dtype=float)
 
     def solve(self, T_canonical: np.ndarray) -> np.ndarray:
-        """정준 목표 pose → q_arm. 내부: uniform 스케일 → 정준→베이스 → reach 클램프 → IK.
-
-        위치는 (캘리브 시) `s = reach_max / input_reach` 단일 스칼라로 등방 스케일한
-        뒤(원점 0 기준) 베이스로 옮기고, reach_max 구로 클램프한다(안전망).
-        (workspace 박스 매핑은 폐기 — reach_max 기준)
-        """
         assert self.has_arm, "arm 없는 rig — solve 불가"
         sol = self.rig.solver
         T_c = np.asarray(T_canonical, dtype=float).copy()
@@ -134,20 +128,15 @@ class RobotModel:
         if cal.enabled and cal.input_reach and sol.reach_max:
             T_c[:3, 3] *= sol.reach_max / cal.input_reach
 
-        T_b = self.to_base(T_c)
-        if sol.reach_max:
-            n = float(np.linalg.norm(T_b[:3, 3]))
-            if n > sol.reach_max:
-                T_b[:3, 3] *= sol.reach_max / n
+        return self.solver.solve(self.clamp_reach(self.to_base(T_c)))
 
-        return self.solver.solve(T_b)
+    def clamp_reach(self, T_base: np.ndarray) -> np.ndarray:
+        return clamp_reach(T_base, self.rig.solver.reach_max)
 
     def ee_pose(self, q_arm: np.ndarray) -> np.ndarray:
-        """q → target_ee 의 정준 4x4 pose (lazy out-leg)."""
         assert self.has_arm
         return self.to_canonical(self.solver.fk(np.asarray(q_arm, dtype=float)))
 
     def sync_state(self, q_arm) -> None:
-        """IK warm-start 를 현재 관절각으로 동기화 (솔버 위임)."""
         if self.solver is not None:
             self.solver.sync_state(q_arm)

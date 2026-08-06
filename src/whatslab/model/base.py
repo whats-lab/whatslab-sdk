@@ -1,5 +1,3 @@
-"""TeleopModel — 사용자 대면 최상위 API (4단계 파이프라인, 항상 양손 처리).
-"""
 from __future__ import annotations
 
 import time
@@ -16,21 +14,6 @@ from .ik import RobotArmIK
 
 
 class TeleopModel(ABC):
-    """텔레옵 최상위 — get_data → calib → solve → get_q (항상 양손).
-
-    사용 예:
-        class MyModel(TeleopModel):
-            def __init__(self, robot):
-                self.arm_source  = QuestControllerReceiver()
-                self.hand_source = GloveHumanHandReceiver()
-                super().__init__(robot)          # 손 리타게팅 config 는 rig.hand.retarget 에서 유도
-            def _get_raw_target(self):                         # 팔 필드만 재정의(양손)
-                out = {}
-                for s in self.SIDES:
-                    c = self.arm_source.get(s).controller
-                    out[s] = Pose(c.pos, c.quat) if c is not None else None
-                return out                                   # 팔=컨트롤러(양손), None=IK 스킵
-    """
 
     arm_source = None
     hand_source = None
@@ -65,8 +48,6 @@ class TeleopModel(ABC):
                 self.retarget[s] = r.make_hand_controller(cfg, s)
 
     def _as_side_map(self, robot) -> Dict[str, RobotModel]:
-        """robot → {side: RobotModel}. **단일 rig = 양쪽(left/right) 모두 그 rig**,
-        [l, r]=left/right 순서, dict=그대로."""
         def _load(r):
             if isinstance(r, str):
                 return RobotModel.from_yaml(r)
@@ -101,15 +82,9 @@ class TeleopModel(ABC):
     # ================================================================ pipeline
     @abstractmethod
     def _get_raw_target(self) -> Dict[str, Optional[Pose]]:
-        """side 별 팔 EE 원시 자세 `Pose`(pos+quat) — 양손 반환(**서브클래스 필수 구현**).
-        어느 소스/크로스핸드 조합을 팔 목표로 쓸지 정한다. 특정 side 를 `None` 으로
-        주면 그 side 는 IK 를 풀지 않는다. 팔 없는 모델은 `{s: None for s in self.SIDES}`."""
         ...
 
     def get_data(self) -> Dict[str, dict]:
-        """양손 소스 수집 + 역할 결정 → {side: data}. 팔 자세(`arm_pose`)는
-        `_get_raw_target` 가 준 프레임 그대로 통과시킨다(head-relative 등 프레임 선택은
-        그 훅 소관). `tracked` = 그 side 에 유효 입력(팔 목표 또는 손가락)이 있나."""
         poses = self._get_raw_target()                       # {side: Pose|None}
         out: Dict[str, dict] = {}
         for s in self.SIDES:
@@ -126,7 +101,6 @@ class TeleopModel(ABC):
 
     @staticmethod
     def _joint_q(arm_s, hand_s):
-        """직접-q 우회값 — 손 소스 우선, 없으면 팔 소스, 둘 다 없으면 None."""
         if hand_s is not None and hand_s.joint_q is not None:
             return hand_s.joint_q
         if arm_s is not None and arm_s.joint_q is not None:
@@ -134,8 +108,6 @@ class TeleopModel(ABC):
         return None
 
     def _solve_side(self, side: str, data: dict) -> Dict[str, float]:
-        """한 side data → q. joint_q 우회가 있으면 그대로. 팔 목표(arm_target)나
-        손가락 입력이 없는 컴포넌트는 계산도 출력도 하지 않고 q 에서 **생략**한다."""
         if data.get("q") is not None:
             return dict(data["q"])
         q: Dict[str, float] = {}
@@ -153,16 +125,13 @@ class TeleopModel(ABC):
 
     @staticmethod
     def _has_fingers(fingers) -> bool:
-        """리타게팅할 유효 손가락 입력이 있나 — InputSample 의 hand 가 추적 중일 때만."""
         return (fingers is not None and fingers.hand is not None
                 and fingers.hand.tracked)
 
     def solve(self, data: Dict[str, dict]) -> Dict[str, Dict[str, float]]:
-        """{side: (캘리브된) data} → {side: q}. 항상 양쪽 처리."""
         return {s: self._solve_side(s, data[s]) for s in self.SIDES}
 
     def _apply_calib(self, data: Dict[str, dict]) -> Dict[str, dict]:
-        """side 별 calib.apply(yaw 정렬 + reach 스케일) → arm_target 채움 + self.target 노출."""
         for s in self.SIDES:
             calib = self.calib.get(s)
             if calib is not None:
@@ -171,7 +140,6 @@ class TeleopModel(ABC):
         return data
 
     def get_q(self) -> Dict[str, Dict[str, float]]:
-        """get_data → _apply_calib → solve → {side: {joint: 값}}. 매 호출 계산."""
         data = self._apply_calib(self.get_data())
         q = self.solve(data)
         if self.safety is not None:              # 선택: 관절 리밋/e-stop 필터
@@ -181,7 +149,6 @@ class TeleopModel(ABC):
 
     # ------------------------------------------------------------- calibrate
     def set_reach(self, input_reach: float) -> Dict[str, bool]:
-        """측정 없이 reach(input_reach)를 양쪽 calib 에 직접 설정 → {side: 성공여부}."""
         out: Dict[str, bool] = {}
         for s in self.SIDES:
             calib = self.calib.get(s)
@@ -191,12 +158,6 @@ class TeleopModel(ABC):
         return out
 
     def calibrate_yaw(self) -> Dict[str, bool]:
-        """yaw 정렬 스냅샷(즉시) — 양쪽 calib 모델에 위임 → {side: 성공여부}.
-        (도달반경 캘리브는 calibrate_reach.)
-
-        캘리브는 목표 방위를 불연속 변경하므로, 성공한 side 의 팔 IK 를 재시드해
-        (다음 solve 가 solve_robust 로 basin 재탐색) warm-start 가 이전 basin 에
-        갇혀 새 목표로 못 넘어가는 것을 방지한다(가능한 IK 컴포넌트에만)."""
         data = self.get_data()
         out: Dict[str, bool] = {}
         for s in self.SIDES:
@@ -210,10 +171,6 @@ class TeleopModel(ABC):
 
     def calibrate_reach(self, duration: float = 8.0, rate_hz: float = 60.0,
                         persist: bool = False) -> Dict[str, float]:
-        """duration 초 동안 양쪽 get_data 의 arm_pose 를 폴링해 side 별 최대 도달반경
-        측정 → 해당 side calib 에 reach 등록(블로킹) → {side: r_max}. 측정 필드는
-        get_data 가 결정한다. persist=True 면 side rig yaml 의 calibration.input_reach
-        에도 저장(다음 세션 생성 시 자동 로드)."""
         r_max: Dict[str, float] = {s: 0.0 for s in self.SIDES}
         period, t_end = 1.0 / rate_hz, time.monotonic() + duration
         while time.monotonic() < t_end:
@@ -236,4 +193,4 @@ class TeleopModel(ABC):
 
     # ------------------------------------------------------------- feedback
     def send_feedback(self, data) -> None:
-        """햅틱 등 역방향 피드백 — 기본 no-op(서브클래스 오버라이드)."""
+        pass

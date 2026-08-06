@@ -1,12 +1,3 @@
-"""로봇/rig config 로더 — 책임 일대일 (docs/DESIGN_robot_rig.md 기준).
-
-  URDF        : 기구학(관절 이름/한계)의 유일한 출처 — config 에 복제 금지
-  robot yaml  : "이 로봇이 무엇인가" (urdf, axis_align, TCP/base_frame, reach_max)
-  rig yaml    : 조립(mount/attach/target_ee) + 운용(lock/solver) + 세션(calibration)
-  입력 소스/드라이버 : rig 에 없음 — 파이프라인 인자 (사용자 코드)
-
-모든 고정 변환은 URDF <origin> 관례(xyz + rpy, 이동은 부모 프레임 기준).
-"""
 from __future__ import annotations
 
 import os
@@ -21,7 +12,6 @@ from whatslab.paths import configs_root, models_root
 
 
 def origin_to_T(xyz, rpy) -> np.ndarray:
-    """URDF <origin>(xyz+rpy) → 4x4. rpy 는 회전만 표현하므로 det=+1 자동 보장."""
     T = np.eye(4)
     T[:3, :3] = Rotation.from_euler(
         "xyz", list(rpy) if rpy is not None else [0, 0, 0]).as_matrix()
@@ -47,7 +37,6 @@ class Origin:
 
 @dataclass
 class RobotSpec:
-    """개별 robot config — arm/hand 공통 스키마 (kind 로 구분)."""
 
     name: str
     kind: str                                            # "arm" | "hand"
@@ -96,27 +85,36 @@ class SolverCfg:
     w_ori: float = 10.0
     max_joint_velocity: float = 5.0
     reach_max: Optional[float] = None              # target_ee 안전 반경(베이스 기준)
+    # 수치 반복 파라미터 — **코드 기본값을 고치지 말고 여기서 튜닝한다**(변경이
+    # 커밋 diff 에 남아야 한다). None 이면 백엔드 기본값.
+    max_iter: Optional[int] = None                 # dls: 프레임당 수렴 반복 상한
+    iters_per_call: Optional[int] = None           # diff: 틱당 스텝 수
+    tol: Optional[float] = None                    # 6D 오차 종료 임계
+    sugihara_bias: Optional[float] = None          # diff: 오차적응 감쇠 바닥값
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
         d = d or {}
+
+        def _opt(key, cast):
+            v = d.get(key)
+            return None if v is None else cast(v)
+
         return SolverCfg(
             backend=d.get("backend", "diff"),
             w_pos=float(d.get("w_pos", 20.0)),
             w_ori=float(d.get("w_ori", 10.0)),
             max_joint_velocity=float(d.get("max_joint_velocity", 5.0)),
             reach_max=d.get("reach_max"),
+            max_iter=_opt("max_iter", int),
+            iters_per_call=_opt("iters_per_call", int),
+            tol=_opt("tol", float),
+            sugihara_bias=_opt("sugihara_bias", float),
         )
 
 
 @dataclass
 class CalibrationCfg:
-    """사용자 측정치 — 입력 도달반경(input_reach) 하나. uniform reach 스케일용.
-
-    model.solve 가 정준 위치를 `s = reach_max / input_reach` **단일 스칼라**로
-    등방(isotropic) 스케일한다(원점 0 기준, 중심 빼기 없음). input_reach 는 사람
-    손 최대 도달반경 |p|=√(x²+y²+z²) (calibrate 도구가 측정). None 이면 스케일 없음.
-    """
 
     enabled: bool = True
     input_reach: Optional[float] = None
@@ -134,7 +132,6 @@ class CalibrationCfg:
 
 @dataclass
 class RigConfig:
-    """통합 config — 조립·운용·세션. 소스/드라이버는 여기 없음(파이프라인 인자)."""
 
     name: str
     arm: Optional[RobotSpec]
@@ -148,7 +145,6 @@ class RigConfig:
     path: Optional[str] = None       # 로드 원본 (캘리브 갱신용)
 
     def resolve_target_ee(self) -> str:
-        """target_ee → hand.base_frame → arm TCP('ee') 순 fallback."""
         if self.target_ee:
             return self.target_ee
         if self.hand is not None and self.hand.base_frame:
@@ -162,7 +158,6 @@ def _load_yaml(path: str) -> dict:
 
 
 def _resolve_config(path: str, subdir: str) -> str:
-    """config 경로 해석: 절대 → 그대로 / 상대 → cwd, 다음 configs/<subdir> 기준."""
     p = os.path.expanduser(path)
     if os.path.isabs(p) or os.path.exists(p):
         return os.path.abspath(p)
@@ -175,7 +170,6 @@ def _resolve_config(path: str, subdir: str) -> str:
 
 
 def load_robot(path: str) -> RobotSpec:
-    """단일 robot yaml 로드 (configs/robots 기준 상대경로 허용)."""
     p = _resolve_config(path, "robots")
     if not os.path.exists(p):
         raise FileNotFoundError(f"robot config 없음: {path}")
@@ -183,12 +177,6 @@ def load_robot(path: str) -> RobotSpec:
 
 
 def load_rig(path: str) -> RigConfig:
-    """rig yaml 로드 + robot 참조 해석 + 검증.
-
-    path 해석: 절대경로 → 그대로 / 상대경로 → cwd, 다음 configs_root() 기준.
-    rig 내부의 robot 참조("robots/nero.yaml")는 configs 루트(= rig 파일의
-    부모의 부모) 기준.
-    """
     p = os.path.expanduser(path)
     if not os.path.isabs(p) and not os.path.exists(p):
         root = configs_root()
@@ -237,7 +225,6 @@ def load_rig(path: str) -> RigConfig:
 
 
 def save_calibration(rig: RigConfig, input_reach: float) -> None:
-    """rig yaml 의 calibration.input_reach 만 in-place 갱신 (다른 섹션 불변)."""
     assert rig.path, "rig 가 파일에서 로드되지 않음"
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
@@ -250,7 +237,6 @@ def save_calibration(rig: RigConfig, input_reach: float) -> None:
 
 
 def save_reach_max(rig: RigConfig, reach_max: float) -> None:
-    """rig yaml 의 solver.reach_max 만 in-place 갱신 (다른 키·섹션 불변)."""
     assert rig.path, "rig 가 파일에서 로드되지 않음"
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
