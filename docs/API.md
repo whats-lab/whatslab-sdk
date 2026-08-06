@@ -20,7 +20,7 @@ from whatslab.model import QuestModel, GloveModel
 | `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
 | `GloveModel(robot)` | 프리셋: 팔=Quest 컨트롤러 IK, 손=글러브 리타게팅. 햅틱 지원. |
 | `HandModel(robot)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). |
-| `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. |
+| `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃·`reseed()`·확실한 스톨** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `stall_*`/`reseed_*` 속성. |
 | `ArmCalibration(...)` | yaw 정렬 + reach 스케일 소유. |
 
 ### `TeleopModel` 메서드
@@ -39,7 +39,7 @@ from whatslab.model import QuestModel, GloveModel
 ## whatslab.receiver — 입력 소스 (텔레옵 무관, 단독 사용 가능)
 
 ```python
-from whatslab.receiver.quest_controller import QuestControllerReceiver
+from whatslab.receiver.quest.controller import QuestControllerReceiver
 ```
 
 `side` = 물리적 기기의 좌/우(채널 재해석 금지). 출력은 항상 정준 프레임
@@ -62,6 +62,7 @@ from whatslab.receiver.quest_controller import QuestControllerReceiver
 | `RobotModel.solve(T_canonical)` | 정준 목표 4x4 → 팔 관절각. |
 | `RobotModel.ee_pose(q_arm)` | FK: 관절각 → EE 4x4. |
 | `RobotModel.to_base(T)` / `to_canonical(T)` | 정준↔베이스 프레임 변환. |
+| `RobotModel.clamp_reach(T_base)` | 베이스 목표를 `reach_max` 구로 클램프(안전망). 구현은 `robot.model.clamp_reach(T_base, reach_max)` 모듈 함수 한 곳. |
 | `RobotModel.sync_state(q_arm)` | IK 웜스타트용 현재 상태 갱신. |
 | `RobotModel.make_hand_controller(config_name, side)` | 손 리타게팅 컨트롤러 생성. |
 | `load_robot(path)` / `load_rig(path)` | yaml → `RobotSpec` / `RigConfig`. |
