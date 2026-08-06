@@ -210,17 +210,18 @@ def _cal_pose(pos, quat=(0.0, 0.0, 0.0, 1.0)):
     return Pose(pos=np.array(pos, dtype=float), quat=np.array(quat, dtype=float))
 
 
-def test_calib_disabled_passes_pose_through():
+def test_calib_disabled_skips_reach_scale_but_keeps_yaw():
     from scipy.spatial.transform import Rotation
 
     from whatslab.model.calibration import ArmCalibration
 
     cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=False)
     q = Rotation.from_euler("z", 0.9).as_quat()
-    cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})
+    assert cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)}) is True
     T = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
     assert T[:3, 3] == pytest.approx([0.3, -0.1, 0.2])
-    assert T[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())
+    T0 = cal.apply({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})["arm_target"]
+    assert T0[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
 
 
 def test_calib_enabled_applies_scale_and_yaw():
@@ -255,3 +256,18 @@ def test_calib_enabled_flag_reaches_teleop_path():
     scale = rig.solver.reach_max / rig.calibration.input_reach
     assert out[True] == pytest.approx(np.asarray(pose.pos) * scale)
     assert not np.allclose(out[True], out[False])
+
+
+def test_yaw_calibration_works_regardless_of_enabled():
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.model.calibration import ArmCalibration
+
+    q = Rotation.from_euler("z", 1.2).as_quat()
+    for flag in (True, False):
+        cal = ArmCalibration(reach_max=1.0, input_reach=1.0, enabled=flag)
+        assert cal.ready is False
+        assert cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)}) is True
+        assert cal.ready is True
+        T = cal.apply({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})["arm_target"]
+        assert T[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
