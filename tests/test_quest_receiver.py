@@ -10,9 +10,9 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 from scipy.spatial.transform import Rotation
 
 from whatslab.receiver.base import NUM_FINGER_JOINTS
-from whatslab.receiver.quest_base import _CANONICAL_M as _M
-from whatslab.receiver.quest_controller import CONTROLLER_POS_OFFSET, QuestControllerReceiver
-from whatslab.receiver.quest_hand import QuestHandReceiver
+from whatslab.receiver.quest.base import _CANONICAL_M as _M
+from whatslab.receiver.quest.controller import CONTROLLER_POS_OFFSET, QuestControllerReceiver
+from whatslab.receiver.quest.hand import QuestHandReceiver
 
 
 def _to_c(pos, quat):
