@@ -59,6 +59,7 @@ class _FakeRig:
 
     class calibration:                # rig.calibration.input_reach → reach 스케일
         input_reach = None
+        enabled = True
 
 
 class _FakeRobot:

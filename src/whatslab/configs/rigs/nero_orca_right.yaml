@@ -42,5 +42,5 @@ solver:
   # (fk 궤적 max 4.15→85.2 mm). 텔레옵은 이동이 기본이므로 1e-4 유지.
   sugihara_bias: 1.0e-4
 calibration:
-  enabled: false
+  enabled: true
   input_reach: 0.8305
