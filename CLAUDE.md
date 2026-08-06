@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 명령어
 
 ```bash
-$PY -m pytest -q -rs                            # 전체 (기준: 99 passed, skip 0)
+$PY -m pytest -q -rs                            # 전체 (기준: 100 passed, skip 0)
 $PY -m pytest tests/test_arm.py -q -rs          # 파일 단위
 $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 ```
@@ -70,8 +70,8 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 
 **팔 IK 책임 분리** (이 층을 건드릴 때 반드시 구분):
 - `model/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
-  스케일은 **여기서만** 한다. `rig calibration.enabled` 로 통째로 껐다 켠다 —
-  off 면 reach 스케일도 yaw `W` 도 안 걸고 리시버 좌표를 그대로 목표로 쓴다.
+  스케일은 **여기서만** 한다. `rig calibration.enabled` 는 **reach 스케일만** 게이트한다
+  (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
   `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 를 쓰면서
   `enabled` 를 **true 로 덮어쓴다**(`robot/config.py`).
 - `model/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃

@@ -32,12 +32,11 @@ class ArmCalibration:
             return data
         pos = np.asarray(pose.pos, dtype=float)
         G = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
-        W = self._W if self.enabled else None
         if self.enabled and self._input_reach and self.reach_max:
             pos = pos * (self.reach_max / self._input_reach)
         T = np.eye(4)
         T[:3, 3] = pos
-        T[:3, :3] = (W @ G) if W is not None else G
+        T[:3, :3] = (self._W @ G) if self._W is not None else G
         data["arm_target"] = T
         return data
 
