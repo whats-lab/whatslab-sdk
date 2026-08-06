@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -10,6 +11,8 @@ import viser
 
 from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
 from whatslab.paths import models_root
+
+_log = logging.getLogger(__name__)
 
 # viser/trimesh/pinocchio (`whatslab-sdk[viz]`) 는 이 모듈의 필수 의존 — 최상단 import.
 _AXIS_RGB = ((230, 60, 60), (60, 200, 60), (70, 130, 240))   # x,y,z = R,G,B
@@ -67,8 +70,8 @@ class URDFScene:
                 mesh.apply_scale(np.asarray(g.meshScale))
                 self.handles.append(
                     server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", e)
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:
             ball = trimesh.creation.icosphere(radius=0.008)

@@ -101,7 +101,10 @@ class HandRetargeter:
             widx = robot.get_link_index(config.get_wrist_link_name(self.hand_type))
             robot.compute_forward_kinematics(robot.q0)
             self._wrist_offset = robot.get_link_pose(widx)[:3, 3].astype(np.float64).copy()
-        except Exception:
+        except Exception as e:
+            # 오프셋이 0 이면 position stage 의 목표가 통째로 어긋난다 — 무음 금지.
+            logger.warning("손목 링크(%s) 오프셋 계산 실패 → 0 사용, 리타게팅이 어긋날 수 있음: %s",
+                           config.get_wrist_link_name(self.hand_type), e)
             self._wrist_offset = np.zeros(3, dtype=np.float64)
 
     # ─────────────────────────────────────────
