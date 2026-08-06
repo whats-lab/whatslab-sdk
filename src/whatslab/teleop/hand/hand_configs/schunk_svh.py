@@ -28,30 +28,28 @@ class SchunkSVHConfig(HandConfig):
         for side in ("left", "right")
     }
 
-    # 손가락당 로봇 링크 구간 > human 키포인트 → 영벡터를 팁(fixed)/spread(abduction,
-    # 최소 중요) 구간으로 밀어 실제 굴곡관절에 방향 목표를 부여한다.
     _chains = [
-        FingerChain(  # Thumb: e1 → z(Opp) → a(Flex) → b → c → thtip
+        FingerChain(
             links=["{wrist}", "{side}_hand_z", "{side}_hand_a",
                    "{side}_hand_b", "{side}_hand_c", "thtip"],
             human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
         ),
-        FingerChain(  # Index: e1 → virtual_l(spread) → l(Prox) → p(Dist) → t → fftip
+        FingerChain(
             links=["{wrist}", "{side}_hand_virtual_l", "{side}_hand_l",
                    "{side}_hand_p", "{side}_hand_t", "fftip"],
             human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip", "index_tip"],
         ),
-        FingerChain(  # Middle: e1 → virtual_k → k(Prox) → o(Dist) → s → mftip
+        FingerChain(
             links=["{wrist}", "{side}_hand_virtual_k", "{side}_hand_k",
                    "{side}_hand_o", "{side}_hand_s", "mftip"],
             human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip", "middle_tip"],
         ),
-        FingerChain(  # Ring: e1 → e2 → virtual_j(spread) → j(Ring) → n → r → rftip
+        FingerChain(
             links=["{wrist}", "{side}_hand_e2", "{side}_hand_virtual_j",
                    "{side}_hand_j", "{side}_hand_n", "{side}_hand_r", "rftip"],
             human=["wrist", "ring_mcp", "ring_mcp", "ring_pip", "ring_dip", "ring_tip", "ring_tip"],
         ),
-        FingerChain(  # Pinky: e1 → e2 → virtual_i(spread) → i(Pinky) → m → q → lftip
+        FingerChain(
             links=["{wrist}", "{side}_hand_e2", "{side}_hand_virtual_i",
                    "{side}_hand_i", "{side}_hand_m", "{side}_hand_q", "lftip"],
             human=["wrist", "pinky_mcp", "pinky_mcp", "pinky_pip", "pinky_dip", "pinky_tip", "pinky_tip"],

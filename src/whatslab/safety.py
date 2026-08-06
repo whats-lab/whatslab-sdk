@@ -53,12 +53,11 @@ class SafetyFilter:
         self._estopped = False
         self._enabled = True
 
-    # ---- 상태 ----
     def trip(self) -> None:
-        self._estopped = True          # 래칭 — reset() 전까지 유지
+        self._estopped = True
 
     def reset(self) -> bool:
-        self._estopped = False         # 명시적 해제만
+        self._estopped = False
         return True
 
     @property
@@ -75,19 +74,18 @@ class SafetyFilter:
     def holding(self) -> bool:
         return self._estopped or not self._enabled
 
-    # ---- 핵심 ----
     def step(self, desired: Optional[Dict[str, float]]) -> Dict[str, float]:
         if self._estopped or not self._enabled or desired is None:
-            return dict(self._last)                         # hold
+            return dict(self._last)
         out: Dict[str, float] = {}
         for name, val in desired.items():
             lim = self._lim.get(name)
             prev = self._last.get(name)
-            if lim is None:                                 # 미상 관절 → hold
+            if lim is None:
                 out[name] = prev if prev is not None else 0.0
                 continue
-            v = min(max(float(val), lim.lower), lim.upper)  # 위치 clamp
-            if prev is not None and lim.velocity != _INF:   # 속도 rate-limit
+            v = min(max(float(val), lim.lower), lim.upper)
+            if prev is not None and lim.velocity != _INF:
                 dmax = lim.velocity * self._dt
                 v = min(max(v, prev - dmax), prev + dmax)
             out[name] = v

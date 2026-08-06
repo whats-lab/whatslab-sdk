@@ -11,5 +11,4 @@ def backend_cls(backend: str):
     raise ValueError(f"unknown IK backend {backend!r} (dls|diff)")
 
 
-# 하위 명칭 호환 (RobotModel 등 내부 사용)
 _backend_cls = backend_cls

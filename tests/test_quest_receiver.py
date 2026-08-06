@@ -1,8 +1,3 @@
-"""QuestReceiverBase + QuestControllerReceiver — 공유 SharedOscServer 위에서 동작 검증.
-
-실제 UDP 소켓 없이 dispatcher.call_handlers_for_packet 으로 OSC 패킷을 주입한다
-(test_osc_transport.py 와 동일한 접근).
-"""
 import numpy as np
 import pytest
 from pythonosc.osc_message_builder import OscMessageBuilder
@@ -16,7 +11,6 @@ from whatslab.receiver.quest.hand import QuestHandReceiver
 
 
 def _to_c(pos, quat):
-    """테스트용 독립 정준 변환(리시버가 적용해야 하는 것): 위치 M·p, 회전 M·R·Mᵀ."""
     p = _M @ np.asarray(pos, dtype=float)
     R = Rotation.from_quat(np.asarray(quat, dtype=float)).as_matrix()
     return p, Rotation.from_matrix(_M @ R @ _M.T).as_quat()
@@ -54,13 +48,12 @@ def test_controller_get_independent_per_side():
     left = recv.get("left")
     right = recv.get("right")
 
-    # 정준 변환(_to_c) 적용 후 + 마운트 오프셋. (raw pass-through 아님을 검증)
     lp, lq = _to_c([1.0, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0])
     rp, rq = _to_c([4.0, 5.0, 6.0], [0.0, 1.0, 0.0, 0.0])
     assert left.controller is not None
     assert np.allclose(left.controller.pos, lp + CONTROLLER_POS_OFFSET)
     assert np.allclose(left.controller.quat, lq)
-    assert left.controller.pos[0] == pytest.approx(3.0 + CONTROLLER_POS_OFFSET[0])  # in_z→robot_x
+    assert left.controller.pos[0] == pytest.approx(3.0 + CONTROLLER_POS_OFFSET[0])
     assert left.tracked
 
     assert right.controller is not None
@@ -68,10 +61,8 @@ def test_controller_get_independent_per_side():
     assert np.allclose(right.controller.quat, rq)
     assert right.tracked
 
-    # 좌/우 독립 — 서로의 controller pose 가 섞이지 않는다.
     assert not np.allclose(left.controller.pos, right.controller.pos)
 
-    # hmd 도 정준 변환 적용(회전만). side 무관 공유.
     _, hq = _to_c([0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0])
     assert left.hmd is not None and right.hmd is not None
     assert np.allclose(left.hmd.quat, hq)
@@ -79,7 +70,6 @@ def test_controller_get_independent_per_side():
 
 
 def test_two_quest_receivers_share_same_port_server():
-    """QuestReceiverBase 는 SharedOscServer.get(port) 로 서버를 공유한다."""
     a = QuestControllerReceiver(quest_port=9998)
     b = QuestControllerReceiver(quest_port=9998)
     assert a._srv is b._srv
@@ -115,7 +105,6 @@ def test_hand_get_wrist_and_fingers_per_side():
     left = recv.get("left")
     right = recv.get("right")
 
-    # 손목(pos + root 회전)만 정준 변환. 손가락 관절 회전은 raw(리타게팅용) 유지.
     lwp, lwq = _to_c([0.1, 0.2, 0.3], [0.0, 0.0, 0.0, 1.0])
     rwp, rwq = _to_c([0.4, 0.5, 0.6], [0.0, 1.0, 0.0, 0.0])
     assert left.hand is not None and left.hand.tracked
@@ -124,18 +113,16 @@ def test_hand_get_wrist_and_fingers_per_side():
     assert np.allclose(left.hand.wrist.quat, lwq)
     assert len(left.hand.joint_rot) == NUM_FINGER_JOINTS
     for q in left.hand.joint_rot.values():
-        assert np.allclose(q, [0.0, 0.0, 0.0, 1.0])       # 관절: 변환 안 함(raw)
+        assert np.allclose(q, [0.0, 0.0, 0.0, 1.0])
 
     assert right.hand is not None and right.hand.tracked
     assert np.allclose(right.hand.wrist.pos, rwp)
     assert np.allclose(right.hand.wrist.quat, rwq)
     for q in right.hand.joint_rot.values():
-        assert np.allclose(q, [0.0, 1.0, 0.0, 0.0])       # 관절: 변환 안 함(raw)
+        assert np.allclose(q, [0.0, 1.0, 0.0, 0.0])
 
-    # 좌/우 독립 — 섞이지 않음.
     assert not np.allclose(left.hand.wrist.pos, right.hand.wrist.pos)
 
-    # hmd 는 side 무관 공유 + 정준 변환 적용.
     _, hq = _to_c([0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0])
     assert left.hmd is not None and right.hmd is not None
     assert np.allclose(left.hmd.quat, hq)
@@ -153,7 +140,6 @@ def test_hand_on_update_callback_fires_on_new_joints_frame():
 
 
 def test_controller_and_hand_receivers_share_same_port_server():
-    """모달리티(컨트롤러/손)가 분리돼도 동일 quest_port 면 서버 인스턴스 1개(T1 refcount 계약)."""
     a = QuestControllerReceiver(quest_port=9992)
     b = QuestHandReceiver(quest_port=9992)
     assert a._srv is b._srv

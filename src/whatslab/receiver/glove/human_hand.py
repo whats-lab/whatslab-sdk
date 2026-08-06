@@ -13,17 +13,14 @@ from .base import GLOVE_OSC_PORT, GLOVE_TARGET_IP, GLOVE_CLIENT_PORT, GloveRecei
 logger = logging.getLogger(__name__)
 
 
-# ── AGA OSC 프로토콜 상수 (atlas_hand_core/config.py 계승) ──
 OSC_ADDR_LEFT_HAPT      = "/left/hapt/set"
 OSC_ADDR_RIGHT_HAPT     = "/right/hapt/set"
 OSC_MSG_TYPE_LEFT_HAPT  = "9"
 OSC_MSG_TYPE_RIGHT_HAPT = "10"
 AGA_FINGER_COUNT    = 5
 AGA_RAW_FLOAT_COUNT = 72
-AGA_SKIP_JOINT      = 14   # pinky_0 — FK 에서 제외
+AGA_SKIP_JOINT      = 14
 
-# 글러브(y-up) 손목 프레임 → 정준(x=앞, z=위, 오른손) 변환. y↔z 스왑.
-# Quest 의 QuestReceiverBase._M 과 같은 역할이나 글러브 기기 프레임에 맞는 별도 상수다.
 _CANONICAL_M = np.array([[1.0, 0.0, 0.0],
                          [0.0, 0.0, 1.0],
                          [0.0, 1.0, 0.0]])
@@ -58,7 +55,6 @@ class GloveHumanHandReceiver(GloveReceiverBase):
     ):
         super().__init__(glove_port, listen_ip, target_ip, client_port)
         self._stale_timeout = stale_timeout
-        # 새 프레임 수신 시 호출되는 콜백(side) — 이벤트 구동 소비자용(폴링 불필요)
         self._on_update = on_update
 
         for side in ("left", "right"):
@@ -67,7 +63,6 @@ class GloveHumanHandReceiver(GloveReceiverBase):
             s["timestamp"] = 0.0
             self._srv.add_handler(f"/{side}/quat/get", self._h_quat, side)
 
-    # ---------------------------------------------------------------- public
     def get(self, side: str) -> InputSample:
         with self._lock:
             s = self._state[side]
@@ -76,9 +71,7 @@ class GloveHumanHandReceiver(GloveReceiverBase):
             conn = self._connected[side]
         age = time.monotonic() - ts
         tracked = conn and not (self._stale_timeout > 0 and age > self._stale_timeout)
-        # 손목 회전(q[0])만 글러브 → 정준 변환(팔 EE 방향으로 쓰임). 손가락 관절은 raw.
         q[0] = wrist_to_canonical(q[0])
-        # 글러브는 손가락 회전만: wrist.pos 없음(회전 q[0]만), controller 없음
         hand = HandPose.from_sensor_array(q, wrist_pos=None, tracked=tracked, timestamp=ts)
         return InputSample(controller=None, hand=hand, tracked=tracked, timestamp=ts)
 
@@ -97,10 +90,7 @@ class GloveHumanHandReceiver(GloveReceiverBase):
             logger.warning("햅틱 전송 실패 (%s): %s", address, e)
             return False
 
-    # ----------------------------------------------------------- OSC handlers
     def _h_quat(self, address, *args):
-        # dispatcher.map(address, self._h_quat, side) 로 등록 — args[0]=side(주입값),
-        # args[1:]=실제 OSC 메시지 인자([msg_type, *72 floats]).
         side = args[0]
         if isinstance(side, (list, tuple)):
             side = side[0]
@@ -118,8 +108,6 @@ class GloveHumanHandReceiver(GloveReceiverBase):
 
     @staticmethod
     def _parse_floats(args, count) -> Optional[np.ndarray]:
-        # OSC 메시지 첫 값 args[0] 은 메시지 타입 헤더(예: '1') → 건너뛰고 count 개.
-        # (atlas AtlasGloveSource._parse_floats 와 동일: args[1:count+1])
         if len(args) < count + 1:
             return None
         try:

@@ -18,7 +18,7 @@ class TesolloDG5FConfig(HandConfig):
       
     _FINGERS: ClassVar[Dict[str, List[FingerChain]]] = {
         "right":  [
-            FingerChain(  # Thumb 
+            FingerChain(
                 links=[
                     "{wrist}",
                     "rl_dg_1_1",
@@ -29,7 +29,7 @@ class TesolloDG5FConfig(HandConfig):
                 ],
                 human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
             ),
-            FingerChain(  # Index
+            FingerChain(
                 links=[
                    "{wrist}",
                     "rl_dg_2_2",
@@ -39,7 +39,7 @@ class TesolloDG5FConfig(HandConfig):
                 ],
                 human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip"],
             ),
-               FingerChain(  # Index
+               FingerChain(
                 links=[
                    "{wrist}",
                     "rl_dg_3_2",
@@ -48,7 +48,7 @@ class TesolloDG5FConfig(HandConfig):
                     "rl_dg_3_tip",
                 ],
                 human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip"],
-            ),   FingerChain(  # Index
+            ),   FingerChain(
                 links=[
                    "{wrist}",
                     "rl_dg_4_2",
@@ -57,7 +57,7 @@ class TesolloDG5FConfig(HandConfig):
                     "rl_dg_4_tip",
                 ],
                 human=["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip"],
-            ),   FingerChain(  # Index
+            ),   FingerChain(
                 links=[
                    "{wrist}",
                     "rl_dg_5_2",
@@ -69,7 +69,7 @@ class TesolloDG5FConfig(HandConfig):
             ),
         ],
         "left": [
-            FingerChain(  # Thumb 
+            FingerChain(
                 links=[
                     "{wrist}",
                     "ll_dg_1_1",
@@ -80,7 +80,7 @@ class TesolloDG5FConfig(HandConfig):
                 ],
                 human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
             ),
-            FingerChain(  # Index
+            FingerChain(
                 links=[
                    "{wrist}",
                     "ll_dg_2_2",
@@ -90,7 +90,7 @@ class TesolloDG5FConfig(HandConfig):
                 ],
                 human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip"],
             ),
-               FingerChain(  # Index
+               FingerChain(
                 links=[
                    "{wrist}",
                     "ll_dg_3_2",
@@ -99,7 +99,7 @@ class TesolloDG5FConfig(HandConfig):
                     "ll_dg_3_tip",
                 ],
                 human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip"],
-            ),   FingerChain(  # Index
+            ),   FingerChain(
                 links=[
                    "{wrist}",
                     "ll_dg_4_2",
@@ -108,7 +108,7 @@ class TesolloDG5FConfig(HandConfig):
                     "ll_dg_4_tip",
                 ],
                 human=["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip"],
-            ),   FingerChain(  # Index
+            ),   FingerChain(
                 links=[
                    "{wrist}",
                     "ll_dg_5_2",

@@ -9,8 +9,6 @@ from whatslab.core.types import InputSample, Pose
 from ..base import norm_quat
 from .base import QUEST_OSC_PORT, QuestReceiverBase
 
-# 컨트롤러 위치 오프셋 (정준좌표 x=앞,z=위) — 컨트롤러 마운트 편차 보정. 불변 상수로
-# 리시버가 controller.pos 에 가산한다(외부 설정 불가). meta.CONTROLLER_POS_OFFSET 와 동일 값.
 CONTROLLER_POS_OFFSET = np.array([0.02, -0.04, 0.08])
 
 
@@ -29,7 +27,6 @@ class QuestControllerReceiver(QuestReceiverBase):
             self._srv.add_handler(f"/controller/{side}/pos", self._on_pos, side)
             self._srv.add_handler(f"/controller/{side}/rot", self._on_rot, side)
 
-    # ----------------------------------------------------------- OSC handlers
     def _on_pos(self, address, *args):
         side, v = self._split(args)
         with self._lock:
@@ -46,7 +43,6 @@ class QuestControllerReceiver(QuestReceiverBase):
             s["valid"] = True
             s["timestamp"] = time.monotonic()
 
-    # -------------------------------------------------------------------- get
     def get(self, side: str) -> InputSample:
         with self._lock:
             s = self._state[side]
@@ -57,7 +53,6 @@ class QuestControllerReceiver(QuestReceiverBase):
         hmd_quat, hmd_valid = self.get_hmd()
         age = time.monotonic() - ts
         tracked = valid and not (self._stale_timeout > 0 and age > self._stale_timeout)
-        # Unity → 정준 좌표 변환(QuestReceiverBase). 그 뒤 마운트 오프셋(정준) 가산.
         if valid:
             pos, quat = self.to_canonical(pos, quat)
         controller = Pose(pos + CONTROLLER_POS_OFFSET, quat) if valid else None

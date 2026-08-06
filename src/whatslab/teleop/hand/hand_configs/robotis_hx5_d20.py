@@ -21,7 +21,7 @@ class RobotisHX5Config(HandConfig):
     _SCALE_FACTOR = [1.2, 1.25, 1.25, 1.3, 1.4]
 
     _chains = [
-        FingerChain(  # Thumb
+        FingerChain(
             links=[
                 "{wrist}",
                 "finger_{side}_link1",
@@ -32,7 +32,7 @@ class RobotisHX5Config(HandConfig):
             ],
             human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
         ),
-        FingerChain(  # Index
+        FingerChain(
             links=[
                 "{wrist}",
                 "finger_{side}_link5",
@@ -42,7 +42,7 @@ class RobotisHX5Config(HandConfig):
             ],
             human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip"],
         ),
-        FingerChain(  # Middle
+        FingerChain(
             links=[
                 "{wrist}",
                 "finger_{side}_link9",
@@ -52,7 +52,7 @@ class RobotisHX5Config(HandConfig):
             ],
             human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip"],
         ),
-        FingerChain(  # Ring
+        FingerChain(
             links=[
                 "{wrist}",
                 "finger_{side}_link13",
@@ -62,7 +62,7 @@ class RobotisHX5Config(HandConfig):
             ],
             human=["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip"],
         ),
-        FingerChain(  # Pinky
+        FingerChain(
             links=[
                 "{wrist}",
                 "finger_{side}_link17",

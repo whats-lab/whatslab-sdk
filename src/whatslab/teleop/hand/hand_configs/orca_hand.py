@@ -20,7 +20,7 @@ class OrcaHandConfig(HandConfig):
 
     _FINGERS: ClassVar[Dict[str, List[FingerChain]]] = {
         "right": [
-            FingerChain(  # Thumb
+            FingerChain(
                 links=[
                     "{wrist}",
                     "T-TP-R_1c2b802d",
@@ -31,7 +31,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "thumb_cmc1", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
             ),
-            FingerChain(  # Index
+            FingerChain(
                 links=[
                     "{wrist}",
                     "I-AP-R_d95d02d1",
@@ -41,7 +41,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "index_mcp", "index_mcp", "index_pip", "index_tip"],
             ),
-            FingerChain(  # Middle
+            FingerChain(
                 links=[
                     "{wrist}",
                     "M-AP_e04a96f2",
@@ -51,7 +51,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "middle_mcp", "middle_mcp", "middle_pip", "middle_tip"],
             ),
-            FingerChain(  # Ring
+            FingerChain(
                 links=[
                     "{wrist}",
                     "M-AP_6ec59111",
@@ -61,7 +61,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "ring_mcp", "ring_mcp", "ring_pip", "ring_tip"],
             ),
-            FingerChain(  # Pinky
+            FingerChain(
                 links=[
                     "{wrist}",
                     "P-AP_f5e42b61",
@@ -73,7 +73,7 @@ class OrcaHandConfig(HandConfig):
             ),
         ],
         "left": [
-            FingerChain(  # Thumb (no TIP_OFFSET yet)
+            FingerChain(
                 links=[
                     "{wrist}",
                     "T-TP-L_92b8100b",
@@ -83,7 +83,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "thumb_cmc1", "thumb_cmc1", "thumb_mcp", "thumb_ip"],
             ),
-            FingerChain(  # Index
+            FingerChain(
                 links=[
                     "{wrist}",
                     "I-AP-L_57ce92f7",
@@ -92,7 +92,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "index_mcp", "index_pip", "index_dip"],
             ),
-            FingerChain(  # Middle
+            FingerChain(
                 links=[
                     "{wrist}",
                     "M-AP_e04a96f2",
@@ -101,7 +101,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "middle_mcp", "middle_pip", "middle_dip"],
             ),
-            FingerChain(  # Ring
+            FingerChain(
                 links=[
                     "{wrist}",
                     "M-AP_6ec59111",
@@ -110,7 +110,7 @@ class OrcaHandConfig(HandConfig):
                 ],
                 human=["wrist", "ring_mcp", "ring_pip", "ring_dip"],
             ),
-            FingerChain(  # Pinky
+            FingerChain(
                 links=[
                     "{wrist}",
                     "P-AP_f5e42b61",

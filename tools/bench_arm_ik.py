@@ -25,13 +25,11 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-BUDGET_MS = 1000.0 / 60.0        # 60Hz 프레임 예산
-JUMP_TOL = 0.6                   # [rad] 이 이상 튀면 순간이동으로 본다
+BUDGET_MS = 1000.0 / 60.0
+JUMP_TOL = 0.6
 
 
-# ------------------------------------------------------------------ 궤적
 def traj_wave(n: int):
-    """도달범위 안에서 매끄럽게 움직이되 **자세는 임의로** 굴린다(컨트롤러 유사)."""
     for i in range(n):
         t = i / n
         T = np.eye(4)
@@ -44,7 +42,6 @@ def traj_wave(n: int):
 
 
 def traj_reach(n: int):
-    """reach_max 밖까지 뻗어 클램프가 지속되는 구간(사람이 팔을 뻗는 상황)."""
     for i, T in enumerate(traj_wave(n)):
         T = T.copy()
         T[:3, 3] *= 1.0 + 1.2 * max(0.0, (i / n) - 0.4)
@@ -52,7 +49,6 @@ def traj_reach(n: int):
 
 
 def traj_slow(n: int):
-    """느린 위치 이동 + 고정 자세 — 솔버의 정상상태 정확도만 본다."""
     T0 = np.eye(4)
     T0[:3, :3] = Rotation.from_euler("xyz", [0.0, -np.pi / 2, 0.0]).as_matrix()
     for i in range(n):
@@ -63,17 +59,11 @@ def traj_slow(n: int):
 
 
 def traj_fk(n: int, robot=None):
-    """**도달 가능이 보장된** 궤적 — 유효 q 를 매끄럽게 흔들고 FK 로 목표를 만든다.
-
-    오차 하한이 정확히 0 이므로, 남는 오차는 전부 솔버 탓이다. 합성 좌표로 만든
-    궤적(wave/slow)은 도달 불가 구간을 지나 솔버 품질과 도달성을 섞어버린다 —
-    **정확도 판정은 이 궤적으로 한다.**
-    """
     s = robot.solver
     lo, hi = s._lo, s._hi
     mid = 0.5 * (lo + hi)
     amp = 0.25 * (hi - lo)
-    phase = np.linspace(0.0, 2.0, s.nq)      # 관절마다 위상 달리 → 자세도 함께 변함
+    phase = np.linspace(0.0, 2.0, s.nq)
     for i in range(n):
         t = i / n
         q = mid + amp * np.sin(2 * np.pi * (t + phase))
@@ -81,12 +71,6 @@ def traj_fk(n: int, robot=None):
 
 
 def traj_overshoot(n: int, robot=None):
-    """A → (도달 한계 밖) → B → 되돌아오기. 클램프 진입/이탈에서의 연속성 검사.
-
-    사람이 팔을 너무 멀리 뻗었다 당기는 상황. 목표가 워크스페이스를 벗어나는 구간에서는
-    reach 클램프가 방향만 남기므로, 진입·이탈 순간에 해가 튈 수 있다(불연속 취약점).
-    A/B 는 도달 가능하도록 FK 로 잡고, 중간을 한계 밖으로 밀어낸다.
-    """
     s = robot.solver
     rm = robot.rig.solver.reach_max or 1.0
     lo, hi = s._lo, s._hi
@@ -95,12 +79,11 @@ def traj_overshoot(n: int, robot=None):
     Ta, Tb = robot.to_canonical(s.fk(qa)), robot.to_canonical(s.fk(qb))
     for i in range(n):
         t = i / (n - 1)
-        u = 2.0 * t if t <= 0.5 else 2.0 * (1.0 - t)      # A→B→A 왕복
+        u = 2.0 * t if t <= 0.5 else 2.0 * (1.0 - t)
         T = Ta.copy()
         T[:3, 3] = (1 - u) * Ta[:3, 3] + u * Tb[:3, 3]
         T[:3, :3] = Tb[:3, :3] if u > 0.5 else Ta[:3, :3]
-        # 중간 구간(u 0.3~0.7)에서 한계의 1.6배까지 밀어낸다 → 클램프 진입/이탈
-        push = max(0.0, 1.0 - abs(u - 0.5) / 0.2)         # 0→1→0
+        push = max(0.0, 1.0 - abs(u - 0.5) / 0.2)
         if push > 0.0:
             d = T[:3, 3]
             nrm = float(np.linalg.norm(d)) or 1e-9
@@ -110,10 +93,9 @@ def traj_overshoot(n: int, robot=None):
 
 TRAJ = {"wave": traj_wave, "reach": traj_reach, "slow": traj_slow, "fk": traj_fk,
         "overshoot": traj_overshoot}
-NEEDS_ROBOT = {"fk", "overshoot"}             # robot 인자를 받는 궤적
+NEEDS_ROBOT = {"fk", "overshoot"}
 
 
-# ------------------------------------------------------------------ 실행
 def _clamped_base_target(robot, T_canonical):
     T_b = robot.to_base(np.asarray(T_canonical, dtype=float))
     rm = robot.rig.solver.reach_max
@@ -152,7 +134,6 @@ def report(label, qs, ts, pes, oes):
 
 
 def floor_check(robot, targets, pes, restarts=200, k=5):
-    """최악 프레임의 도달 가능 하한 — 솔버 실패인가 도달 불가인가."""
     s = robot.solver
     lo = np.where(np.isfinite(s.model.lowerPositionLimit), s.model.lowerPositionLimit, -np.pi)
     hi = np.where(np.isfinite(s.model.upperPositionLimit), s.model.upperPositionLimit, np.pi)
@@ -192,7 +173,7 @@ def main():
     from whatslab.robot import RobotModel, load_rig
 
     rig = load_rig(args.rig)
-    for kv in args.set:                       # solver.backend=dls 같은 점표기 덮어쓰기
+    for kv in args.set:
         path, _, val = kv.partition("=")
         obj = rig
         parts = path.split(".")
@@ -200,8 +181,6 @@ def main():
             obj = getattr(obj, p)
         if not hasattr(obj, parts[-1]):
             raise SystemExit(f"--set: 없는 필드 {path!r}")
-        # 현재 값이 None 인 필드(max_iter/tol 등)에 문자열이 그대로 들어가면 솔버가
-        # 예외를 삼키고 직전 자세를 붙들어 '그럴듯한 쓰레기 결과'가 나온다 → 명시 캐스팅.
         for cast in (int, float):
             try:
                 setattr(obj, parts[-1], cast(val))
@@ -209,7 +188,7 @@ def main():
             except ValueError:
                 continue
         else:
-            setattr(obj, parts[-1], val)      # 숫자로 안 되면 문자열(backend 등)
+            setattr(obj, parts[-1], val)
     robot = RobotModel(rig)
     ik = RobotArmIK(robot)
 

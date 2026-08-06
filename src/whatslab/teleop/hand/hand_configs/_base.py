@@ -28,7 +28,7 @@ def _default_models_root() -> str:
 @dataclass
 class FingerChain:
     links: List[str]
-    human: List  # List[str | int] — _resolve_human 으로 정규 인덱스화
+    human: List
 
 
 class HandConfig(ABC):
@@ -38,14 +38,10 @@ class HandConfig(ABC):
     _WRIST_LINK:           ClassVar[Dict[str, str]]                    = {'left': 'world', 'right': 'world'}
     _COORD_TRANSFORM:      ClassVar[np.ndarray]                        = np.eye(3, dtype=np.float32)
     _SCALE_FACTOR:         ClassVar[Union[float, List[float]]]         = 1.0
-    # 외부 상류 트리(ROS2 등) 호환용 레거시 파일명. 내장 models 는 통일 규칙
-    # 'urdf/{hand_type}.urdf' 을 우선 사용하므로 대개 이 기본값이면 충분하다.
     _URDF_FILENAME:        ClassVar[str]                               = 'urdf/{hand_type}.urdf'
     _SIDE_MAP:             ClassVar[Dict[str, str]]                    = {'left': 'left', 'right': 'right'}
     _FIXED_JOINTS:         ClassVar[Dict[str, str]]                    = {}
     _RVIZ_FILENAME:        ClassVar[Dict[str, str]]                    = {}
-    # mimic joint가 있는 URDF에서 실제 제어 가능한 joint만 명시. 비어있으면 자동 탐색.
-    # 좌우 joint명이 다르면(예: {side}_hand_ 접두어) dict로 지정 가능.
     _TARGET_JOINT_NAMES:   ClassVar[Union[List[str], Dict[str, List[str]]]] = []
 
     def __init__(self, urdf_root=None):
