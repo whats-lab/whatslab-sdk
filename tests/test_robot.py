@@ -41,7 +41,9 @@ def test_model_canonical_sandwich():
     rig.calibration.enabled = False        # 매핑 없이 순수 샌드위치 검증
     m = RobotModel(rig)
     assert m.has_arm and m.has_hand
-    assert len(m.arm_joint_names) == 7     # joint1..7 (잠금 없음)
+    # joint1..6 (joint7 은 rig 에서 잠금) + orca 카펄(손목) = 7. 카펄은 손 리타게팅이
+    # 고정으로 두므로 팔 IK 의 여분 DOF 로 쓰인다.
+    assert len(m.arm_joint_names) == 7
 
     q0 = np.full(len(m.arm_joint_names), 0.3)
     T_c = m.ee_pose(q0)                    # 정준 (lazy out-leg)

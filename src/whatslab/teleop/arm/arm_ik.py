@@ -1,25 +1,16 @@
-"""Standalone arm IK solver (ROS-free, pip 전용).
-
-원본 QuestArmTeleop 의 솔버(`ArmIK`) 부분만 분리한 것. pinocchio 의 해석
-야코비안(`computeFrameJacobian`+`Jlog6`) + Damped Least-Squares(Gauss-Newton)로
-말단(end-effector) 목표 pose 를 받아 관절각을 계산한다.
-
-casadi/IPOPT 를 쓰지 않으므로 pip pinocchio(double 바인딩) 하나면 동작한다
-(conda-forge pinocchio 불필요 → 손/팔/리시버/viz 가 단일 pip 스택으로 통일).
-
-의존성: pinocchio, numpy, scipy
-"""
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Sequence
 
 import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
+logger = logging.getLogger(__name__)
+
 
 def xyzrpy_to_mat(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """xyz 위치 + RPY(rad, 'xyz' 순서) 회전 -> 4x4 동차변환행렬."""
     mat = np.eye(4)
     mat[:3, :3] = Rotation.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
     mat[:3, 3] = np.array([x, y, z])
@@ -27,7 +18,6 @@ def xyzrpy_to_mat(x: float, y: float, z: float, roll: float, pitch: float, yaw: 
 
 
 def xyzquat_to_mat(x: float, y: float, z: float, qx: float, qy: float, qz: float, qw: float) -> np.ndarray:
-    """xyz 위치 + quaternion(x,y,z,w) -> 4x4 동차변환행렬."""
     mat = np.eye(4)
     mat[:3, :3] = Rotation.from_quat([qx, qy, qz, qw]).as_matrix()
     mat[:3, 3] = np.array([x, y, z])
@@ -45,17 +35,14 @@ class ArmIK:
         tool_pre_rot_rpy: Sequence[float] = (0.0, 0.0, 0.0),
         tool_translation_xyz: Sequence[float] = (0.0, 0.0, 0.0),
         w_pos: float = 20.0,
-        w_ori: float = 2.0,
+        w_ori: float = 1.0,
         w_reg: float = 0.01,
-        w_smooth: float = 2.0,
+        w_smooth: float = 5.0,
         ipopt_max_iter: int = 50,
         ipopt_tol: float = 1e-4,
         collision_pairs_flat: Optional[Sequence[int]] = None,
         enable_collision_check: bool = False,
     ):
-        # ---- 기구학 전용 모델 로드(메쉬 불필요) & 잠긴 관절 제거 ----
-        # buildModelFromUrdf 는 링크/조인트만 읽어 메쉬(package://)를 요구하지 않는다
-        # → 내장 URDF(메쉬 없음)로도 동작. (RobotWrapper 는 geom 로드로 메쉬를 강제해 불가)
         m_full = pin.buildModelFromUrdf(urdf_path)
         lock_ids, seen = [], set()
         for name in locked_joints:
@@ -101,8 +88,6 @@ class ArmIK:
         self.reduced_robot = None
         self.model = model
         self.ee_id = model.getFrameId(ee_frame_name)
-        # 기구학 전용 빌드라 충돌 기하 없음. self-collision 검사는 메쉬가 필요해
-        # 내장(메쉬 없음) 구성에선 미지원 — 레거시 시그니처만 수용.
         self.enable_collision_check = False
         self.geom_model = None
         self.geometry_data = None
@@ -112,21 +97,13 @@ class ArmIK:
 
     # ----------------------------------------------------------------- builders
     def _finish_setup(self, w_pos, w_ori, w_reg, w_smooth, max_iter, tol):
-        """수치 IK(DLS/Gauss-Newton) 파라미터 저장 — casadi/IPOPT 불필요.
-
-        비용은 casadi 버전과 동일한 항: 가중 pose 오차 + 중립자세 정규화(w_reg) +
-        직전해 평활화(w_smooth). 야코비안은 pinocchio 해석식을 쓴다.
-        (인자명 max_iter/tol 은 과거 ipopt_* 위치에 매핑 — 시그니처 호환)
-        """
         self.w_pos = float(w_pos)
         self.w_ori = float(w_ori)
         self.w_reg = float(w_reg)
         self.w_smooth = float(w_smooth)
         self.max_iter = int(max_iter)
         self.tol = float(tol)
-        # 6D task 상대 우선순위(위치 3 + 자세 3) — 오차/야코비안 행 스케일링.
-        # 최댓값으로 정규화(≤1) → damp 가 상대적 의미를 갖게 함. so101 처럼 w_ori<<w_pos
-        # 이면 자연히 위치 우선(자세는 여유자유도로 흡수).
+        
         w = np.array([w_pos] * 3 + [w_ori] * 3, dtype=float)
         self._task_w = w / max(w.max(), 1e-9)
         self._damp = 1e-2                 # DLS 감쇠(λ) — 특이자세 안정화
@@ -135,10 +112,10 @@ class ArmIK:
                             self.model.lowerPositionLimit, -np.pi)
         self._hi = np.where(np.isfinite(self.model.upperPositionLimit),
                             self.model.upperPositionLimit, np.pi)
-        self._limit_margin = 0.20         # [rad] 한계 근처 soft 존 폭
+        self._limit_margin = 0.10         # [rad] 한계 근처 soft 존 폭
         self._k_limit = 0.15              # 여유자유도 한계회피 이득(낮을수록 덜 진동)
-        self._smooth = 0.0                # 출력 EMA 평활 [0=off..1). 0=지연 없이 바로 수렴
-                                          # (떨림 나면 0.2~0.3 로. diff 백엔드는 rate-limit 사용)
+        self._smooth = 0.2               
+        
         self._q_neutral = pin.neutral(self.model)
         # ee frame 이 addFrame 으로 추가된 뒤의 model 에 맞춰 data 재생성
         # (기존 self.data 는 프레임 추가 전 생성돼 oMf[ee_id] 가 없다)
@@ -156,23 +133,9 @@ class ArmIK:
         ipopt_max_iter: int = 50, ipopt_tol: float = 1e-4,
         ee_local_rpy: Sequence[float] = (0.0, -np.pi / 2, np.pi / 2),
     ) -> "ArmIK":
-        """pin.appendModel 로 팔 끝(attach_frame)에 손을 붙이고, EE=손목/베이스
-        링크(ee_link)를 두는 결합 솔버. 기구학 전용(메쉬/충돌 없음).
-
-        활성(IK 대상) 조인트 = universe→ee_link 지지 체인의 이동 가능 조인트 −
-        locked_joints. 체인 밖(손가락 등)은 손 리타게팅 소관이라 잠근다. 손목에
-        구동 관절이 있고(orca 카펄) 손 리타게팅이 고정으로 두면, 그 관절은 이
-        체인에 포함되어 팔 IK 의 여분 DOF 로 쓰인다.
-
-        mount_xyz/rpy: 팔 attach_frame → 손 베이스 장착 변환(기계 도면값). 기본 0.
-        """
         self = cls.__new__(cls)
         m_arm = pin.buildModelFromUrdf(arm_urdf)
         m_hand = pin.buildModelFromUrdf(hand_urdf)
-        # pinocchio 는 appendModel 시 두 모델의 프레임 이름 충돌을 거부한다.
-        # 겹치는 손 프레임을 전부 개명한다 — 버전마다 자동 생성 프레임이 달라
-        # (pin 2.7: universe+root_joint, pin 3.x: universe) 하드코딩은 취약.
-        # ee_link 는 append 후 이름으로 조회하므로 개명 제외.
         arm_frame_names = {f.name for f in m_arm.frames}
         for f in m_hand.frames:
             if f.name in arm_frame_names and f.name != ee_link:
@@ -194,9 +157,6 @@ class ArmIK:
 
         orig_ee_id = reduced.getFrameId(ee_link)
 
-        # EE 프레임 로컬 축 보정. 레거시 기본값 (0,-π/2,π/2) 은 nero+orca 실측
-        # 정렬 — RobotModel 경로는 rig config(attach/axis_align)로 방향을 다루므로
-        # ee_local_rpy=(0,0,0) 을 전달한다.
         local_rot = Rotation.from_euler("xyz", list(ee_local_rpy)).as_matrix()
         reduced.frames[orig_ee_id].placement = (
             reduced.frames[orig_ee_id].placement * pin.SE3(local_rot, np.zeros(3)))
@@ -220,7 +180,6 @@ class ArmIK:
         return [n for n in self.model.names if n != "universe"]
 
     def sync_state(self, q_current: Sequence[float]) -> None:
-        """현재 실제 관절각으로 초기값을 동기화 (연속적인 해를 얻기 위함)."""
         q = np.array(q_current, dtype=float)
         if q.shape[0] == self.nq:
             self.init_data = q
@@ -228,11 +187,6 @@ class ArmIK:
 
     # ------------------------------------------------------------------- solve
     def _error_and_jac(self, q: np.ndarray, T: np.ndarray):
-        """말단 pose 오차 e=log6(oMf⁻¹·T_target) 와 해석 야코비안 J=∂e/∂q.
-
-        casadi 자동미분과 동일한 오차 정의. J 는 pinocchio 프레임 야코비안(LOCAL)에
-        Jlog6 를 곱한 표준형(pinocchio inverse-kinematics 예제와 동일).
-        """
         q = np.asarray(q, dtype=float)
         # 이 q 로 FK 갱신 후 프레임 placement 반영 (oMf 를 최신화) → 오차 계산
         pin.forwardKinematics(self.model, self.data, q)
@@ -242,13 +196,10 @@ class ArmIK:
         # LOCAL 프레임 야코비안 + Jlog6 → ∂e/∂q (pinocchio IK 예제 표준형)
         Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id, pin.LOCAL)
         J = -pin.Jlog6(iMd.inverse()) @ Jf
+        
         return e, J
 
     def _limit_gradient(self, q: np.ndarray) -> np.ndarray:
-        """한계 근처에서 중앙으로 미는 그래디언트(soft). 여유 존 밖은 0.
-
-        하한 근처 → 양수(q 증가=이탈), 상한 근처 → 음수. 크기는 0→1 로 램프.
-        """
         m = self._limit_margin
         g = np.zeros_like(q)
         low_head = q - self._lo         # 하한까지 여유
@@ -260,7 +211,6 @@ class ArmIK:
         return g
 
     def _soft_limit_scale(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
-        """한계 '쪽으로' 가는 성분을 여유가 줄수록 감쇠(→0 at 한계). hard clip 대체."""
         m = self._limit_margin
         out = dq.copy()
         up = dq > 0
@@ -271,59 +221,69 @@ class ArmIK:
         out[near] *= scale[near]
         return out
 
-    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        """4x4 목표 pose -> 관절각(rad). 가중 최소노름 DLS + soft 관절한계.
-
-        dq = -(WJ)⁺(W·e) + N·(k·∇limit). 주태스크는 damped 최소노름(위치/자세 우선순위
-        W), 여유자유도(null-space N)로 한계에서 서서히 밀어냄(∇limit). 한계 '쪽' 속도는
-        여유가 줄수록 감쇠(soft) → hard clip 없이 부드럽게 정지. warm-start 시간 평활.
-        safe=True: 수렴 실패/NaN 시 직전 해 반환(라이브 루프 보호).
-        """
+    def converge(self, target_pose: np.ndarray, q0: np.ndarray) -> np.ndarray:
+        # 순수 함수: q0 에서 시작해 수렴까지 반복 → 해. 상태(history_data)를 읽지도
+        # 쓰지도 않고 출력 EMA 도 적용하지 않는다. solve() 와 solve_robust() 가
+        # **둘 다 이걸** 쓴다 — 전역 탐색이 서브클래스의 solve() 를 타면 그 클래스의
+        # 평활/rate-limit 이 후보 해에 섞여 들어간다(실측 45mm 오염 사례).
         T = np.asarray(target_pose, dtype=float)
-        q = np.array(self.history_data, dtype=float)
+        q = np.array(q0, dtype=float)
         w = self._task_w
         damp2 = self._damp * self._damp
         I6 = np.eye(6)
         In = np.eye(self.model.nq)
+        for _ in range(self.max_iter):
+            e, J = self._error_and_jac(q, T)
+            if np.linalg.norm(e) < self.tol:
+                break
+            we = w * e
+            WJ = w[:, None] * J
+            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)   # damped 유사역
+            dq_task = -Jpinv @ we
+            # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
+            N = In - Jpinv @ WJ
+            dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
+            dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
+            n = np.linalg.norm(dq)
+            if n > 1.0:                                  # 스텝 노름 제한(발산 방지)
+                dq *= 1.0 / n
+            q = pin.integrate(self.model, q, dq)
+        return np.clip(q, self._lo, self._hi)   # soft 로 거의 안 닿지만 안전 clip
+
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         try:
-            for _ in range(self.max_iter):
-                e, J = self._error_and_jac(q, T)
-                if np.linalg.norm(e) < self.tol:
-                    break
-                we = w * e
-                WJ = w[:, None] * J
-                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)  # damped 유사역
-                dq_task = -Jpinv @ we
-                # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
-                N = In - Jpinv @ WJ
-                dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
-                dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
-                n = np.linalg.norm(dq)
-                if n > 1.0:                                  # 스텝 노름 제한(발산 방지)
-                    dq *= 1.0 / n
-                q = pin.integrate(self.model, q, dq)
-            # soft 로 거의 안 닿지만 마지막 안전 clip(수치 오차 방지)
-            sol_q = np.clip(q, self._lo, self._hi)
+            sol_q = self.converge(target_pose, self.history_data)
             # 출력 EMA 평활 — 프레임 간 떨림 억제(직전 해와 블렌드)
             if self._smooth > 0.0:
                 sol_q = self._smooth * self.history_data + (1.0 - self._smooth) * sol_q
             if not np.all(np.isfinite(sol_q)):
                 raise ValueError("IK 해에 NaN")
-        except Exception:
+        except Exception as e:
             if not safe:
                 raise
+            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
+            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
+            self._warn_once(e)
             sol_q = self.history_data.copy()
         self.init_data = sol_q
         self.history_data = sol_q
         return sol_q
 
+    @property
+    def q_neutral(self) -> np.ndarray:
+        return self._q_neutral.copy()
+
+    def _warn_once(self, exc: Exception) -> None:
+        key = f"{type(exc).__name__}: {exc}"
+        seen = getattr(self, "_warned", None)
+        if seen is None:
+            seen = self._warned = set()
+        if key not in seen:
+            seen.add(key)
+            logger.warning("IK solve 예외 — 직전 자세 유지 (추종 정지처럼 보임): %s", key)
+
     def solve_dls(self, target_pose: np.ndarray, iters: int = 10,
                   damp: float = 1e-2, tol: float = 1e-4) -> np.ndarray:
-        """최소노름 Damped Least-Squares(Gauss-Newton) IK — 가장 가벼운 추종용.
-
-        dq = -Jᵀ(JJᵀ+λ²I)⁻¹·e 스텝(min-norm → 자연히 '관절 최소 이동'). 관절한계 clamp.
-        가중/정규화가 필요하면 solve() 사용. cold-start 정밀해는 solve_robust().
-        """
         lo = self.model.lowerPositionLimit
         hi = self.model.upperPositionLimit
         I6 = np.eye(6)
@@ -342,12 +302,10 @@ class ArmIK:
         return q
 
     def fk(self, q: np.ndarray) -> np.ndarray:
-        """관절각 q -> ee frame 의 4x4 동차변환행렬 (정기구학)."""
         pin.framesForwardKinematics(self.model, self._fk_data, np.asarray(q, dtype=float))
         return self._fk_data.oMf[self.ee_id].homogeneous.copy()
 
     def frame_pose(self, frame_name: str, q: np.ndarray) -> np.ndarray:
-        """임의 프레임의 4x4 pose (FK). 결합 모델에서 Orca 베이스 등 조회용."""
         pin.framesForwardKinematics(self.model, self._fk_data, np.asarray(q, dtype=float))
         return self._fk_data.oMf[self.model.getFrameId(frame_name)].homogeneous.copy()
 
@@ -355,7 +313,6 @@ class ArmIK:
         return self.model.existFrame(frame_name)
 
     def pose_error(self, q: np.ndarray, target_pose: np.ndarray) -> tuple:
-        """(위치오차[m], 자세오차[rad]) 반환 — 해의 실제 정확도 평가용."""
         T = self.fk(q)
         pos_err = float(np.linalg.norm(T[:3, 3] - target_pose[:3, 3]))
         R = T[:3, :3].T @ target_pose[:3, :3]
@@ -365,40 +322,36 @@ class ArmIK:
     def solve_robust(
         self,
         target_pose: np.ndarray,
-        restarts: int = 30,
+        restarts: int = 10,
         pos_tol: float = 1e-3,
         ori_tol: float = 1e-2,
         seed: int = 0,
+        q_ref: Optional[Sequence[float]] = None,
+        w_dist: float = 0.0,
+        dq_near: float = 0.6,
     ) -> np.ndarray:
-        """여러 초기값으로 재시작하며 실제 pose 오차가 가장 작은 해를 고른다.
-
-        국소 최적화기가 cold-start 에서 국소최소에 빠지는 것을 방지.
-        pos_tol[m]·ori_tol[rad] 를 모두 만족하면 조기 종료한다.
-        한 번 호출하고 나면 그 해가 warm-start 로 남으므로, 이어지는 연속 solve()
-        는 이 해 근처에서 빠르게 수렴한다.
-        """
+        q_ref_arr = np.array(self.history_data if q_ref is None else q_ref, dtype=float)
         rng = np.random.default_rng(seed)
-        lo = self.model.lowerPositionLimit
-        hi = self.model.upperPositionLimit
+        lo, hi = self._lo, self._hi           # 유한화된 한계(무한 한계도 ±π 로)
 
         best_q = None
         best_score = np.inf
-        # 1번째 시도는 직전해(warm), 이후는 관절범위 내 랜덤
-        candidates = [self.history_data.copy()]
-        candidates += [lo + (hi - lo) * rng.random(self.nq) for _ in range(max(0, restarts - 1))]
-
-        for q0 in candidates:
-            self.init_data = q0
-            self.history_data = q0
+        # 후보 평가는 converge()(순수 함수) — 서브클래스의 solve()를 타지 않으므로
+        # 그 클래스의 평활/rate-limit 이 후보에 섞이지 않고, 상태도 건드리지 않는다.
+        for q0 in self._restart_seeds(q_ref_arr, restarts, lo, hi, rng, w_dist):
             try:
-                q = ArmIK.solve(self, target_pose)   # 후보 평가는 full-convergence(diff 백엔드도)
-            except Exception:
+                q = self.converge(target_pose, q0)
+            except Exception as e:
+                self._warn_once(e)
+                continue
+            if not np.all(np.isfinite(q)):
                 continue
             pe, oe = self.pose_error(q, target_pose)
-            score = pe + 0.1 * oe
+            dist = float(np.linalg.norm(q - q_ref_arr)) if w_dist > 0.0 else 0.0
+            score = pe + 0.1 * oe + w_dist * dist
             if score < best_score:
                 best_score, best_q = score, q
-            if pe <= pos_tol and oe <= ori_tol:
+            if pe <= pos_tol and oe <= ori_tol and dist <= dq_near:
                 break
 
         if best_q is None:
@@ -407,12 +360,22 @@ class ArmIK:
         self.history_data = best_q
         return best_q
 
+    def _restart_seeds(self, q_ref: np.ndarray, restarts: int,
+                       lo: np.ndarray, hi: np.ndarray, rng, w_dist: float = 0.0):
+        n = max(1, int(restarts))
+        yield q_ref.copy()
+        span = hi - lo
+        n_local = (n - 1) // 3 if w_dist > 0.0 else 0     # 탈출 모드에서만 지역 섭동
+        for k in range(n_local):
+            scale = 0.15 + 0.45 * (k / max(1, n_local - 1))
+            yield np.clip(q_ref + scale * span * (rng.random(self.nq) - 0.5), lo, hi)
+        for _ in range(max(0, n - 1 - n_local)):
+            yield lo + span * rng.random(self.nq)
+
     def solve_xyzrpy(self, x, y, z, roll, pitch, yaw) -> np.ndarray:
-        """xyz + RPY(rad) -> 7축 관절각."""
         return self.solve(xyzrpy_to_mat(x, y, z, roll, pitch, yaw))
 
     def solve_xyzquat(self, x, y, z, qx, qy, qz, qw) -> np.ndarray:
-        """xyz + quaternion(x,y,z,w) -> 7축 관절각."""
         return self.solve(xyzquat_to_mat(x, y, z, qx, qy, qz, qw))
 
     def check_self_collision(self, q: np.ndarray) -> bool:
@@ -424,37 +387,20 @@ class ArmIK:
 
 
 class DiffArmIK(ArmIK):
-    """미분 IK(differential IK) 백엔드 — 텔레옵용 안정화 조합.
-
-    ArmIK("dls")가 매 프레임 수렴까지 반복해 인접 프레임에서 다른 국소해
-    (elbow flip)로 튈 수 있는 반면, 이 백엔드는:
-      · 틱당 소수 스텝만 밟아 해가 항상 현재 자세의 연속 (CLIK)
-      · 목표 rate-limit: 목표 pose 를 현재 EE 에서 최대 이동량만큼만 접근시켜
-        입력 점프/노이즈에 강함 (출력 EMA 불필요 → 제거)
-      · Sugihara 오차적응 감쇠: λ² = ‖W·e‖² + bias — 도달 불가 목표에서도
-        발산하지 않음 (Sugihara 2011 LM)
-      · null-space 자세 태스크: 여유자유도를 선호자세(q_posture)로 끌어
-        elbow 방황 방지 (+기존 관절한계 회피)
-
-    인터페이스는 ArmIK 와 동일 — solve(T)->q. 튜닝은 속성으로:
-      iters_per_call, dp_max, dtheta_max, k_posture, sugihara_bias, q_posture
-    """
 
     # 텔레옵 스텝 파라미터 (인스턴스에서 덮어쓰기 가능)
-    iters_per_call = 30      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
-    dp_max = 1.0             # [m]   틱당 목표 위치 최대 접근량 (사실상 off; 관절캡이 지배)
-    dtheta_max = 3.15        # [rad] 틱당 목표 자세 최대 접근량 (사실상 off; 관절캡이 지배)
-    dq_max_tick = 0.5        # [rad] 틱당 **총** 관절 스텝 상한(연속성/안전; iters 무관)
-    k_posture = 0.05         # null-space 선호자세 이득 (팔꿈치 방황 방지 — 연속 안정성)
-    sugihara_bias = 1e-4     # 감쇠 바이어스 (0 방지)
-
+    iters_per_call = 100      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
+    dp_max = 1.0           
+    dtheta_max = 3.15       
+    dq_max_tick = 0.5        
+    k_posture = 0.0        
+    sugihara_bias = 1e-4   
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
-        self._smooth = 0.05                      # 출력 EMA(이전 5%만) — 가벼운 떨림 억제
+        self._smooth = 0.2                      # 출력 EMA(이전 5%만) — 가벼운 떨림 억제
         self.q_posture = self._q_neutral.copy()  # 선호 자세 (기본 중립)
 
     def _rate_limited_target(self, q: np.ndarray, T_goal: np.ndarray) -> np.ndarray:
-        """현재 EE pose 에서 T_goal 방향으로 (dp_max, dtheta_max) 만큼만 이동한 목표."""
         T_cur = self.fk(q)
         T = np.asarray(T_goal, dtype=float).copy()
         # 위치: 스텝 노름 제한
@@ -499,7 +445,8 @@ class DiffArmIK(ArmIK):
                 if n > 0.5:                      # 이터레이션당 스텝 제한(발산 방지)
                     dq *= 0.5 / n
                 q = pin.integrate(self.model, q, dq)
-            # 틱당 **총** 관절 스텝 상한 — iters 무관하게 연속성/안전 보장(큰 점프 억제)
+                
+            
             step = q - q_start
             sn = np.linalg.norm(step)
             if sn > self.dq_max_tick:
@@ -509,9 +456,12 @@ class DiffArmIK(ArmIK):
                 sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
             if not np.all(np.isfinite(sol_q)):
                 raise ValueError("IK 해에 NaN")
-        except Exception:
+        except Exception as e:
             if not safe:
                 raise
+            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
+            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
+            self._warn_once(e)
             sol_q = self.history_data.copy()
         self.init_data = sol_q
         self.history_data = sol_q
