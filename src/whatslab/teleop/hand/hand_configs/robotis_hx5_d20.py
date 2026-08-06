@@ -6,11 +6,6 @@ from ._base import FingerChain, HandConfig
 
 
 class RobotisHX5Config(HandConfig):
-    """Robotis HX5 핸드 설정.
-
-    - {side} : 'l' / 'r' 약어
-    - {wrist} : wrist base 링크명
-    """
 
     _MODEL_SUBDIR = "robotis_hx5_d20"
     _URDF_FILENAME = "urdf/hx5_d20_{hand_type}.urdf"

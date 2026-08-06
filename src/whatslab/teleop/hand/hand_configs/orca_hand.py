@@ -6,11 +6,6 @@ from ._base import FingerChain, HandConfig
 
 
 class OrcaHandConfig(HandConfig):
-    """OrcaHand v2 설정.
-
-    left/right 링크명이 완전히 달라 _FINGERS에 좌우 별도 정의.
-    Left hand는 TIP_OFFSET 링크 미지원 (WIP).
-    """
 
     _MODEL_SUBDIR = "orca_hand"
     _WRIST_LINK = {"right": "R-Carpals_8d1f1041", "left": "L-Carpals_719fff8c"}

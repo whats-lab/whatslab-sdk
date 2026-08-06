@@ -6,15 +6,6 @@ from ._base import FingerChain, HandConfig
 
 
 class AllegroHandConfig(HandConfig):
-    """Allegro Hand (Wonik Robotics) — 4-finger, 16-DOF.
-
-    손가락 배치: Index=link_8~11 / Middle=link_4~7 / Ring=link_0~3 /
-    Thumb=link_12~15 (새끼손가락 없음).
-
-    IK 기준(원점): palm. 인체 손목 키포인트에 대응하는 손 중심 링크.
-    URDF root(base_link)에서 z=-0.065 떨어져 있어, retargeter의 wrist_offset이
-    이 값을 반영해 human 타깃을 palm에 앵커한다.
-    """
 
     _MODEL_SUBDIR  = "allegro_hand"
     _URDF_FILENAME = "allegro_hand_{hand_type}.urdf"

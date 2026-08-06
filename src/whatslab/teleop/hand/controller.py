@@ -1,9 +1,3 @@
-"""HandController 어댑터: InputSample(HandPose) → HandCommand.
-
-저수준 엔진 HandRetargeter(센서 17×4 배열 입력)를 core.HandController 프로토콜
-(compute(InputSample)->HandCommand)에 맞춘다. 골격↔배열 변환은 HandPose 가
-담당하므로(to_sensor_array), 이 경계에만 배열 규약이 남는다.
-"""
 from __future__ import annotations
 
 from typing import List
@@ -15,7 +9,6 @@ from .retargeter import HandRetargeter
 
 
 class HandRetargetController:
-    """core.HandController 구현. HandPose 를 받아 로봇 손 관절각을 낸다."""
 
     def __init__(self, hand_type: str, config_name: str = "base_hand",
                  urdf_root=None, **kwargs):

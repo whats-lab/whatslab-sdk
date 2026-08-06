@@ -1,10 +1,3 @@
-"""미니 LeRobot v2.1 라이터 — lerobot 라이브러리 없이 parquet+mp4+json 직접 기록.
-sim env(특히 isaacsim numpy1.26)를 오염시키지 않기 위한 경량 sink.
-
-출력 레이아웃은 `tests/fixtures/lerobot_ref_v21/`(실제 lerobot==0.3.3 이 생성한
-v2.1 데이터셋)을 그대로 미러한다. `lerobot.datasets.v30.convert_dataset_v21_to_v30`
-로 업그레이드 가능함을 테스트로 검증한다.
-"""
 from __future__ import annotations
 
 import json
