@@ -47,7 +47,14 @@ class RobotModel:
         for attr, val in (("max_iter", sol.max_iter),
                           ("iters_per_call", sol.iters_per_call),
                           ("tol", sol.tol),
-                          ("sugihara_bias", sol.sugihara_bias)):
+                          ("sugihara_bias", sol.sugihara_bias),
+                          ("dp_max", sol.dp_max),
+                          ("dtheta_max", sol.dtheta_max),
+                          ("dq_max_tick", sol.dq_max_tick),
+                          ("k_posture", sol.k_posture),
+                          ("proj_rcond", sol.proj_rcond),
+                          ("_k_limit", sol.k_limit),
+                          ("_limit_margin", sol.limit_margin)):
             if val is not None and hasattr(solver, attr):
                 setattr(solver, attr, val)
 

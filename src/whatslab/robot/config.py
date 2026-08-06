@@ -91,6 +91,13 @@ class SolverCfg:
     iters_per_call: Optional[int] = None           # diff: 틱당 스텝 수
     tol: Optional[float] = None                    # 6D 오차 종료 임계
     sugihara_bias: Optional[float] = None          # diff: 오차적응 감쇠 바닥값
+    dp_max: Optional[float] = None                 # diff: 틱당 목표 위치 이동 상한 [m]
+    dtheta_max: Optional[float] = None             # diff: 틱당 목표 자세 회전 상한 [rad]
+    dq_max_tick: Optional[float] = None            # diff: 틱당 관절 이동 상한 [rad]
+    k_posture: Optional[float] = None              # diff: 널스페이스 선호자세 이득
+    proj_rcond: Optional[float] = None             # 널스페이스 투영자 SVD rank 절단
+    k_limit: Optional[float] = None                # 널스페이스 관절한계 회피 이득
+    limit_margin: Optional[float] = None           # 한계 근처 soft 존 폭 [rad]
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
@@ -110,6 +117,13 @@ class SolverCfg:
             iters_per_call=_opt("iters_per_call", int),
             tol=_opt("tol", float),
             sugihara_bias=_opt("sugihara_bias", float),
+            dp_max=_opt("dp_max", float),
+            dtheta_max=_opt("dtheta_max", float),
+            dq_max_tick=_opt("dq_max_tick", float),
+            k_posture=_opt("k_posture", float),
+            proj_rcond=_opt("proj_rcond", float),
+            k_limit=_opt("k_limit", float),
+            limit_margin=_opt("limit_margin", float),
         )
 
 

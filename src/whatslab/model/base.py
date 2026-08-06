@@ -43,7 +43,8 @@ class TeleopModel(ABC):
                 self.ik[s] = RobotArmIK(r)
                 self.calib[s] = ArmCalibration(
                     reach_max=r.rig.solver.reach_max,
-                    input_reach=r.rig.calibration.input_reach)
+                    input_reach=r.rig.calibration.input_reach,
+                    enabled=getattr(r.rig.calibration, "enabled", True))
             if r.has_hand and cfg:
                 self.retarget[s] = r.make_hand_controller(cfg, s)
 

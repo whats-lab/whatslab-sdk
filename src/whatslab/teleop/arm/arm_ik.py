@@ -25,6 +25,17 @@ def xyzquat_to_mat(x: float, y: float, z: float, qx: float, qy: float, qz: float
 
 
 class _ArmSolverBase:
+
+    proj_rcond = 1e-6
+
+    def _null_projector(self, WJ, In, I6=None):
+        _, S, Vt = np.linalg.svd(WJ, full_matrices=False)
+        keep = S > (self.proj_rcond * S[0] if S.size and S[0] > 0.0 else 0.0)
+        if not np.any(keep):
+            return In
+        V = Vt[keep]
+        return In - V.T @ V
+
     # 두 백엔드의 **공통 부분**: 모델/프레임/한계, warm-start 상태, converge(순수
     # 수렴), solve_robust(전역 탐색). 프레임 추종 알고리즘(solve)은 각자 구현한다.
     # ArmIK 와 DiffArmIK 는 형제다 — solve() 의 계약이 서로 다르므로(수렴 vs 틱당
@@ -107,7 +118,7 @@ class _ArmSolverBase:
         self._hi = np.where(np.isfinite(self.model.upperPositionLimit),
                             self.model.upperPositionLimit, np.pi)
         self._limit_margin = 0.10         # [rad] 한계 근처 soft 존 폭
-        self._k_limit = 0.15              # 여유자유도 한계회피 이득(낮을수록 덜 진동)
+        self._k_limit = 0.30
         self._smooth = 0.2               
         
         self._q_neutral = pin.neutral(self.model)
@@ -227,10 +238,9 @@ class _ArmSolverBase:
                 break
             we = w * e
             WJ = w[:, None] * J
-            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)   # damped 유사역
+            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)
             dq_task = -Jpinv @ we
-            # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
-            N = In - Jpinv @ WJ
+            N = self._null_projector(WJ, In, I6)
             dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
             dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
             n = np.linalg.norm(dq)
@@ -349,7 +359,7 @@ class DiffArmIK(_ArmSolverBase):
     # 텔레옵 스텝 파라미터 (인스턴스에서 덮어쓰기 가능)
     iters_per_call = 100      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
     dp_max = 1.0           
-    dtheta_max = 3.15       
+    dtheta_max = 0.25
     dq_max_tick = 0.5        
     k_posture = 0.0        
     sugihara_bias = 1e-4   
@@ -392,10 +402,9 @@ class DiffArmIK(_ArmSolverBase):
                 WJ = w[:, None] * J
                 # Sugihara 오차적응 감쇠 — 오차 클수록(도달불가) 강하게 감쇠
                 damp2 = float(we @ we) + self.sugihara_bias
-                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)
+                Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)
                 dq_task = -Jpinv @ we
-                # null-space: 선호자세 + 관절한계 회피 (주태스크 불간섭)
-                N = In - Jpinv @ WJ
+                N = self._null_projector(WJ, In, I6)
                 dq_null = (self.k_posture * (self.q_posture - q)
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)

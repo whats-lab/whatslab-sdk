@@ -342,7 +342,9 @@ class Diag:
         if now - self.t0 < self.window:
             return
         c = self.model.calib.get(self.side)
-        flags = "W" if (c is not None and c.ready) else "-"
+        flags = "off" if (c is not None and not c.enabled) else \
+            (("W" if (c is not None and c.ready) else "-")
+             + ("p0" if (c is not None and c.anchor is not None) else "--"))
         print(f"[diag] in {self.n_in:3d}/{self.n:3d} |p|{self.in_p:5.2f}m  "
               f"tgt|p|{self.tgt_p:5.2f}  base|p|{self.base_p:5.2f} clamp "
               f"{self.n_clamp*100//max(1,self.n):3d}%  err {self.pe*1000:6.1f}mm/"

@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 명령어
 
 ```bash
-$PY -m pytest -q -rs                            # 전체 (기준: 88 passed, skip 0)
+$PY -m pytest -q -rs                            # 전체 (기준: 104 passed, skip 0)
 $PY -m pytest tests/test_arm.py -q -rs          # 파일 단위
 $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 ```
@@ -34,7 +34,8 @@ skip 이다. 린터 설정은 pyproject 에 없다(강제 린트 없음).
 $PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml [--arm controller|wrist] [--viz]
 $PY examples/verify_rig.py --rig rigs/nero_orca_right.yaml [--write]   # reach_max 샘플링/기록
 $PY tools/align_frames.py robot|attach|ee ...   # viser 정렬 튜너 (아래 3단계 워크플로우)
-$PY tools/bench_arm_ik.py --traj fk|wave|reach|slow [--floor] [--set solver.backend=dls]
+$PY tools/bench_arm_ik.py --traj fk|wave|reach|slow|overshoot|walk [--floor]
+                          [--seeds 40] [--dump out.json] [--set solver.backend=dls]
                                                 # 팔 IK 고정 기준선 (정확도/연속성/비용)
 $PY tools/export_combined_urdf.py --rig … --out …     # rig → 단일 URDF (sim 에셋)
 $PY tools/export_combined_usd.py  --rig … --out …     # dex_vla(Isaac) env 에서만
@@ -64,8 +65,13 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 현재 q·목표·평활 상태는 호출자/솔버가 소유한다.
 
 **팔 IK 책임 분리** (이 층을 건드릴 때 반드시 구분):
-- `model/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
-  스케일은 **여기서만** 한다.
+- `model/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 캘리브 원점 + reach 스케일.
+  스케일은 **여기서만** 한다. `rig calibration.enabled` 로 통째로 껐다 켠다(off = 리시버
+  좌표를 그대로 목표로; 실행 중 A/B 는 `examples/quest_arm.py --no-calib`).
+  - on : `target = scale·(p0 + W(p − p0))`, `rot = W·G` — `p0`/`W` 는 yaw 캘리브 시점 스냅샷.
+    yaw 회전 `W` 는 **변위에만** 걸린다(위치는 리시버에서 이미 상대로 들어온다).
+    캡처 전에는 `p0` 가 없어 `scale·p` 로 동작한다.
+  - off: `target = p`, `rot = G` — 스케일도 W 도 없음.
 - `model/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
   `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
@@ -86,6 +92,21 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 - **정확도는 `tools/bench_arm_ik.py --traj fk` 로만 판정한다.** 좌표계로 합성한
   궤적은 도달 불가 구간을 지나 솔버 품질과 도달성을 섞는다. `fk` 궤적(유효 q → FK)
   은 하한이 0 이라 남는 오차가 전부 솔버 탓이다. 의심되면 `--floor`.
+- **추종 품질은 단일 궤적으로 판정하지 않는다.** `--traj walk` 는 시드별 평균 오차가
+  3~150mm 로 흩어진다 → `--traj walk --seeds 40 --dump` 로 시드별 값을 받아
+  **대응차(paired)** 로 비교한다. 단일 시드로 판정하면 없는 원인을 만들어낸다.
+- **`dtheta_max` 는 목표의 변화량이 아니라 현재 EE 자세에서 목표까지의 각도를 자른다.**
+  크게 두면(≥1.0 은 사실상 무제한) 도달 불가 방위를 끝까지 쫓다 위치를 내준다.
+  위치/방위 트레이드이므로 `score = pos + 0.1·ori` 로 판정한다.
+- **널스페이스 투영자는 감쇠 유사역으로 만들지 말 것.** `N = I − J⁺J` 에서 `J⁺` 가
+  감쇠를 쓰면 멱등이 아니다(태스크 감쇠 공유 시 `‖N²−N‖` 최대 0.38, 별도 1e-6 으로
+  분리해도 0.17) → `_null_projector` 는 SVD rank 절단(`solver.proj_rcond`)으로
+  정확한 직교 투영자를 만든다. 감쇠판의 누설이 우연히 도움이 되고 있었으므로
+  투영자를 고칠 때 `solver.k_limit` 을 함께 재튜닝해야 한다(0.15 → 0.30).
+- **스톨 탈출 이행을 완결시키지 말 것.** `reseed_dq_max` 로 0.3rad 만 밀고 쿨다운에
+  들어가는 현재 동작이 맞다. 전역 해는 **그 순간의** 목표에 최적이라 여러 틱에 걸쳐
+  다 걸어가면 도착 시점엔 낡은 자세다(측정: 이행 완결 시 pos +1.9±0.9mm, 40시드 중
+  3개만 개선).
 - **수치 반복값은 rig `solver:` 에서만 튜닝한다**(`max_iter`/`iters_per_call`/`tol`).
   코드 기본값을 고치면 diff 에 남지 않는다 — `max_iter` 가 코드에서 5 로 내려가
   전역 탐색 후보가 전부 미수렴했던 사례가 있다.
