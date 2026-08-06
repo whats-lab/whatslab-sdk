@@ -93,7 +93,6 @@ class RobotModel:
         p = np.asarray(arm.ee_origin.xyz, dtype=float)
         return cls(
             urdf_path=arm.urdf_abspath(),
-            package_dirs=[],
             locked_joints=list(rig.lock_joints),
             ee_parent_joint=arm.ee_parent,
             ee_frame_name="ee",
