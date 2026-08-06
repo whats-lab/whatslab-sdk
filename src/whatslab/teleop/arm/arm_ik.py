@@ -25,10 +25,6 @@ def xyzquat_to_mat(x: float, y: float, z: float, qx: float, qy: float, qz: float
 
 
 class _ArmSolverBase:
-    # 두 백엔드의 **공통 부분**: 모델/프레임/한계, warm-start 상태, converge(순수
-    # 수렴), solve_robust(전역 탐색). 프레임 추종 알고리즘(solve)은 각자 구현한다.
-    # ArmIK 와 DiffArmIK 는 형제다 — solve() 의 계약이 서로 다르므로(수렴 vs 틱당
-    # 소수 스텝) 한쪽이 다른 쪽의 특수화가 아니다.
 
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         raise NotImplementedError
@@ -59,15 +55,12 @@ class _ArmSolverBase:
         model = (pin.buildReducedModel(m_full, lock_ids, pin.neutral(m_full))
                  if lock_ids else m_full)
 
-        # ---- TCP(말단공구) 외부파라미터를 ee_parent_joint 아래 frame 으로 등록 ----
         first = xyzrpy_to_mat(0.0, 0.0, 0.0, tool_pre_rot_rpy[0], tool_pre_rot_rpy[1], tool_pre_rot_rpy[2])
         second = xyzrpy_to_mat(tool_translation_xyz[0], tool_translation_xyz[1], tool_translation_xyz[2], 0.0, 0.0, 0.0)
         ee_mat = first @ second
-        quat = Rotation.from_matrix(ee_mat[:3, :3]).as_quat()  # x y z w
+        quat = Rotation.from_matrix(ee_mat[:3, :3]).as_quat()
         local = pin.SE3(pin.Quaternion(quat[3], quat[0], quat[1], quat[2]),
-                        np.array(ee_mat[:3, 3]))               # 부모 프레임 기준 TCP
-        # ee_parent 가 조인트면 그 조인트 아래, fixed 프레임(예: gripper_flange_joint)
-        # 이면 그 프레임의 지지 조인트 아래에 프레임 placement 를 접어 등록.
+                        np.array(ee_mat[:3, 3]))
         if model.existJointName(ee_parent_joint):
             jid = model.getJointId(ee_parent_joint)
             placement = local
@@ -75,12 +68,9 @@ class _ArmSolverBase:
             pf = model.frames[model.getFrameId(ee_parent_joint)]
             jp = getattr(pf, "parentJoint", None)
             jid = int(jp if jp is not None else pf.parent)
-            placement = pf.placement * local                  # jMf ∘ local
-        # pinocchio 버전별 Frame 시그니처 차이:
-        #   신형: Frame(name, parent_joint, parent_frame, placement, type)
-        #   구형: Frame(name, parent_joint, placement, type)
+            placement = pf.placement * local
         try:
-            parent_frame = model.getFrameId(model.names[jid])   # 부모 조인트 프레임
+            parent_frame = model.getFrameId(model.names[jid])
             frame = pin.Frame(ee_frame_name, jid, parent_frame,
                               placement, pin.FrameType.OP_FRAME)
         except Exception:
@@ -91,7 +81,6 @@ class _ArmSolverBase:
         self.ee_id = model.getFrameId(ee_frame_name)
         self._finish_setup(w_pos, w_ori, max_iter, tol)
 
-    # ----------------------------------------------------------------- builders
     def _finish_setup(self, w_pos, w_ori, max_iter, tol):
         self.w_pos = float(w_pos)
         self.w_ori = float(w_ori)
@@ -100,19 +89,16 @@ class _ArmSolverBase:
         
         w = np.array([w_pos] * 3 + [w_ori] * 3, dtype=float)
         self._task_w = w / max(w.max(), 1e-9)
-        self._damp = 1e-2                 # DLS 감쇠(λ) — 특이자세 안정화
-        # 관절 한계(유한화) + soft clamp 파라미터
+        self._damp = 1e-2
         self._lo = np.where(np.isfinite(self.model.lowerPositionLimit),
                             self.model.lowerPositionLimit, -np.pi)
         self._hi = np.where(np.isfinite(self.model.upperPositionLimit),
                             self.model.upperPositionLimit, np.pi)
-        self._limit_margin = 0.10         # [rad] 한계 근처 soft 존 폭
-        self._k_limit = 0.15              # 여유자유도 한계회피 이득(낮을수록 덜 진동)
+        self._limit_margin = 0.10
+        self._k_limit = 0.15
         self._smooth = 0.2               
         
         self._q_neutral = pin.neutral(self.model)
-        # ee frame 이 addFrame 으로 추가된 뒤의 model 에 맞춰 data 재생성
-        # (기존 self.data 는 프레임 추가 전 생성돼 oMf[ee_id] 가 없다)
         self.data = self.model.createData()
         self.init_data = np.zeros(self.model.nq)
         self.history_data = np.zeros(self.model.nq)
@@ -138,10 +124,9 @@ class _ArmSolverBase:
         aMb = pin.SE3(Rotation.from_euler("xyz", list(mount_rpy)).as_matrix(),
                       np.array(mount_xyz, dtype=float))
         combined = pin.appendModel(m_arm, m_hand, fid, aMb)
-        # 활성 조인트 = universe→ee_link 지지 체인의 이동 가능 조인트 − 잠금.
         ee_frame = combined.frames[combined.getFrameId(ee_link)]
         j_ee = getattr(ee_frame, "parentJoint", None)
-        if j_ee is None:                         # pin 구버전 호환
+        if j_ee is None:
             j_ee = ee_frame.parent
         chain = {combined.names[i] for i in combined.supports[int(j_ee)]}
         keep = (chain - {"universe"}) - set(locked_joints or [])
@@ -174,15 +159,12 @@ class _ArmSolverBase:
             self.init_data = q
             self.history_data = q
 
-    # ------------------------------------------------------------------- solve
     def _error_and_jac(self, q: np.ndarray, T: np.ndarray):
         q = np.asarray(q, dtype=float)
-        # 이 q 로 FK 갱신 후 프레임 placement 반영 (oMf 를 최신화) → 오차 계산
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
         iMd = self.data.oMf[self.ee_id].actInv(pin.SE3(np.asarray(T, dtype=float)))
         e = pin.log6(iMd).vector
-        # LOCAL 프레임 야코비안 + Jlog6 → ∂e/∂q (pinocchio IK 예제 표준형)
         Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id, pin.LOCAL)
         J = -pin.Jlog6(iMd.inverse()) @ Jf
         
@@ -191,8 +173,8 @@ class _ArmSolverBase:
     def _limit_gradient(self, q: np.ndarray) -> np.ndarray:
         m = self._limit_margin
         g = np.zeros_like(q)
-        low_head = q - self._lo         # 하한까지 여유
-        high_head = self._hi - q        # 상한까지 여유
+        low_head = q - self._lo
+        high_head = self._hi - q
         near_low = low_head < m
         near_high = high_head < m
         g[near_low] += (m - low_head[near_low]) / m
@@ -211,10 +193,6 @@ class _ArmSolverBase:
         return out
 
     def converge(self, target_pose: np.ndarray, q0: np.ndarray) -> np.ndarray:
-        # 순수 함수: q0 에서 시작해 수렴까지 반복 → 해. 상태(history_data)를 읽지도
-        # 쓰지도 않고 출력 EMA 도 적용하지 않는다. solve() 와 solve_robust() 가
-        # **둘 다 이걸** 쓴다 — 전역 탐색이 서브클래스의 solve() 를 타면 그 클래스의
-        # 평활/rate-limit 이 후보 해에 섞여 들어간다(실측 45mm 오염 사례).
         T = np.asarray(target_pose, dtype=float)
         q = np.array(q0, dtype=float)
         w = self._task_w
@@ -227,17 +205,16 @@ class _ArmSolverBase:
                 break
             we = w * e
             WJ = w[:, None] * J
-            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)   # damped 유사역
+            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)
             dq_task = -Jpinv @ we
-            # 여유자유도로 한계 회피(주태스크 불간섭): N = I - J⁺J
             N = In - Jpinv @ WJ
             dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
-            dq = self._soft_limit_scale(q, dq)           # 한계 쪽 속도 감쇠(soft)
+            dq = self._soft_limit_scale(q, dq)
             n = np.linalg.norm(dq)
-            if n > 1.0:                                  # 스텝 노름 제한(발산 방지)
+            if n > 1.0:
                 dq *= 1.0 / n
             q = pin.integrate(self.model, q, dq)
-        return np.clip(q, self._lo, self._hi)   # soft 로 거의 안 닿지만 안전 clip
+        return np.clip(q, self._lo, self._hi)
 
     @property
     def q_neutral(self) -> np.ndarray:
@@ -280,12 +257,10 @@ class _ArmSolverBase:
     ) -> np.ndarray:
         q_ref_arr = np.array(self.history_data if q_ref is None else q_ref, dtype=float)
         rng = np.random.default_rng(seed)
-        lo, hi = self._lo, self._hi           # 유한화된 한계(무한 한계도 ±π 로)
+        lo, hi = self._lo, self._hi
 
         best_q = None
         best_score = np.inf
-        # 후보 평가는 converge()(순수 함수) — 서브클래스의 solve()를 타지 않으므로
-        # 그 클래스의 평활/rate-limit 이 후보에 섞이지 않고, 상태도 건드리지 않는다.
         for q0 in self._restart_seeds(q_ref_arr, restarts, lo, hi, rng, w_dist):
             try:
                 q = self.converge(target_pose, q0)
@@ -313,7 +288,7 @@ class _ArmSolverBase:
         n = max(1, int(restarts))
         yield q_ref.copy()
         span = hi - lo
-        n_local = (n - 1) // 3 if w_dist > 0.0 else 0     # 탈출 모드에서만 지역 섭동
+        n_local = (n - 1) // 3 if w_dist > 0.0 else 0
         for k in range(n_local):
             scale = 0.15 + 0.45 * (k / max(1, n_local - 1))
             yield np.clip(q_ref + scale * span * (rng.random(self.nq) - 0.5), lo, hi)
@@ -321,13 +296,10 @@ class _ArmSolverBase:
             yield lo + span * rng.random(self.nq)
 
 class ArmIK(_ArmSolverBase):
-    # dls 백엔드 — 매 프레임 수렴까지 반복(cold-start 정밀해). solve_robust 의
-    # 후보 평가와 같은 converge() 를 쓰되, 여기서만 출력 EMA 를 얹는다.
 
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         try:
             sol_q = self.converge(target_pose, self.history_data)
-            # 출력 EMA 평활 — 프레임 간 떨림 억제(직전 해와 블렌드)
             if self._smooth > 0.0:
                 sol_q = self._smooth * self.history_data + (1.0 - self._smooth) * sol_q
             if not np.all(np.isfinite(sol_q)):
@@ -335,8 +307,6 @@ class ArmIK(_ArmSolverBase):
         except Exception as e:
             if not safe:
                 raise
-            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
-            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
             self._warn_once(e)
             sol_q = self.history_data.copy()
         self.init_data = sol_q
@@ -346,8 +316,7 @@ class ArmIK(_ArmSolverBase):
 
 class DiffArmIK(_ArmSolverBase):
 
-    # 텔레옵 스텝 파라미터 (인스턴스에서 덮어쓰기 가능)
-    iters_per_call = 100      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
+    iters_per_call = 100
     dp_max = 1.0           
     dtheta_max = 3.15       
     dq_max_tick = 0.5        
@@ -355,18 +324,16 @@ class DiffArmIK(_ArmSolverBase):
     sugihara_bias = 1e-4   
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
-        self._smooth = 0.2                      # 출력 EMA(이전 5%만) — 가벼운 떨림 억제
-        self.q_posture = self._q_neutral.copy()  # 선호 자세 (기본 중립)
+        self._smooth = 0.2
+        self.q_posture = self._q_neutral.copy()
 
     def _rate_limited_target(self, q: np.ndarray, T_goal: np.ndarray) -> np.ndarray:
         T_cur = self.fk(q)
         T = np.asarray(T_goal, dtype=float).copy()
-        # 위치: 스텝 노름 제한
         dp = T[:3, 3] - T_cur[:3, 3]
         n = np.linalg.norm(dp)
         if n > self.dp_max:
             T[:3, 3] = T_cur[:3, 3] + dp * (self.dp_max / n)
-        # 자세: 상대회전 각도 제한 (축각 보간)
         R_rel = T_cur[:3, :3].T @ np.asarray(T_goal, dtype=float)[:3, :3]
         rot = Rotation.from_matrix(R_rel)
         ang = np.linalg.norm(rot.as_rotvec())
@@ -390,17 +357,15 @@ class DiffArmIK(_ArmSolverBase):
                     break
                 we = w * e
                 WJ = w[:, None] * J
-                # Sugihara 오차적응 감쇠 — 오차 클수록(도달불가) 강하게 감쇠
                 damp2 = float(we @ we) + self.sugihara_bias
                 Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)
                 dq_task = -Jpinv @ we
-                # null-space: 선호자세 + 관절한계 회피 (주태스크 불간섭)
                 N = In - Jpinv @ WJ
                 dq_null = (self.k_posture * (self.q_posture - q)
                            + self._k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
                 n = np.linalg.norm(dq)
-                if n > 0.5:                      # 이터레이션당 스텝 제한(발산 방지)
+                if n > 0.5:
                     dq *= 0.5 / n
                 q = pin.integrate(self.model, q, dq)
                 
@@ -410,15 +375,13 @@ class DiffArmIK(_ArmSolverBase):
             if sn > self.dq_max_tick:
                 q = q_start + step * (self.dq_max_tick / sn)
             sol_q = np.clip(q, self._lo, self._hi)
-            if self._smooth > 0.0:               # 출력 EMA(이전 _smooth 만) — 가벼운 떨림 억제
+            if self._smooth > 0.0:
                 sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
             if not np.all(np.isfinite(sol_q)):
                 raise ValueError("IK 해에 NaN")
         except Exception as e:
             if not safe:
                 raise
-            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
-            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
             self._warn_once(e)
             sol_q = self.history_data.copy()
         self.init_data = sol_q

@@ -1,11 +1,3 @@
-"""GloveModel(손=글러브+리타게팅, 팔=Quest 컨트롤러+IK, 햅틱) + GloveRobotHandReceiver.
-
-RobotModel/HandController/RobotArmIK 는 모의(mock)로 주입해 pinocchio 없이 이 로직만
-검증한다(수식/IK 자체는 test_robot.py 소관). GloveModel 은 실제
-GloveHumanHandReceiver/QuestControllerReceiver 를 구성하되, OSC 패킷 주입은
-`dispatcher.call_handlers_for_packet` 으로 실 소켓 없이 수행한다
-(test_glove_receiver.py/test_quest_receiver.py 와 동일 접근).
-"""
 from __future__ import annotations
 
 
@@ -40,7 +32,6 @@ class _FakeHandCtrl:
 
 
 class _FakeSolver:
-    """RobotArmIK 가 위임하는 로봇 솔버 대역 — 목표 xy 를 그대로 되돌리는 더미."""
 
     def __init__(self):
         self.calls = 0
@@ -54,16 +45,15 @@ class _FakeRig:
     class solver:
         reach_max = None
 
-    class hand:                       # rig.hand.retarget → 손 리타게팅 config 유도
+    class hand:
         retarget = "fake_hand"
 
-    class calibration:                # rig.calibration.input_reach → reach 스케일
+    class calibration:
         input_reach = None
         enabled = True
 
 
 class _FakeRobot:
-    """RobotModel 대역 — RobotArmIK 가 기대하는 to_base/rig/solver 계약을 모의."""
 
     has_arm = True
     has_hand = True
@@ -85,13 +75,10 @@ class _FakeRobot:
 
 
 def _make_model():
-    # GloveModel: 글러브 side + 반대 side 컨트롤러(크로스핸드). 출력 로봇 side = 글러브 side.
     return GloveModel(_FakeRobot())
 
 
-# --------------------------------------------------------------------- tests
 def test_no_input_returns_empty_q():
-    """입력 없음 → 팔 목표/손가락 모두 없어 각 side q 가 빈 dict(관절 생략), IK 미실행."""
     m = _make_model()
     q = m.get_q()
     assert q["right"] == {} and q["left"] == {}
@@ -102,8 +89,6 @@ def test_start_stop_delegate_to_both_receivers():
     from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
     from whatslab.receiver.quest.controller import QuestControllerReceiver
     m = _make_model()
-    # 실 소켓 bind/close 왕복 검증 — 유니크 포트로 교체해 다른 테스트의 기본 포트
-    # (4040/9000)와 절대 충돌하지 않게(결정적).
     m.hand_source = GloveHumanHandReceiver(glove_port=4759)
     m.arm_source = QuestControllerReceiver(quest_port=9759)
     assert set(m._receivers) == {m.hand_source, m.arm_source}
@@ -112,27 +97,22 @@ def test_start_stop_delegate_to_both_receivers():
 
 
 def test_hand_and_arm_combine_into_single_q():
-    """글러브(손가락, 오른손) + 컨트롤러(팔, 왼손) 최신 프레임을 합쳐 오른손 로봇 q 를 낸다."""
-    m = _make_model()   # 컨트롤러는 반대(left)
+    m = _make_model()
 
     hand_disp = m.hand_source._srv.dispatcher
     arm_disp = m.arm_source._srv.dispatcher
 
-    # 팔 목표: 컨트롤러(반대 side=left) pos/rot 주입.
     _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
 
-    # 손가락 회전: 글러브(right) 프레임 주입.
     raw = np.zeros(72, dtype=np.float32)
-    raw[3::4] = 1.0  # 항등 쿼터니언(w=1) 채우기
+    raw[3::4] = 1.0
     _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
 
-    assert m.robot.solve_calls == 0   # 폴링 전엔 IK 미실행
+    assert m.robot.solve_calls == 0
 
     q = m.get_q()["right"]
     assert m.robot.solve_calls == 1
-    # QuestControllerReceiver 가 불변 CONTROLLER_POS_OFFSET([0.02, -0.04, 0.08])을
-    # 가산하므로 _FakeRobot 의 solver.solve(T) 가 되돌리는 값도 그만큼 오프셋된다.
     assert q["arm1"] == pytest.approx(3.02)
     assert q["arm2"] == pytest.approx(-1.04)
     assert q["f1"] == pytest.approx(0.5)
@@ -140,41 +120,37 @@ def test_hand_and_arm_combine_into_single_q():
 
 
 def test_new_controller_pose_reflected_in_q():
-    """컨트롤러 위치가 바뀌면 다음 get_q 가 새 목표를 반영한다(매 호출 계산)."""
     m = _make_model()
     arm_disp = m.arm_source._srv.dispatcher
     hand_disp = m.hand_source._srv.dispatcher
     raw = np.zeros(72, dtype=np.float32); raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())   # 손목 quat 유효화
+    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
 
     _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
-    assert m.get_q()["right"]["arm1"] == pytest.approx(3.02)   # 정준 in_z=3 +off
+    assert m.get_q()["right"]["arm1"] == pytest.approx(3.02)
 
     _send(arm_disp, "/controller/left/pos", 9.0, 8.0, 7.0)
-    assert m.get_q()["right"]["arm1"] == pytest.approx(7.02)   # 새 목표(in_z=7) 반영
+    assert m.get_q()["right"]["arm1"] == pytest.approx(7.02)
 
 
 def test_crosshand_output_on_glove_side():
-    """크로스핸드: 글러브(right) + 컨트롤러(left) → 출력 로봇 side = 글러브 side(right).
-    반대 side(left)는 구동 안 함(빈 q)."""
     m = _make_model()
     arm_disp = m.arm_source._srv.dispatcher
     hand_disp = m.hand_source._srv.dispatcher
 
-    _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)     # 팔 = 왼손 컨트롤러
+    _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
     raw = np.zeros(72, dtype=np.float32); raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())    # 손가락 = 오른손 글러브
+    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
 
     q = m.get_q()
-    assert q["right"]["arm1"] == pytest.approx(3.02)   # 왼손 컨트롤러 → 오른손 로봇 팔
-    assert q["right"]["f1"] == pytest.approx(0.5)       # 오른손 글러브 → 손가락
-    assert q["left"] == {}                              # 반대 side 미구동
+    assert q["right"]["arm1"] == pytest.approx(3.02)
+    assert q["right"]["f1"] == pytest.approx(0.5)
+    assert q["left"] == {}
 
 
 def test_arm_omitted_when_controller_untracked_hand_still_retargets():
-    """컨트롤러 미수신(팔 미추적) → 팔 관절 생략(B: q 에서 제외). 손가락은 글러브만으로 동작."""
     m = _make_model()
     hand_disp = m.hand_source._srv.dispatcher
 
@@ -183,14 +159,13 @@ def test_arm_omitted_when_controller_untracked_hand_still_retargets():
     _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
 
     q = m.get_q()["right"]
-    assert "arm1" not in q and "arm2" not in q     # 컨트롤러 없음 → 팔 관절 생략
-    assert q["f1"] == pytest.approx(0.5)            # 손가락은 글러브만으로 정상
+    assert "arm1" not in q and "arm2" not in q
+    assert q["f1"] == pytest.approx(0.5)
     assert q["f2"] == pytest.approx(0.6)
-    assert m.robot.solve_calls == 0                # 팔 목표 없으니 IK solve 미호출
+    assert m.robot.solve_calls == 0
 
 
 def test_joint_q_bypass_skips_ik_and_retarget():
-    """손 소스가 joint_q 를 주면 (GloveRobotHand 모드) IK/리타게팅을 건너뛴다."""
     m = _make_model()
     direct = {"custom_joint": 1.23}
 
@@ -198,7 +173,7 @@ def test_joint_q_bypass_skips_ik_and_retarget():
         def get(self, side):
             return InputSample(joint_q=direct, tracked=True, timestamp=1.0)
 
-    m.hand_source = _JointQSource()   # 손 소스를 직접-q 소스로 교체(pull)
+    m.hand_source = _JointQSource()
 
     q = m.get_q()["right"]
     assert q == direct
@@ -209,9 +184,8 @@ def test_calibrate_yaw_captures_arm_target_side():
     from scipy.spatial.transform import Rotation
 
     m = _make_model()
-    assert m.calibrate_yaw()["right"] is False   # 입력 없음
+    assert m.calibrate_yaw()["right"] is False
 
-    # 팔 목표를 만들려면 컨트롤러(left) + 글러브(right 손목) 둘 다 필요.
     arm_disp = m.arm_source._srv.dispatcher
     hand_disp = m.hand_source._srv.dispatcher
     _send(arm_disp, "/hmd/rot", *Rotation.from_euler("z", 0.3).as_quat().tolist())
@@ -221,17 +195,15 @@ def test_calibrate_yaw_captures_arm_target_side():
     _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
 
     out = m.calibrate_yaw()
-    assert out["right"] is True and out["left"] is False   # 글러브 side 만 팔 목표 존재
+    assert out["right"] is True and out["left"] is False
     assert m.calib["right"].ready
 
 
 def test_send_feedback_sends_osc_to_mock_glove_client():
-    """send_feedback(data) → 글러브 햅틱 OSC 송신(모의 클라이언트 캡처)."""
     m = _make_model()
 
-    # 하트비트 없이(연결 상태 주입) 송신 가능하도록 connected=True 로 설정.
     hand_disp = m.hand_source._srv.dispatcher
-    _send(hand_disp, "/device/status/get", "4", False, True)  # left=False, right=True
+    _send(hand_disp, "/device/status/get", "4", False, True)
     assert m.hand_source.connected("right")
 
     sent = []
@@ -247,7 +219,7 @@ def test_send_feedback_sends_osc_to_mock_glove_client():
     assert len(sent) == 1
     address, packet = sent[0]
     assert address == "/right/hapt/set"
-    assert packet[0] == "10"                     # OSC_MSG_TYPE_RIGHT_HAPT
+    assert packet[0] == "10"
     assert packet[1:] == [0, 10, 1, 20, 2, 30, 3, 40, 4, 50]
 
 
@@ -261,20 +233,16 @@ def test_send_feedback_noop_when_not_connected():
 
     m.hand_source._udp_client = _MockClient()
     m.send_feedback({"side": "right", "forces": [1, 2, 3, 4, 5]})
-    assert sent == []   # connected=False → send_haptic 이 조용히 실패(False 반환)
+    assert sent == []
 
 
 def test_send_feedback_ignores_empty_or_none():
     m = _make_model()
     m.send_feedback(None)
     m.send_feedback({"side": "right"})
-    m.send_feedback({"side": "right", "forces": []})   # 예외 없이 무시
+    m.send_feedback({"side": "right", "forces": []})
 
 
-
-
-# ------------------------------------------------------- GloveRobotHandReceiver
-# Spine 발행 포맷: args[0]=messageType 헤더, 이후 (이름, rad) 쌍. 이름에 side 접두사.
 SPINE_PAIRS = [("right_index_mcp_z", 0.1), ("right_index_mcp_y", -0.2),
                ("right_index_pip", 0.3), ("right_thumb_ip", 1.5)]
 
@@ -296,7 +264,6 @@ def test_glove_robot_hand_parses_name_value_pairs():
 
     sample = recv.get("right")
     assert sample.tracked is True
-    # side 접두사는 제거된다 — joint_map 없으면 Spine 이름 그대로.
     assert sample.joint_q == {"index_mcp_z": pytest.approx(0.1),
                               "index_mcp_y": pytest.approx(-0.2),
                               "index_pip": pytest.approx(0.3),
@@ -308,13 +275,11 @@ def test_glove_robot_hand_joint_map_renames_and_filters():
         joint_map={"index_mcp_z": "I_flex", "thumb_ip": "T_ip"}, glove_port=4841)
     _send_joint_angles(recv._srv.dispatcher, "right", SPINE_PAIRS)
 
-    # 매핑에 없는 관절은 생략된다(이 로봇이 쓰지 않는 DOF).
     assert recv.get("right").joint_q == {"I_flex": pytest.approx(0.1),
                                          "T_ip": pytest.approx(1.5)}
 
 
 def test_glove_robot_hand_omits_q_before_any_packet():
-    # 0 을 채우지 않는다 — joint_q=None 이면 소비처가 IK/리타게팅 경로를 그대로 쓴다.
     recv = GloveRobotHandReceiver(glove_port=4842)
     sample = recv.get("left")
     assert sample.tracked is False
@@ -325,7 +290,7 @@ def test_glove_robot_hand_omits_q_before_any_packet():
 def test_glove_robot_hand_rejects_misaligned_pairs():
     recv = GloveRobotHandReceiver(glove_port=4843)
     disp = recv._srv.dispatcher
-    _send(disp, "/right/joint_angles/get", "17", 0.1, "right_index_pip")  # 순서 뒤집힘
+    _send(disp, "/right/joint_angles/get", "17", 0.1, "right_index_pip")
     assert recv.get("right").joint_q is None
 
 
@@ -346,25 +311,22 @@ def test_glove_robot_hand_on_update_callback_fires():
     assert calls == ["right"]
 
 
-# ------------------------------------------------------------------ wrist 주소
 def test_glove_robot_hand_wrist_becomes_canonical_hand_pose():
     from whatslab.receiver.glove.human_hand import wrist_to_canonical
     from whatslab.receiver.glove.robot_hand import spine_lh_xyzw, unpack_wrist
 
     recv = GloveRobotHandReceiver(glove_port=4846)
-    raw_wxyz = np.array([0.5, 0.5, 0.5, 0.5])              # 손등 raw (w,x,y,z)
+    raw_wxyz = np.array([0.5, 0.5, 0.5, 0.5])
     w, x, y, z = raw_wxyz
-    wire = [y, x, z, -w]                                   # Spine 재배열 그대로
+    wire = [y, x, z, -w]
     _send(recv._srv.dispatcher, "/right/wrist/get", "19", *(float(v) for v in wire))
 
     sample = recv.get("right")
     assert sample.hand is not None
-    # 손가락 회전을 주지 않으므로 리타게팅 대상이 아니다(_has_fingers → False).
     assert sample.hand.tracked is False
     assert sample.joint_q is None
     expected = wrist_to_canonical(spine_lh_xyzw(unpack_wrist(wire)))
     assert sample.hand.wrist.quat == pytest.approx(expected)
-    # unpack_wrist 는 wire 재배열의 정확한 역이다.
     assert unpack_wrist(wire) == pytest.approx(raw_wxyz)
 
 
@@ -377,15 +339,14 @@ def test_glove_robot_hand_wrist_rejects_degenerate_quat():
 
 
 def test_glove_robot_hand_model_bypass_end_to_end():
-    # joint_q 가 채워지면 get_q 가 IK/리타게팅 없이 그대로 반환한다(실 콜백 경로).
     class _RobotHandTestModel(TeleopModel):
         def __init__(self, robot):
             self._receiver = GloveRobotHandReceiver(glove_port=4848)
-            self.hand_source = self._receiver   # 직접-q 는 손 소스
+            self.hand_source = self._receiver
             super().__init__(robot)
 
         def _get_raw_target(self):
-            return {s: None for s in self.SIDES}    # 팔 없음 — joint_q 우회만
+            return {s: None for s in self.SIDES}
 
     m = _RobotHandTestModel(_FakeRobot())
     _send_joint_angles(m._receiver._srv.dispatcher, "right", SPINE_PAIRS)

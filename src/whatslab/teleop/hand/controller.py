@@ -25,7 +25,6 @@ class HandRetargetController:
 
     def compute(self, sample: InputSample) -> HandCommand:
         if sample.hand is None or not sample.hand.tracked:
-            # 추적 없음 → 직전 명령 유지 (급변 방지)
             return HandCommand(joint_names=self.joint_names, joint_angles=self._last.copy())
         qpos = self._engine.compute(sample.hand.to_sensor_array())
         self._last = qpos

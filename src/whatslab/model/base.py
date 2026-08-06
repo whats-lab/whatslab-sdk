@@ -17,20 +17,17 @@ class TeleopModel(ABC):
 
     arm_source = None
     hand_source = None
-    SIDES = ("left", "right")       # 항상 양쪽 처리 — 특별한 side 를 고정하지 않는다.
+    SIDES = ("left", "right")
 
     def __init__(self, robot):
         self.robots: Dict[str, RobotModel] = self._as_side_map(robot)
 
-        # 편의: 유일 rig 면 self.robot 로도 접근(서로 다른 양손이면 None → self.robots).
         uniq = {id(r): r for r in self.robots.values()}
         self.robot = next(iter(uniq.values())) if len(uniq) == 1 else None
 
-        # 선택: 관절 리밋/e-stop 필터. 소비처가 SafetyFilter(limits, dt) 를 주입하면
-        # get_q 출력이 이를 통과한다(리밋 클램프/홀드). None 이면 미적용.
         self.safety = None
 
-        self.target: Dict[str, Optional[np.ndarray]] = {}   # side → 팔 EE 목표 4x4 | None
+        self.target: Dict[str, Optional[np.ndarray]] = {}
         self.q: Dict[str, Dict[str, float]] = {}
 
         self.ik: Dict[str, RobotArmIK] = {}
@@ -60,9 +57,8 @@ class TeleopModel(ABC):
         if isinstance(robot, (list, tuple)):
             return {self.SIDES[i]: _load(r) for i, r in enumerate(robot) if r is not None}
         r = _load(robot)
-        return {s: r for s in self.SIDES}        # 단일 rig → 양쪽 다 동일 rig
+        return {s: r for s in self.SIDES}
 
-    # ------------------------------------------------------------- lifecycle
     @property
     def _receivers(self) -> list:
         out, seen = [], set()
@@ -80,22 +76,21 @@ class TeleopModel(ABC):
         for r in self._receivers:
             r.stop()
 
-    # ================================================================ pipeline
     @abstractmethod
     def _get_raw_target(self) -> Dict[str, Optional[Pose]]:
         ...
 
     def get_data(self) -> Dict[str, dict]:
-        poses = self._get_raw_target()                       # {side: Pose|None}
+        poses = self._get_raw_target()
         out: Dict[str, dict] = {}
         for s in self.SIDES:
             arm_s = self.arm_source.get(s) if self.arm_source else None
             hand_s = self.hand_source.get(s) if self.hand_source else None
             arm_pose = poses.get(s)
             out[s] = {
-                "arm_pose": arm_pose,                       # _get_raw_target 프레임 그대로
+                "arm_pose": arm_pose,
                 "fingers": hand_s,
-                "q": self._joint_q(arm_s, hand_s),          # 직접-q 우회(손 우선)
+                "q": self._joint_q(arm_s, hand_s),
                 "tracked": arm_pose is not None or self._has_fingers(hand_s),
             }
         return out
@@ -114,12 +109,12 @@ class TeleopModel(ABC):
         q: Dict[str, float] = {}
         ik = self.ik.get(side)
         T = data.get("arm_target")
-        if ik is not None and T is not None:                    # 팔 목표 없으면 IK 생략
+        if ik is not None and T is not None:
             q_arm = np.asarray(ik.solve(T), dtype=float)
             q.update(zip(ik.joint_names, (float(v) for v in q_arm)))
         retarget = self.retarget.get(side)
         fingers = data.get("fingers")
-        if retarget is not None and self._has_fingers(fingers):  # 손가락 없으면 리타게팅 생략
+        if retarget is not None and self._has_fingers(fingers):
             cmd = retarget.compute(fingers)
             q.update(zip(cmd.joint_names, (float(v) for v in cmd.joint_angles)))
         return q
@@ -143,12 +138,11 @@ class TeleopModel(ABC):
     def get_q(self) -> Dict[str, Dict[str, float]]:
         data = self._apply_calib(self.get_data())
         q = self.solve(data)
-        if self.safety is not None:              # 선택: 관절 리밋/e-stop 필터
+        if self.safety is not None:
             q = {s: self.safety.step(v) for s, v in q.items()}
-        self.q = q                          # 최신 q 노출(양손)
+        self.q = q
         return q
 
-    # ------------------------------------------------------------- calibrate
     def set_reach(self, input_reach: float) -> Dict[str, bool]:
         out: Dict[str, bool] = {}
         for s in self.SIDES:
@@ -192,6 +186,5 @@ class TeleopModel(ABC):
                         save_calibration(robot.rig, r_max[s])
         return r_max
 
-    # ------------------------------------------------------------- feedback
     def send_feedback(self, data) -> None:
         pass

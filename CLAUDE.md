@@ -2,7 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-주석·독스트링·커밋 메시지는 이 저장소 관례대로 **한국어**로 쓴다.
+커밋 메시지는 이 저장소 관례대로 **한국어**로 쓴다.
+
+**파이썬 코드에는 독스트링도 주석도 쓰지 않는다** (`src`·`tools`·`examples`·`tests`).
+예외는 `# noqa`/`# type:`/`# pragma`/shebang, 그리고 `argparse(description=__doc__)` 를
+쓰는 `tools/` 4개 파일의 모듈 독스트링뿐이다. 설명이 필요하면 코드 구조·이름으로
+드러내거나 이 파일·`docs/API.md`·rig yaml 에 쓴다(yaml 주석은 유지한다).
 
 ## 개발 환경
 

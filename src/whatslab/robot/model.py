@@ -30,12 +30,11 @@ class RobotModel:
         self.has_arm = rig.arm is not None
         self.has_hand = rig.hand is not None
 
-        # 정준 → 루트 로봇 베이스 (URDF 좌표). mount ∘ axis_align 합성.
         root = rig.arm if self.has_arm else rig.hand
-        self._M = rig.mount.T @ root.axis_align.T          # 4x4
+        self._M = rig.mount.T @ root.axis_align.T
         self._M_inv = np.linalg.inv(self._M)
 
-        self.solver = None           # 팔 IK (arm 있을 때만)
+        self.solver = None
         self.arm_joint_names: List[str] = []
         if self.has_arm:
             self.solver = self._build_arm_solver()
@@ -51,7 +50,6 @@ class RobotModel:
             if val is not None and hasattr(solver, attr):
                 setattr(solver, attr, val)
 
-    # ---------------------------------------------------------------- build
     def _build_arm_solver(self):
         rig = self.rig
         arm = rig.arm
@@ -73,9 +71,6 @@ class RobotModel:
                 ee_local_rpy=list(rig.hand.ee_align.rpy),
                 **common,
             )
-        # arm 단독: TCP 프레임("ee")을 ee.origin(URDF origin 관례)으로 등록.
-        # ee.parent 의 지지 조인트(fixed 프레임이면 그 프레임을 지탱하는 조인트)가
-        # 잠기면 TCP 를 구동할 수 없다 → 에러.
         m_arm = pin.buildModelFromUrdf(arm.urdf_abspath())
         if m_arm.existJointName(arm.ee_parent):
             support_joint = arm.ee_parent
@@ -87,8 +82,6 @@ class RobotModel:
             raise ValueError(
                 f"lock_joints 가 ee.parent({arm.ee_parent})의 지지 조인트"
                 f"({support_joint})를 잠금 — TCP 를 구동할 수 없습니다")
-        # ArmIK 의 tool 인자는 (회전 후 회전축 기준 이동) 관례라 변환해 전달:
-        #   T(R,p) = Rot(rpy) · Trans(Rᵀp)
         R = arm.ee_origin.T[:3, :3]
         p = np.asarray(arm.ee_origin.xyz, dtype=float)
         return cls(
@@ -101,7 +94,6 @@ class RobotModel:
             **common,
         )
 
-    # ------------------------------------------------------------ factories
     @classmethod
     def from_yaml(cls, path: str) -> "RobotModel":
         return cls(load_rig(path))
@@ -110,7 +102,6 @@ class RobotModel:
         from whatslab.teleop.hand import HandRetargetController
         return HandRetargetController(side, config_name)
 
-    # ------------------------------------------------------ 정준 데카르트 API
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:
         return self._M_inv @ np.asarray(T_canonical, dtype=float)
 
@@ -122,7 +113,6 @@ class RobotModel:
         sol = self.rig.solver
         T_c = np.asarray(T_canonical, dtype=float).copy()
 
-        # uniform reach 스케일 (사람 도달반경 → 로봇 reach). 원점 0 기준 등방.
         cal = self.rig.calibration
         if cal.enabled and cal.input_reach and sol.reach_max:
             T_c[:3, 3] *= sol.reach_max / cal.input_reach

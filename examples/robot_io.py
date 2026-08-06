@@ -1,36 +1,16 @@
-"""실물 로봇 전송 어댑터 — whatslab q(`{joint_name: rad}`) → 벤더 드라이버.
-
-whatslab 은 파이프라인 조립을 소유하지 않는다(레이어 규칙: 조립은 소비자 몫). 그래서
-이 어댑터는 SDK(`src/whatslab`)가 아니라 예제 쪽에 둔다. 벤더 드라이버는 **lazy
-import** 라, 드라이버가 없는 환경에서도 예제 자체는 뜬다.
-
-담당 분배 (rig `nero_orca_right`, `lock_joints: [joint7]`):
-  · `arm_joint_names` = `joint1..joint6` + **orca 카펄(손목) 관절** ← 팔 IK 가 소유
-  · nero `move_j` 는 7개(radian) → `[joint1..joint6, 0.0]` (마지막은 잠긴 joint7)
-  · orca `set_joint_positions` 는 17개(**degree**) → 손가락 16(리타게팅) + `wrist`(카펄)
-"""
 from __future__ import annotations
 
 import math
 from typing import Dict, List, Optional
 
-# ─────────────────────────────────────────────────────────── orca 관절명 매핑
-# whatslab 은 URDF 관절명("{child}_to_{parent}")을, orca_core 는 의미명(joint_ids)을
-# 쓴다. 손으로 적으면 orca 의 ring/middle 이 같은 부품명(M-*)을 공유해 뒤바뀌기 쉬우니
-# hand config 의 FingerChain 순서에서 **유도**한다.
 _ORCA_LEVELS = {"thumb": ["thumb_cmc", "thumb_abd", "thumb_mcp", "thumb_dip"]}
 _DEFAULT_LEVELS = ["{f}_abd", "{f}_mcp", "{f}_pip"]
 _FINGER_ORDER = ["thumb", "index", "middle", "ring", "pinky"]
 
-# 부호 보정 [urdf 관절명이 아닌 orca joint_id 기준]. URDF 한계와 orca ROM 을 비교하면
-# `index_abd` 만 [-25,30] vs [-30,25] 로 **정확히 반전**이고, 나머지 abd 는 범위가
-# 대칭(±27, ±30)이라 부호를 판별할 수 없다. 즉 외전 부호가 전부 반대일 수 있다.
-# → 실물에서 손가락을 좌우로 벌려보고, 반대로 가면 해당 항목을 -1.0 으로 둔다.
 ORCA_SIGN: Dict[str, float] = {}
 
 
 def orca_joint_map(side: str = "right") -> Dict[str, str]:
-    """{whatslab URDF 관절명: orca_core joint_id} — hand config 에서 유도."""
     from whatslab.teleop.hand.hand_configs import OrcaHandConfig
     cfg = OrcaHandConfig()
     out: Dict[str, str] = {}
@@ -42,19 +22,17 @@ def orca_joint_map(side: str = "right") -> Dict[str, str]:
 
 
 class OrcaHandSender:
-    """orca_core 로 손 관절각 전송 (rad → deg, URDF 관절명 → joint_id)."""
 
     def __init__(self, side: str = "right", wrist_joint: Optional[str] = None,
                  model_version: str = "v2"):
         self.side = side
-        self.wrist_joint = wrist_joint      # 팔 IK 가 내는 카펄 관절명(orca `wrist`)
+        self.wrist_joint = wrist_joint
         self.model_version = model_version
         self.hand = None
         self._map = orca_joint_map(side)
 
     def connect(self) -> str:
-        from orca_core import OrcaHand              # lazy: 드라이버 없으면 여기서만 실패
-        # 동봉 모델로 해석 (config_path 를 직접 주려면 OrcaHand(config_path=...)).
+        from orca_core import OrcaHand
         self.hand = OrcaHand(model_name=f"orcahand_{self.side}",
                              model_version=self.model_version)
         ok, msg = self.hand.connect()
@@ -77,7 +55,6 @@ class OrcaHandSender:
         return self.hand is not None
 
     def send(self, q: Dict[str, float]) -> None:
-        """q(rad) 중 손 관절 + 카펄(`wrist`)을 degree 로 변환해 전송."""
         if self.hand is None:
             return
         pose: Dict[str, float] = {}
@@ -86,16 +63,14 @@ class OrcaHandSender:
                 pose[oid] = math.degrees(q[jn]) * ORCA_SIGN.get(oid, 1.0)
         if self.wrist_joint and self.wrist_joint in q:
             pose["wrist"] = math.degrees(q[self.wrist_joint]) * ORCA_SIGN.get("wrist", 1.0)
-        if pose:                        # orca_core 가 ROM 으로 클램프한다(안전망)
+        if pose:
             self.hand.set_joint_positions(pose, num_steps=1)
 
 
 class AgxArmSender:
-    """pyAgxArm 으로 nero 팔 관절각 전송 (radian, `move_j`)."""
 
     def __init__(self, joint_names: List[str], channel: str = "can0",
                  speed_percent: int = 20):
-        # joint_names = rig 의 arm_joint_names. 마지막 항목은 orca 카펄이라 팔에서 제외.
         self.nero_joints = [n for n in joint_names if n.startswith("joint")]
         self.channel = channel
         self.speed_percent = int(speed_percent)
@@ -134,11 +109,6 @@ class AgxArmSender:
         return self.robot is not None
 
     def read_joint_angles(self) -> Optional[List[float]]:
-        """현재 실물 관절각(radian) — 연결 직후 IK warm-start 동기화용.
-
-        드라이버는 `MessageAbstract[list[float]] | None` 을 주므로 `.msg` 로 벗긴다
-        (피드백이 아직 없으면 None).
-        """
         if self.robot is None:
             return None
         try:
@@ -150,21 +120,17 @@ class AgxArmSender:
             return None
 
     def send(self, q: Dict[str, float]) -> None:
-        """`[joint1..joint6, 0.0]`(radian) 전송. 마지막은 잠긴 joint7."""
         if self.robot is None:
             return
         vals = [float(q[n]) for n in self.nero_joints if n in q]
         if len(vals) != len(self.nero_joints):
-            return                       # 팔 목표가 없는 프레임(IK 생략) → 전송 안 함
+            return
         while len(vals) < self.robot.joint_nums:
-            vals.append(0.0)             # 잠긴 joint7
+            vals.append(0.0)
         self.robot.move_j(vals[:self.robot.joint_nums])
 
 
 def attach_safety(model, robot, rate_hz: float):
-    # rig 의 max_joint_velocity 를 실제로 물린다. IK 의 틱 상한(dq_max_tick=0.5rad)은
-    # 60Hz 에서 30 rad/s 라 설정값(5.0)의 6배다 — 강제는 소비자 몫(레이어 규칙)이라
-    # 여기서 SafetyFilter(clamp + rate-limit)를 get_q 출력에 끼운다.
     from whatslab.safety import SafetyFilter, load_limits_from_urdf, tighten
 
     v = robot.rig.solver.max_joint_velocity
@@ -184,9 +150,7 @@ def attach_safety(model, robot, rate_hz: float):
     return model.safety
 
 
-# ───────────────────────────────────────────────── viser 패널 / 계측 (예제용)
 class RobotBridge:
-    # 연결과 송신을 분리한다 — 연결 버튼만으로는 관절 명령이 나가지 않는다.
     def __init__(self, model, robot, args):
         self.model, self.robot, self.args = model, robot, args
         self.arm = self.hand = None
@@ -198,7 +162,7 @@ class RobotBridge:
                          speed_percent=self.args.speed)
         msg = s.connect()
         self.arm = s
-        fb = s.read_joint_angles()          # 실물 자세로 warm-start 동기화(첫 명령 점프 방지)
+        fb = s.read_joint_angles()
         ik = self.model.ik.get(self.args.side)
         if fb is not None and ik is not None:
             q_now = list(ik._robot.solver.history_data)
@@ -210,7 +174,7 @@ class RobotBridge:
 
     def connect_hand(self) -> str:
         carpal = next((n for n in self.robot.arm_joint_names
-                       if not n.startswith("joint")), None)   # orca `wrist` = 팔 IK 소관
+                       if not n.startswith("joint")), None)
         s = OrcaHandSender(side=self.args.side, wrist_joint=carpal)
         msg = s.connect()
         self.hand = s
@@ -238,7 +202,7 @@ class RobotBridge:
                 continue
             try:
                 s.send(q)
-            except Exception as e:              # 무음 실패 금지 — 즉시 송신 중단
+            except Exception as e:
                 self.sending = False
                 if self.status is not None:
                     self.status.content = f"**전송 오류 → 송신 중단**: `{e}`"
@@ -300,8 +264,6 @@ def build_robot_panel(model, robot, args) -> RobotBridge:
 
 
 class Diag:
-    # 라이브 경로 단계별 계측. in=입력 수신, |p|=원시 위치 크기(Quest 트래킹 원점 기준),
-    # clamp=reach_max 포화율, err=IK 실제 오차, dq=프레임간 관절 점프(불연속).
     def __init__(self, robot, model, side, window=0.5):
         self.robot, self.model, self.side, self.window = robot, model, side, window
         self.t0 = None
