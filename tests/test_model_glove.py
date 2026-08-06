@@ -8,7 +8,6 @@ GloveHumanHandReceiver/QuestControllerReceiver 를 구성하되, OSC 패킷 주�
 """
 from __future__ import annotations
 
-from typing import List
 
 import numpy as np
 import pytest
@@ -271,66 +270,116 @@ def test_send_feedback_ignores_empty_or_none():
     m.send_feedback({"side": "right", "forces": []})   # 예외 없이 무시
 
 
+
+
 # ------------------------------------------------------- GloveRobotHandReceiver
-JOINT_NAMES: List[str] = ["j0", "j1", "j2", "j3", "j4", "j5"]
+# Spine 발행 포맷: args[0]=messageType 헤더, 이후 (이름, rad) 쌍. 이름에 side 접두사.
+SPINE_PAIRS = [("right_index_mcp_z", 0.1), ("right_index_mcp_y", -0.2),
+               ("right_index_pip", 0.3), ("right_thumb_ip", 1.5)]
 
 
-def test_glove_robot_hand_parses_q_into_joint_q():
-    recv = GloveRobotHandReceiver(joint_names=JOINT_NAMES, glove_port=4840)
-    disp = recv._srv.dispatcher
+def _flat(pairs):
+    out = []
+    for name, val in pairs:
+        out.extend([name, float(val)])
+    return out
 
-    q_values = [0.1, -0.2, 0.3, 0.0, 1.0, -1.5]
-    _send(disp, "/glove/right/q", *q_values)
+
+def _send_joint_angles(disp, side, pairs, msg_type="17"):
+    _send(disp, f"/{side}/joint_angles/get", msg_type, *_flat(pairs))
+
+
+def test_glove_robot_hand_parses_name_value_pairs():
+    recv = GloveRobotHandReceiver(glove_port=4840)
+    _send_joint_angles(recv._srv.dispatcher, "right", SPINE_PAIRS)
 
     sample = recv.get("right")
-    assert sample.joint_q is not None
     assert sample.tracked is True
-    for name, expected in zip(JOINT_NAMES, q_values):
-        assert sample.joint_q[name] == pytest.approx(expected)
+    # side 접두사는 제거된다 — joint_map 없으면 Spine 이름 그대로.
+    assert sample.joint_q == {"index_mcp_z": pytest.approx(0.1),
+                              "index_mcp_y": pytest.approx(-0.2),
+                              "index_pip": pytest.approx(0.3),
+                              "thumb_ip": pytest.approx(1.5)}
 
 
-def test_glove_robot_hand_neutral_before_any_packet():
-    recv = GloveRobotHandReceiver(joint_names=JOINT_NAMES, glove_port=4841)
+def test_glove_robot_hand_joint_map_renames_and_filters():
+    recv = GloveRobotHandReceiver(
+        joint_map={"index_mcp_z": "I_flex", "thumb_ip": "T_ip"}, glove_port=4841)
+    _send_joint_angles(recv._srv.dispatcher, "right", SPINE_PAIRS)
+
+    # 매핑에 없는 관절은 생략된다(이 로봇이 쓰지 않는 DOF).
+    assert recv.get("right").joint_q == {"I_flex": pytest.approx(0.1),
+                                         "T_ip": pytest.approx(1.5)}
+
+
+def test_glove_robot_hand_omits_q_before_any_packet():
+    # 0 을 채우지 않는다 — joint_q=None 이면 소비처가 IK/리타게팅 경로를 그대로 쓴다.
+    recv = GloveRobotHandReceiver(glove_port=4842)
     sample = recv.get("left")
     assert sample.tracked is False
-    assert sample.joint_q == {name: 0.0 for name in JOINT_NAMES}
+    assert sample.joint_q is None
+    assert sample.hand is None
+
+
+def test_glove_robot_hand_rejects_misaligned_pairs():
+    recv = GloveRobotHandReceiver(glove_port=4843)
+    disp = recv._srv.dispatcher
+    _send(disp, "/right/joint_angles/get", "17", 0.1, "right_index_pip")  # 순서 뒤집힘
+    assert recv.get("right").joint_q is None
 
 
 def test_glove_robot_hand_sides_independent():
-    recv = GloveRobotHandReceiver(joint_names=JOINT_NAMES, glove_port=4842)
+    recv = GloveRobotHandReceiver(glove_port=4844)
     disp = recv._srv.dispatcher
+    _send_joint_angles(disp, "left", [("left_index_pip", 0.0)], msg_type="16")
+    _send_joint_angles(disp, "right", [("right_index_pip", 1.0)])
 
-    _send(disp, "/glove/left/q", *([0.0] * len(JOINT_NAMES)))
-    _send(disp, "/glove/right/q", *([1.0] * len(JOINT_NAMES)))
-
-    left = recv.get("left")
-    right = recv.get("right")
-    assert all(v == pytest.approx(0.0) for v in left.joint_q.values())
-    assert all(v == pytest.approx(1.0) for v in right.joint_q.values())
+    assert recv.get("left").joint_q == {"index_pip": pytest.approx(0.0)}
+    assert recv.get("right").joint_q == {"index_pip": pytest.approx(1.0)}
 
 
 def test_glove_robot_hand_on_update_callback_fires():
     calls = []
-    recv = GloveRobotHandReceiver(joint_names=JOINT_NAMES, glove_port=4843,
-                                   on_update=lambda side: calls.append(side))
-    disp = recv._srv.dispatcher
-    _send(disp, "/glove/right/q", *([0.5] * len(JOINT_NAMES)))
+    recv = GloveRobotHandReceiver(glove_port=4845, on_update=calls.append)
+    _send_joint_angles(recv._srv.dispatcher, "right", SPINE_PAIRS)
     assert calls == ["right"]
 
 
-def test_glove_robot_hand_requires_joint_names():
-    with pytest.raises(ValueError):
-        GloveRobotHandReceiver(joint_names=[], glove_port=4844)
+# ------------------------------------------------------------------ wrist 주소
+def test_glove_robot_hand_wrist_becomes_canonical_hand_pose():
+    from whatslab.receiver.glove.human_hand import wrist_to_canonical
+    from whatslab.receiver.glove.robot_hand import spine_lh_xyzw, unpack_wrist
+
+    recv = GloveRobotHandReceiver(glove_port=4846)
+    raw_wxyz = np.array([0.5, 0.5, 0.5, 0.5])              # 손등 raw (w,x,y,z)
+    w, x, y, z = raw_wxyz
+    wire = [y, x, z, -w]                                   # Spine 재배열 그대로
+    _send(recv._srv.dispatcher, "/right/wrist/get", "19", *(float(v) for v in wire))
+
+    sample = recv.get("right")
+    assert sample.hand is not None
+    # 손가락 회전을 주지 않으므로 리타게팅 대상이 아니다(_has_fingers → False).
+    assert sample.hand.tracked is False
+    assert sample.joint_q is None
+    expected = wrist_to_canonical(spine_lh_xyzw(unpack_wrist(wire)))
+    assert sample.hand.wrist.quat == pytest.approx(expected)
+    # unpack_wrist 는 wire 재배열의 정확한 역이다.
+    assert unpack_wrist(wire) == pytest.approx(raw_wxyz)
+
+
+def test_glove_robot_hand_wrist_rejects_degenerate_quat():
+    recv = GloveRobotHandReceiver(glove_port=4847)
+    disp = recv._srv.dispatcher
+    _send(disp, "/right/wrist/get", "19", 0.0, 0.0, 0.0, 0.0)
+    _send(disp, "/right/wrist/get", "19", float("nan"), 0.0, 0.0, 1.0)
+    assert recv.get("right").hand is None
 
 
 def test_glove_robot_hand_model_bypass_end_to_end():
-    """GloveRobotHandReceiver 를 Model 에 직접 꽂아 joint_q 를 채우면
-    get_q 가 IK/리타게팅 없이 그대로 반환한다(실 콜백 경로, mock robot 사용)."""
-
+    # joint_q 가 채워지면 get_q 가 IK/리타게팅 없이 그대로 반환한다(실 콜백 경로).
     class _RobotHandTestModel(TeleopModel):
         def __init__(self, robot):
-            self._receiver = GloveRobotHandReceiver(
-                joint_names=JOINT_NAMES, glove_port=4845)
+            self._receiver = GloveRobotHandReceiver(glove_port=4848)
             self.hand_source = self._receiver   # 직접-q 는 손 소스
             super().__init__(robot)
 
@@ -338,10 +387,9 @@ def test_glove_robot_hand_model_bypass_end_to_end():
             return {s: None for s in self.SIDES}    # 팔 없음 — joint_q 우회만
 
     m = _RobotHandTestModel(_FakeRobot())
-    disp = m._receiver._srv.dispatcher
-    q_values = [0.42] * len(JOINT_NAMES)
-    _send(disp, "/glove/right/q", *q_values)
+    _send_joint_angles(m._receiver._srv.dispatcher, "right", SPINE_PAIRS)
 
     q = m.get_q()["right"]
-    assert q == {name: pytest.approx(0.42) for name in JOINT_NAMES}
+    assert q == {"index_mcp_z": pytest.approx(0.1), "index_mcp_y": pytest.approx(-0.2),
+                 "index_pip": pytest.approx(0.3), "thumb_ip": pytest.approx(1.5)}
     assert m.robot.solve_calls == 0
