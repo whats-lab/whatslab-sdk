@@ -1,5 +1,3 @@
-"""LeRobot v2.1 메타 빌더 — Task 1b 레퍼런스(`tests/fixtures/lerobot_ref_v21/meta/info.json`)의
-실제 on-disk 구조를 미러한다. 필드명/값은 그 레퍼런스에서 그대로 확정했다."""
 from __future__ import annotations
 
 import numpy as np
@@ -20,7 +18,6 @@ def build_info(
     total_frames: int,
     total_tasks: int,
 ) -> dict:
-    """레퍼런스 info.json 구조를 그대로 재현한다 (키 이름/중첩 구조 동일)."""
     feat: dict = {}
     for k, v in features.items():
         entry = {"dtype": v["dtype"], "shape": list(v["shape"]), "names": v.get("names")}
@@ -62,7 +59,6 @@ def build_info(
 
 
 def _reduce_stats(arr: np.ndarray) -> dict:
-    """arr: (n, *dims) float64 배열 -> {min,max,mean,std,count} (dims 별 리스트, count=[n])."""
     n = arr.shape[0]
     mn = arr.min(axis=0)
     mx = arr.max(axis=0)
@@ -78,8 +74,6 @@ def _reduce_stats(arr: np.ndarray) -> dict:
 
 
 def _reduce_image_stats(frames: np.ndarray) -> dict:
-    """frames: (n, H, W, C) uint8 -> per-channel stats, normalized to [0,1],
-    nested as [[[v]], [[v]], [[v]]] (채널별로 depth-3 중첩) — 레퍼런스와 동일 구조."""
     x = frames.astype(np.float64) / 255.0
     c = x.shape[-1]
     flat = x.reshape(-1, c)

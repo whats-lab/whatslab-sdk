@@ -1,19 +1,11 @@
-"""HandModel — 손 전용 프리셋 TeleopModel (팔 없음).
-
-글러브 손가락 → 로봇 손 리타게팅만. 팔 IK/rig 가 필요 없다(dex_retargeting 은
-rig 의 IK 와 무관) → robot=None 으로 base 를 태우고 retarget 만 직접 채운다.
-그래서 팔 IK 태스크가 아닌 손 전용 수집(예: 손만 데모)에서 GloveModel 대신
-쓰고, 소비처는 동일한 폴링(get_q/ready)으로 다룰 수 있다.
-"""
 from __future__ import annotations
 
-from whatslab.receiver.glove_human_hand import GloveHumanHandReceiver
+from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
 
 from .base import TeleopModel
 
 
 class HandModel(TeleopModel):
-    """손 전용 프리셋. hand_config(리타게팅) + side 만 주면 바로 get_q(손 관절만)."""
 
     def __init__(self, hand_config: str = "orca_hand", side: str = "right",
                  urdf_root: str | None = None, hand_source=None):

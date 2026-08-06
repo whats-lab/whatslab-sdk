@@ -4,10 +4,6 @@ from ._base import FingerChain, HandConfig
 
 import numpy as np
 class TesolloDG5FConfig(HandConfig):
-    """Tesollo DG5F — 5-finger, 20-DOF.
-
-    링크명 접두어: ll_ (left) / rl_ (right).
-    """
 
     _MODEL_SUBDIR  = 'tesollo_dg5f'
     _URDF_FILENAME = 'dg5f_{hand_type}.urdf'

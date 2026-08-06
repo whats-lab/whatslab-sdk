@@ -1,12 +1,3 @@
-"""
-HandSphericalFK: Pinocchio spherical joint 기반 Hand FK
-
-- 16개 spherical joint (손목 센서 0 제외)
-- URDF에서 kinematic 구조 로드
-
-입력 쿼터니언: [x, y, z, w] (scipy 표준)
-"""
-
 import logging
 import os
 import xml.etree.ElementTree as ET
@@ -66,11 +57,9 @@ URDF_TO_JOINT = {
 
 
 def _correct_quat(raw_xyzw: np.ndarray) -> np.ndarray:
-    """센서 좌표계 보정"""
     return np.array([raw_xyzw[0], -raw_xyzw[1], -raw_xyzw[2], raw_xyzw[3]])
 
 def _parse_urdf_joints(urdf_path: str) -> dict:
-    """URDF에서 joint name → xyz 매핑을 파싱."""
     tree = ET.parse(urdf_path)
     joints = {}
     for j in tree.getroot().iter('joint'):
@@ -82,21 +71,6 @@ def _parse_urdf_joints(urdf_path: str) -> dict:
 
 
 def build_model(urdf_path: str, hand_type: str = 'left') -> 'pin.Model':
-    """
-    URDF로부터 16개 spherical joint Pinocchio 모델 빌드.
-
-    구조:
-        universe (wrist root)
-        ├── {pfx}thumb_cmc0   (spherical, sensor 1)
-        │   └── {pfx}thumb_cmc1   (sensor 2)
-        │       └── {pfx}thumb_mcp (sensor 3)
-        │           └── {pfx}thumb_ip (sensor 4)
-        ├── {pfx}index_mcp   (spherical, sensor 5)
-        │   └── {pfx}index_pip → {pfx}index_dip
-        ├── {pfx}middle_mcp  (sensor 8) → {pfx}middle_pip → {pfx}middle_dip
-        ├── {pfx}ring_mcp    (sensor 11) → {pfx}ring_pip → {pfx}ring_dip
-        └── {pfx}pinky_mcp   (sensor 14) → {pfx}pinky_pip → {pfx}pinky_dip
-    """
 
     joints = _parse_urdf_joints(urdf_path)
     pfx = hand_type + '_'
@@ -155,16 +129,6 @@ def build_model(urdf_path: str, hand_type: str = 'left') -> 'pin.Model':
 
 
 class HandSphericalFK:
-    """
-    Pinocchio spherical joint 기반 Hand FK.
-
-    Usage:
-        fk = HandSphericalFK('left')
-        q, positions, rotations = fk.compute(sensor_quats_17)
-
-        # positions: {joint_name: np.ndarray (3,)}  세계 좌표
-        # rotations: {joint_name: np.ndarray (3,3)} 세계 회전 행렬
-    """
 
     def __init__(self, hand_type: str = 'left', urdf_path: str = None):
 
@@ -207,16 +171,6 @@ class HandSphericalFK:
 
     # ─────────────────────────────────────────
     def sensor_to_q(self, sensor_quats_17: np.ndarray) -> np.ndarray:
-        """
-        17개 센서 쿼터니언 → Pinocchio q 벡터.
-
-        Args:
-            sensor_quats_17: shape (17, 4), 각 행 [x, y, z, w]
-                sensor[0] = 손목 (이 함수에서는 무시, root는 origin 고정)
-                sensor[1~16] = 각 관절
-        Returns:
-            q: (nq,) — spherical joint당 4개 (쿼터니언)
-        """
         q = pin.neutral(self.model)   
         sign = 1 if self.hand_type == 'right' else -1 
             
@@ -240,14 +194,6 @@ class HandSphericalFK:
 
     # ─────────────────────────────────────────
     def compute(self, sensor_quats_17: np.ndarray):
-        """
-        FK 실행.
-
-        Returns:
-            q:         Pinocchio q 벡터
-            positions: {joint_name: np.ndarray (3,)}  세계 좌표
-            rotations: {joint_name: np.ndarray (3,3)} 세계 회전 행렬
-        """
         q = self.sensor_to_q(sensor_quats_17)
         pin.forwardKinematics(self.model, self.data, q)
 
@@ -263,12 +209,6 @@ class HandSphericalFK:
 
     # ─────────────────────────────────────────
     def compute_positions(self, sensor_quats_17: np.ndarray) -> np.ndarray:
-        """
-        FK 실행 후 23-index 위치 배열 반환.
-
-        Returns:
-            positions: shape (23, 3), index 0=wrist(origin), 1~22=joints
-        """
         _, pos_dict, _ = self.compute(sensor_quats_17)
         out = np.zeros((23, 3), dtype=np.float64)
         for i, name in self._joint_map.items():
@@ -278,19 +218,6 @@ class HandSphericalFK:
 
 
 class HandRerunViz:
-    """
-    URDF STL 메쉬를 Rerun으로 시각화.
-
-    Usage:
-        rr.init("hand_viz", spawn=True)
-
-        viz = HandRerunViz(
-            hand_type = 'left',
-            urdf_path = '/path/to/models/base/urdf/left.urdf',
-        )
-        viz.setup()               # 메쉬 한 번 등록 (static)
-        viz.update(quats_17)      # 매 프레임 transform 갱신
-    """
 
     def __init__(self, hand_type: str, urdf_path: str, entity_prefix: str = 'hand'):
         self.fk            = HandSphericalFK(hand_type, urdf_path)
@@ -307,13 +234,6 @@ class HandRerunViz:
 
     # ─────────────────────────────────────────
     def setup(self):
-        """
-        URDF STL 메쉬를 Rerun에 정적 등록.
-
-        엔티티 구조:
-            {prefix}/{link_name}         ← FK Transform3D (update()에서 갱신)
-            {prefix}/{link_name}/visual  ← visual origin Transform3D + Asset3D (static)
-        """
         try:
             import rerun as rr
         except ImportError as e:
@@ -409,13 +329,6 @@ class HandRerunViz:
 
     # ─────────────────────────────────────────
     def update(self, sensor_quats_17: np.ndarray, timestamp: float = None):
-        """
-        FK 계산 후 Rerun Transform3D 갱신.
-
-        Args:
-            sensor_quats_17: shape (17, 4), 각 행 [x, y, z, w]
-            timestamp:       선택적 시각 (초 단위)
-        """
         try:
             import rerun as rr
         except ImportError:

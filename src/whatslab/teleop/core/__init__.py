@@ -1,4 +1,3 @@
-"""텔레옵 전용 상수/계약."""
 from .constants import (
     HUBER_DELTA,
     IK_MAX_EVAL,

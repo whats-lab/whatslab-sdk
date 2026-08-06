@@ -1,8 +1,3 @@
-"""로봇 정의 계층 — rig config 로드 + RobotModel (docs/DESIGN_robot_rig.md).
-
-    from whatslab.robot import RobotModel, load_rig
-    model = RobotModel.from_yaml("rigs/nero_orca_right.yaml")
-"""
 from whatslab.paths import configs_root
 
 from .config import (

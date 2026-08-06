@@ -1,4 +1,3 @@
-"""공통 계약 레이어 — 의존성 없음. receiver/hand/arm 이 공유하는 유일한 결합점."""
 from .interfaces import ArmSolver, HandController, Receiver
 from .types import (
     HUMAN_HAND,

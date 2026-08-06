@@ -1,16 +1,3 @@
-"""viser 기반 3D 씬 — URDF 메쉬/스켈레톤 + 사람 손 스켈레톤 (rerun 대체).
-
-viser 는 "인터랙티브 3D 씬 + GUI 위젯"이라 라이브 텔레옵 모니터링/값 튜닝에
-rerun("시계열 로그 뷰어")보다 맞고, dex_vla env 의 numpy1×rerun 쿼터니언 호환
-문제류가 사라진다. `whatslab-sdk[viz]` (viser, trimesh) 필요.
-
-  · URDFScene    : URDF 하나를 메쉬(STL) 또는 스켈레톤으로 렌더 + 관절 구동
-  · RobotArmViz  : RobotModel(팔[+손]) 을 solver q 로 구동 + 목표 프레임 (라이브)
-  · RobotHandViz : 리타게터의 로봇 손 모델을 q 로 FK (링크 스켈레톤)
-  · HandSkeletonViz : 사람 손 23관절 스켈레톤 (점 + 뼈대)
-
-viser 서버는 포트당 하나를 공유(get_server)해 여러 viz 가 한 화면에 공존한다.
-"""
 from __future__ import annotations
 
 import os
@@ -30,7 +17,6 @@ _servers: Dict[int, "object"] = {}
 
 
 def get_server(port: int = 8080):
-    """포트당 ViserServer 하나를 캐시해 재사용 (여러 viz 공존)."""
     srv = _servers.get(port)
     if srv is None:
         srv = viser.ViserServer(port=port)
@@ -47,10 +33,6 @@ def _wxyz(R: np.ndarray) -> Tuple[float, float, float, float]:
 
 
 class URDFScene:
-    """URDF 를 viser 프레임 아래 로드 — 메쉬(STL) 있으면 메쉬, 없으면 스켈레톤.
-
-    관절 구동: fk(q_full) 또는 set_joints({관절명: 값}) — 지정 안 된 관절은 중립.
-    """
 
     def __init__(self, server, urdf: str, mesh_dir: str,
                  root_path: str = "/robot"):
@@ -105,7 +87,6 @@ class URDFScene:
         self.root.wxyz = _wxyz(T[:3, :3])
 
     def q_from_named(self, name_to_val: Dict[str, float]) -> np.ndarray:
-        """{관절명: 값} → 이 URDF 의 전체 q (미지정 관절은 중립)."""
         q = pin.neutral(self.model)
         for name, val in name_to_val.items():
             if name in self._idx_q:
@@ -134,18 +115,11 @@ class URDFScene:
                 self.bones.points = np.asarray(segs)
 
     def frame_pose(self, frame_name: str) -> np.ndarray:
-        """FK 후 프레임의 (루트 기준) 4x4 — 조인트/ fixed 프레임 공통."""
         pin.updateFramePlacements(self.model, self.data)
         return self.data.oMf[self.model.getFrameId(frame_name)].homogeneous
 
 
 class RobotArmViz:
-    """RobotModel(팔[+손]) 을 solver q 로 구동 — 팔/손 URDF 메쉬 + 목표 프레임.
-
-    베이스 프레임에서 렌더한다(solver.fk 와 동일). 손이 있으면 팔 ee.parent 에
-    [ee.origin ∘ attach ∘ hand.axis_align] 로 손을 붙여 그린다(RobotModel 체인과
-    동일). 손의 카펄 등 지지 체인 관절은 solver q 로 함께 구동된다.
-    """
 
     def __init__(self, model, port: int = 8080, axis_len: float = 0.12):
         self.model = model
@@ -178,11 +152,6 @@ class RobotArmViz:
 
     def update(self, q, target_pose=None, hand_q=None, hand_names=None,
                timestamp: Optional[float] = None) -> None:
-        """q=팔 관절값(arm_joint_names 순). hand_q/hand_names 를 주면 손가락도 구동.
-
-        손 URDF 는 카펄 등 지지체인 관절을 팔 q 에서, 나머지 손가락 관절을
-        hand_q 에서 받는다(hand_names 기준). 미지정 관절은 중립.
-        """
         if self._arm is None:
             self.start()
         _ = timestamp                                   # viser 는 라이브 뷰만
@@ -206,7 +175,6 @@ class RobotArmViz:
 
 
 class RobotHandViz:
-    """리타게터의 로봇 손 모델을 q 로 FK 해 링크 스켈레톤을 표시."""
 
     def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand"):
         self._robot = retargeter._seq_stage1.optimizer.robot
@@ -253,7 +221,6 @@ def _bone_pairs() -> List[Tuple[int, int]]:
 
 
 class HandSkeletonViz:
-    """사람 손 23관절 스켈레톤 (점 + 뼈대). positions_23: (23,3), index0=wrist."""
 
     def __init__(self, port: int = 8080, root_path: str = "/human_hand"):
         self._port = port

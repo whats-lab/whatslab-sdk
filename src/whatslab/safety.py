@@ -1,12 +1,3 @@
-"""텔레옵/명령 안전 필터 — dep-light 순수 로직 (numpy·stdlib 만; pinocchio·dex-retargeting 무관).
-
-defense-in-depth 의 한 층: non-ros2_control 드라이버용 폴백 + 텔레옵 품질층.
-위치 clamp · 속도 rate-limit · watchdog(입력 끊김 → hold) · 래칭 e-stop · deadman.
-
-소비자(ROS 게이트 노드·sim·직접 파이썬)가 이 로직을 감싸 쓴다. enforcement 프로세스와
-HW e-stop 은 이 코드와 독립 — 여기는 "안전한 명령을 계산"할 뿐 최종 권위가 아니다.
-plain ROS env(numpy2)에서도 `pip install whatslab-sdk`(core) 후 `import whatslab.safety` 가능.
-"""
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
@@ -18,15 +9,12 @@ _INF = float("inf")
 
 @dataclass(frozen=True)
 class JointLimit:
-    """관절 한계. velocity 는 |Δq|/s 최대(rate-limit 용). continuous 는 lower/upper=±inf."""
     lower: float
     upper: float
     velocity: float
 
 
 def load_limits_from_urdf(urdf_xml: str) -> Dict[str, JointLimit]:
-    """URDF 문자열 → {joint_name: JointLimit}. <limit> 있는 관절만(revolute/prismatic/
-    continuous-with-limit). fixed/미한계 관절은 제외 → 필터가 hold(fail-safe)."""
     root = ET.fromstring(urdf_xml)
     out: Dict[str, JointLimit] = {}
     for j in root.findall("joint"):
@@ -44,8 +32,6 @@ def load_limits_from_urdf(urdf_xml: str) -> Dict[str, JointLimit]:
 
 def tighten(base: Dict[str, JointLimit],
             override: Optional[dict]) -> Dict[str, JointLimit]:
-    """override 로 **더 빡빡하게만** (교집합: max lower, min upper, min velocity).
-    override[name] = {'lower':.., 'upper':.., 'velocity':..} (부분 지정 가능)."""
     out = dict(base)
     for name, o in (override or {}).items():
         b = base.get(name)
@@ -58,11 +44,6 @@ def tighten(base: Dict[str, JointLimit],
 
 
 class SafetyFilter:
-    """틱마다 desired joint 위치를 안전한 명령으로 변환.
-
-    hold 조건(래칭 e-stop / deadman off / 무입력=stale)이면 마지막 안전값 유지.
-    아니면 위치 clamp → 속도 rate-limit(직전 대비). 미상 관절은 hold(fail-safe).
-    """
 
     def __init__(self, limits: Dict[str, JointLimit], dt: float,
                  initial: Optional[Dict[str, float]] = None):
@@ -88,7 +69,6 @@ class SafetyFilter:
         self._enabled = bool(enabled)
 
     def seed(self, positions: Dict[str, float]) -> None:
-        """현재 로봇 상태로 last 초기화 — first-command ramp 기준."""
         self._last = dict(positions)
 
     @property
@@ -97,8 +77,6 @@ class SafetyFilter:
 
     # ---- 핵심 ----
     def step(self, desired: Optional[Dict[str, float]]) -> Dict[str, float]:
-        """desired={name:pos} 또는 None(무입력/stale) → {name: safe pos}.
-        hold 시 마지막 안전값을 그대로 반환(재발행용)."""
         if self._estopped or not self._enabled or desired is None:
             return dict(self._last)                         # hold
         out: Dict[str, float] = {}

@@ -5,15 +5,6 @@ from ._base import FingerChain, HandConfig
 
 
 class SchunkSVHConfig(HandConfig):
-    """SCHUNK SVH — 5-finger, 9-DOF (mimic 다수).
-
-    링크/조인트 접두어: {side}_hand_ (left/right). tip 링크(thtip/fftip/…)는 공용.
-    IK 기준(원점): {side}_hand_e1 (손 베이스).
-
-    mimic 조인트가 많아 실제 제어 가능한 9개 joint만 _TARGET_JOINT_NAMES로 명시한다
-    (좌우 접두어가 달라 dict). 나머지(j3/j4/j12~j17, *_spread 등)는 이들의 mimic이다.
-
-    """
 
     _MODEL_SUBDIR  = "schunk_hand"
     _URDF_FILENAME = "schunk_svh_hand_{hand_type}.urdf"

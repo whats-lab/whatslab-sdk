@@ -1,5 +1,3 @@
-"""dex_retargeting 2단계 IK 파라미터 (atlas_hand_core/config.py 계승)."""
-
 HUBER_DELTA     = 0.025
 NORM_DELTA      = 0.01
 IK_MAX_EVAL     = 100       # 반복 종료 (결정적 + 수렴). 단계별 nlopt maxeval
