@@ -20,6 +20,13 @@ attach:
   - 0.0
   - 0.0
   - 3.1416
+# joint7(팔 손목 롤)은 orca 카펄과 축이 겹쳐 **실제로 여분**이다. 잠금 구성을 전부
+# 비교한 결과(전 구성 공통 목표 150개, 잠금 없음 모델 FK 로 생성):
+#   joint7 잠금  추종 4.30mm / 하한 0.00mm / 0.25ms  ← 최적
+#   잠금 없음    추종 4.35mm / 하한 0.01mm / 0.18ms  (사실상 동일)
+#   카펄 잠금    추종 55.1mm / 하한 15.8mm          ← 카펄은 절대 잠그지 말 것
+#   joint2 잠금  추종 84.6mm / 하한 43.2mm          ← 주 위치결정 축
+# 잠긴 관절은 buildReducedModel 이 중립(=0)에 고정하므로, 실물 전송도 joint7=0.0.
 lock_joints:
 - joint7
 solver:
@@ -28,6 +35,12 @@ solver:
   w_ori: 10.0
   max_joint_velocity: 5.0
   reach_max: 0.9204
+  max_iter: 50
+  iters_per_call: 100          # diff: 틱당 스텝 수
+  # diff 오차적응 감쇠(λ²=‖We‖²+bias)의 바닥값. 낮추면 **정지 목표** 정밀도는 오르지만
+  # (1e-4→1e-6: 27.3→5.5 µm) 60Hz **이동 목표**에서는 스텝이 과격해져 나빠진다
+  # (fk 궤적 max 4.15→85.2 mm). 텔레옵은 이동이 기본이므로 1e-4 유지.
+  sugihara_bias: 1.0e-4
 calibration:
-  enabled: true
+  enabled: false
   input_reach: 0.8305
