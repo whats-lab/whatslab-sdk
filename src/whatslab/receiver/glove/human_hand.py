@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -8,6 +9,8 @@ from scipy.spatial.transform import Rotation
 
 from whatslab.core.types import HandPose, InputSample
 from .base import GLOVE_OSC_PORT, GLOVE_TARGET_IP, GLOVE_CLIENT_PORT, GloveReceiverBase
+
+logger = logging.getLogger(__name__)
 
 
 # ── AGA OSC 프로토콜 상수 (atlas_hand_core/config.py 계승) ──
@@ -90,7 +93,8 @@ class GloveHumanHandReceiver(GloveReceiverBase):
         try:
             self._udp_client.send_message(address, packet)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("햅틱 전송 실패 (%s): %s", address, e)
             return False
 
     # ----------------------------------------------------------- OSC handlers

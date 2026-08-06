@@ -28,7 +28,6 @@ class ArmIK:
     def __init__(
         self,
         urdf_path: str,
-        package_dirs: List[str],
         locked_joints: List[str],
         ee_parent_joint: str,
         ee_frame_name: str = "ee",
@@ -36,12 +35,8 @@ class ArmIK:
         tool_translation_xyz: Sequence[float] = (0.0, 0.0, 0.0),
         w_pos: float = 20.0,
         w_ori: float = 1.0,
-        w_reg: float = 0.01,
-        w_smooth: float = 5.0,
-        ipopt_max_iter: int = 50,
-        ipopt_tol: float = 1e-4,
-        collision_pairs_flat: Optional[Sequence[int]] = None,
-        enable_collision_check: bool = False,
+        max_iter: int = 50,
+        tol: float = 1e-4,
     ):
         m_full = pin.buildModelFromUrdf(urdf_path)
         lock_ids, seen = [], set()
@@ -84,23 +79,14 @@ class ArmIK:
             frame = pin.Frame(ee_frame_name, jid, placement, pin.FrameType.OP_FRAME)
         model.addFrame(frame)
 
-        self.robot = None
-        self.reduced_robot = None
         self.model = model
         self.ee_id = model.getFrameId(ee_frame_name)
-        self.enable_collision_check = False
-        self.geom_model = None
-        self.geometry_data = None
-        _ = (package_dirs, collision_pairs_flat, enable_collision_check)
-
-        self._finish_setup(w_pos, w_ori, w_reg, w_smooth, ipopt_max_iter, ipopt_tol)
+        self._finish_setup(w_pos, w_ori, max_iter, tol)
 
     # ----------------------------------------------------------------- builders
-    def _finish_setup(self, w_pos, w_ori, w_reg, w_smooth, max_iter, tol):
+    def _finish_setup(self, w_pos, w_ori, max_iter, tol):
         self.w_pos = float(w_pos)
         self.w_ori = float(w_ori)
-        self.w_reg = float(w_reg)
-        self.w_smooth = float(w_smooth)
         self.max_iter = int(max_iter)
         self.tol = float(tol)
         
@@ -129,8 +115,8 @@ class ArmIK:
         cls, arm_urdf: str, hand_urdf: str, attach_frame: str, ee_link: str,
         mount_xyz: Sequence[float] = (0.0, 0.0, 0.0), mount_rpy: Sequence[float] = (0.0, 0.0, 0.0),
         locked_joints: Optional[List[str]] = None,
-        w_pos: float = 20.0, w_ori: float = 10.0, w_reg: float = 0.01, w_smooth: float = 0.01,
-        ipopt_max_iter: int = 50, ipopt_tol: float = 1e-4,
+        w_pos: float = 20.0, w_ori: float = 10.0,
+        max_iter: int = 50, tol: float = 1e-4,
         ee_local_rpy: Sequence[float] = (0.0, -np.pi / 2, np.pi / 2),
     ) -> "ArmIK":
         self = cls.__new__(cls)
@@ -161,15 +147,10 @@ class ArmIK:
         reduced.frames[orig_ee_id].placement = (
             reduced.frames[orig_ee_id].placement * pin.SE3(local_rot, np.zeros(3)))
         
-        self.robot = None
-        self.reduced_robot = None
         self.model = reduced
         self.data = reduced.createData()
         self.ee_id = reduced.getFrameId(ee_link)
-        self.enable_collision_check = False
-        self.geom_model = None
-        self.geometry_data = None
-        self._finish_setup(w_pos, w_ori, w_reg, w_smooth, ipopt_max_iter, ipopt_tol)
+        self._finish_setup(w_pos, w_ori, max_iter, tol)
         return self
 
     @property
@@ -282,25 +263,6 @@ class ArmIK:
             seen.add(key)
             logger.warning("IK solve 예외 — 직전 자세 유지 (추종 정지처럼 보임): %s", key)
 
-    def solve_dls(self, target_pose: np.ndarray, iters: int = 10,
-                  damp: float = 1e-2, tol: float = 1e-4) -> np.ndarray:
-        lo = self.model.lowerPositionLimit
-        hi = self.model.upperPositionLimit
-        I6 = np.eye(6)
-        q = np.array(self.history_data, dtype=float)
-        T = np.asarray(target_pose, dtype=float)
-        for _ in range(iters):
-            e, J = self._error_and_jac(q, T)
-            if np.linalg.norm(e) < tol:
-                break
-            dq = -J.T @ np.linalg.solve(J @ J.T + (damp * damp) * I6, e)
-            q = np.clip(pin.integrate(self.model, q, dq), lo, hi)
-        if not np.all(np.isfinite(q)):
-            q = self.history_data.copy()
-        self.init_data = q
-        self.history_data = q
-        return q
-
     def fk(self, q: np.ndarray) -> np.ndarray:
         pin.framesForwardKinematics(self.model, self._fk_data, np.asarray(q, dtype=float))
         return self._fk_data.oMf[self.ee_id].homogeneous.copy()
@@ -308,9 +270,6 @@ class ArmIK:
     def frame_pose(self, frame_name: str, q: np.ndarray) -> np.ndarray:
         pin.framesForwardKinematics(self.model, self._fk_data, np.asarray(q, dtype=float))
         return self._fk_data.oMf[self.model.getFrameId(frame_name)].homogeneous.copy()
-
-    def has_frame(self, frame_name: str) -> bool:
-        return self.model.existFrame(frame_name)
 
     def pose_error(self, q: np.ndarray, target_pose: np.ndarray) -> tuple:
         T = self.fk(q)
@@ -371,20 +330,6 @@ class ArmIK:
             yield np.clip(q_ref + scale * span * (rng.random(self.nq) - 0.5), lo, hi)
         for _ in range(max(0, n - 1 - n_local)):
             yield lo + span * rng.random(self.nq)
-
-    def solve_xyzrpy(self, x, y, z, roll, pitch, yaw) -> np.ndarray:
-        return self.solve(xyzrpy_to_mat(x, y, z, roll, pitch, yaw))
-
-    def solve_xyzquat(self, x, y, z, qx, qy, qz, qw) -> np.ndarray:
-        return self.solve(xyzquat_to_mat(x, y, z, qx, qy, qz, qw))
-
-    def check_self_collision(self, q: np.ndarray) -> bool:
-        if self.geom_model is None:
-            return False  # 결합(appended) 모델은 충돌 기하 없음
-        pin.forwardKinematics(self.model, self.data, q)
-        pin.updateGeometryPlacements(self.model, self.data, self.geom_model, self.geometry_data)
-        return pin.computeCollisions(self.geom_model, self.geometry_data, False)
-
 
 class DiffArmIK(ArmIK):
 
