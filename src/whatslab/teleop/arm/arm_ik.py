@@ -24,7 +24,15 @@ def xyzquat_to_mat(x: float, y: float, z: float, qx: float, qy: float, qz: float
     return mat
 
 
-class ArmIK:
+class _ArmSolverBase:
+    # 두 백엔드의 **공통 부분**: 모델/프레임/한계, warm-start 상태, converge(순수
+    # 수렴), solve_robust(전역 탐색). 프레임 추종 알고리즘(solve)은 각자 구현한다.
+    # ArmIK 와 DiffArmIK 는 형제다 — solve() 의 계약이 서로 다르므로(수렴 vs 틱당
+    # 소수 스텝) 한쪽이 다른 쪽의 특수화가 아니다.
+
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
+        raise NotImplementedError
+
     def __init__(
         self,
         urdf_path: str,
@@ -231,25 +239,6 @@ class ArmIK:
             q = pin.integrate(self.model, q, dq)
         return np.clip(q, self._lo, self._hi)   # soft 로 거의 안 닿지만 안전 clip
 
-    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        try:
-            sol_q = self.converge(target_pose, self.history_data)
-            # 출력 EMA 평활 — 프레임 간 떨림 억제(직전 해와 블렌드)
-            if self._smooth > 0.0:
-                sol_q = self._smooth * self.history_data + (1.0 - self._smooth) * sol_q
-            if not np.all(np.isfinite(sol_q)):
-                raise ValueError("IK 해에 NaN")
-        except Exception as e:
-            if not safe:
-                raise
-            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
-            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
-            self._warn_once(e)
-            sol_q = self.history_data.copy()
-        self.init_data = sol_q
-        self.history_data = sol_q
-        return sol_q
-
     @property
     def q_neutral(self) -> np.ndarray:
         return self._q_neutral.copy()
@@ -331,7 +320,31 @@ class ArmIK:
         for _ in range(max(0, n - 1 - n_local)):
             yield lo + span * rng.random(self.nq)
 
-class DiffArmIK(ArmIK):
+class ArmIK(_ArmSolverBase):
+    # dls 백엔드 — 매 프레임 수렴까지 반복(cold-start 정밀해). solve_robust 의
+    # 후보 평가와 같은 converge() 를 쓰되, 여기서만 출력 EMA 를 얹는다.
+
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
+        try:
+            sol_q = self.converge(target_pose, self.history_data)
+            # 출력 EMA 평활 — 프레임 간 떨림 억제(직전 해와 블렌드)
+            if self._smooth > 0.0:
+                sol_q = self._smooth * self.history_data + (1.0 - self._smooth) * sol_q
+            if not np.all(np.isfinite(sol_q)):
+                raise ValueError("IK 해에 NaN")
+        except Exception as e:
+            if not safe:
+                raise
+            # 직전 해 유지(발산/NaN 방어). 다만 조용히 삼키면 "IK 가 안 따라온다" 와
+            # 구분이 안 되므로 예외 종류별로 한 번은 반드시 알린다.
+            self._warn_once(e)
+            sol_q = self.history_data.copy()
+        self.init_data = sol_q
+        self.history_data = sol_q
+        return sol_q
+
+
+class DiffArmIK(_ArmSolverBase):
 
     # 텔레옵 스텝 파라미터 (인스턴스에서 덮어쓰기 가능)
     iters_per_call = 100      # 틱당 IK 스텝 수 (내부 완전 수렴 — 지연 없음)
