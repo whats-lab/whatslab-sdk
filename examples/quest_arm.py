@@ -53,14 +53,20 @@ def main():
                     help="실물 전송 패널을 viser 에 띄운다 (--viz 필요, 기본 미연결)")
     ap.add_argument("--can", default="can0", help="nero CAN 채널")
     ap.add_argument("--speed", type=int, default=20, help="nero 속도 퍼센트 (텔레옵은 낮게)")
+    ap.add_argument("--no-calib", action="store_true",
+                    help="캘리브 전처리(yaw W + reach 스케일 + 캘리브 원점 p0) 를 끄고 "
+                         "리시버 좌표를 그대로 목표로 쓴다 — A/B 비교용")
     args = ap.parse_args()
 
     rig = load_rig(args.rig)
+    if args.no_calib:
+        rig.calibration.enabled = False
     robot = RobotModel(rig)
     model = _build_model(args, robot)
 
     print(f"[setup] rig={rig.name} arm={args.arm} hand={'on' if robot.has_hand else 'off'} "
-          f"reach_max={rig.solver.reach_max}")
+          f"reach_max={rig.solver.reach_max} "
+          f"calib={'on(W+scale+p0)' if rig.calibration.enabled else 'off(raw)'}")
     print(f"[setup] arm_joints={robot.arm_joint_names}")
 
     if not args.no_safety:      # rig max_joint_velocity 를 get_q 출력에 강제
