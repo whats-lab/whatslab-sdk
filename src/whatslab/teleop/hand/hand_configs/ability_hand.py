@@ -5,7 +5,6 @@ import numpy as np
 
 
 class AbilityHandConfig(HandConfig):
-    """PSYONIC Ability Hand — 5-finger."""
 
     _MODEL_SUBDIR = "ability_hand"
     _URDF_FILENAME = "ability_hand_{hand_type}.urdf"

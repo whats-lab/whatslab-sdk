@@ -1,11 +1,3 @@
-"""공통 데이터 타입 + 사람 손 골격 스펙 (단일 진실 출처).
-
-레이어 간 표현을 한 곳에 정의해, receiver·손·팔이 서로의 구체 클래스를 모르고도
-협력하게 한다. 특히 사람 손은 매직 인덱스 배열 대신 **이름 기반 관절 트리**로 표현해,
-receiver → hand/arm 텔레옵이 이름으로 조회하도록 한다.
-
-이 모듈은 whatslab 의 최하위 계약 — 무거운 의존 없음(numpy/scipy 만).
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,7 +11,6 @@ _IDENTITY_QUAT = np.array([0.0, 0.0, 0.0, 1.0])
 
 @dataclass
 class Pose:
-    """위치 + 회전(quaternion xyzw). 좌표계는 호출 측 약속(예: HMD 로컬)."""
 
     pos: np.ndarray = field(default_factory=lambda: np.zeros(3))
     quat: np.ndarray = field(default_factory=lambda: _IDENTITY_QUAT.copy())  # xyzw
@@ -89,12 +80,6 @@ JOINT_INDEX: Dict[str, int] = {j.name: i for i, j in enumerate(HUMAN_HAND)}
 
 @dataclass
 class HandPose:
-    """사람 손 한 프레임 (이름 기반).
-
-    wrist      : 손목 6D pose (pos+quat). arm 텔레옵의 EE 입력. 소스에 따라 pos 없음
-                 (예: AirGlove 는 회전만) → 그 경우 pos 는 신뢰하지 말 것.
-    joint_rot  : 관절명 → local quaternion(xyzw). sensed 관절만 채운다.
-    """
 
     wrist: Optional[Pose] = None
     joint_rot: Dict[str, np.ndarray] = field(default_factory=dict)
@@ -102,7 +87,6 @@ class HandPose:
     timestamp: float = 0.0
 
     def to_sensor_array(self) -> np.ndarray:
-        """손 FK/리타게터 입력용 (17,4) 배열: [0]=wrist 회전, [1:17]=SENSED_JOINTS 순서."""
         arr = np.tile(_IDENTITY_QUAT, (1 + len(SENSED_JOINTS), 1)).astype(float)
         if self.wrist is not None:
             arr[0] = self.wrist.quat
@@ -115,7 +99,6 @@ class HandPose:
     @staticmethod
     def from_sensor_array(arr17: np.ndarray, wrist_pos: Optional[np.ndarray] = None,
                           tracked: bool = True, timestamp: float = 0.0) -> "HandPose":
-        """(17,4) 센서 배열 → HandPose. [0]=wrist 회전, [1:17]=SENSED_JOINTS."""
         a = np.asarray(arr17, dtype=float)
         wrist = Pose(pos=(np.zeros(3) if wrist_pos is None else np.asarray(wrist_pos, float)),
                      quat=a[0].copy())
@@ -125,14 +108,6 @@ class HandPose:
 
 @dataclass
 class InputSample:
-    """한 손(side)의 한 프레임 입력.
-
-    controller : 컨트롤러 6D (글러브 모드의 팔 IK 입력). 없으면 None.
-    hand       : 사람 손 포즈(손목+손가락). 손 텔레옵 입력이자 arm 의 손목 입력원.
-    joint_q    : 로봇 관절각 직접 지정(이름→rad). 있으면 IK/리타게팅을 건너뛰고
-                 그대로 반환한다(TeleopModel.get_q 의 bypass 경로). 없으면 None.
-    소스마다 채우는 필드가 다르다(Quest=hand(+wrist pos), 글러브=hand(회전만)).
-    """
 
     controller: Optional[Pose] = None
     hand: Optional[HandPose] = None
@@ -144,7 +119,6 @@ class InputSample:
 
 @dataclass
 class HandCommand:
-    """손 리타게팅/그리퍼 공통 출력."""
 
     joint_names: List[str] = field(default_factory=list)
     joint_angles: np.ndarray = field(default_factory=lambda: np.zeros(0))  # rad

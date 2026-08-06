@@ -1,13 +1,3 @@
-"""
-retargeter.py
-Hand 리타겟팅 파이프라인 코어 (ROS2 비의존)
-
-사용법:
-    from whatslab.teleop.hand import HandRetargeter
-    retargeter = HandRetargeter('right', 'orca_hand', urdf_root='/path/to/models')
-    joint_angles = retargeter.compute(sensor_quats_17)  # shape (17, 4)
-"""
-
 import logging
 import os
 from typing import List
@@ -36,11 +26,6 @@ from .spherical_fk import HandSphericalFK
 
 
 class HandRetargeter:
-    """AGA 센서 쿼터니언 → 로봇 조인트 각도 변환기.
-
-    FK → 좌표 변환 → 스케일링 → 2단계 IK (vector + position)
-    (손목 자세는 여기서 다루지 않는다 — 팔 IK 소관)
-    """
 
     def __init__(
         self,
@@ -122,13 +107,6 @@ class HandRetargeter:
     # ─────────────────────────────────────────
 
     def compute(self, sensor_quats_17: np.ndarray) -> np.ndarray:
-        """17×4 센서 쿼터니언 → 로봇 조인트 각도 (rad).
-
-        Returns:
-            np.ndarray: len(joint_names) 크기의 조인트 각도 배열
-        Side-effect:
-            self.last_human_positions 에 변환 후 human 포지션 저장 (TF 발행용)
-        """
         positions          = self.fk.compute_positions(sensor_quats_17)
         positions_centered = positions - positions[0]
         positions_robot    = (self._coord_transform @ positions_centered.T).T
