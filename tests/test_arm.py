@@ -242,3 +242,141 @@ def test_diff_backend_no_divergence_on_unreachable():
     q2 = s.solve(T)
     assert np.linalg.norm(q2 - q) < 0.05
 
+
+
+def test_null_projector_is_idempotent_and_leak_free():
+    """N = I − J⁺J 는 투영자여야 한다 — J⁺ 가 태스크 해의 감쇠를 공유하면 아니다.
+
+    공유하면 널스페이스 항(한계회피·선호자세)이 주태스크로 새어 들어가
+    "주태스크 불간섭" 이라는 전제가 깨진다.
+    """
+    pytest.importorskip("pinocchio")
+    import pinocchio as pin
+    s = _nero_solver("diff")
+    rng = np.random.default_rng(0)
+    worst_idem = worst_leak = 0.0
+    for _ in range(50):
+        q = pin.integrate(s.model, s.q_neutral, rng.uniform(-1.5, 1.5, s.model.nv))
+        T = s.fk(pin.integrate(s.model, q, rng.uniform(-0.4, 0.4, s.model.nv)))
+        e, J = s._error_and_jac(q, T)
+        w = s._task_w
+        WJ = w[:, None] * J
+        N = s._null_projector(WJ, np.eye(s.model.nv))
+        worst_idem = max(worst_idem, float(np.linalg.norm(N @ N - N)))
+        v = N @ rng.standard_normal(s.model.nv)
+        leak = np.linalg.norm(WJ @ v) / max(np.linalg.norm(WJ) * np.linalg.norm(v), 1e-12)
+        worst_leak = max(worst_leak, float(leak))
+    assert worst_idem < 1e-9, f"N 이 멱등이 아니다: ‖N²−N‖={worst_idem:.2e}"
+    assert worst_leak < 1e-9, f"주태스크 누설 {worst_leak*100:.6f}%"
+
+
+def test_dtheta_max_caps_orientation_demand_not_target_delta():
+    """dtheta_max 는 '현재 EE 자세 → 목표' 각도를 자른다(목표의 변화량이 아니다)."""
+    pytest.importorskip("pinocchio")
+    from scipy.spatial.transform import Rotation
+    s = _nero_solver("diff")
+    s.dtheta_max = 0.1
+    q = s.q_neutral
+    T_cur = s.fk(q)
+    T_goal = T_cur.copy()
+    T_goal[:3, :3] = T_cur[:3, :3] @ Rotation.from_rotvec([0.0, 0.0, 2.0]).as_matrix()
+
+    T_lim = s._rate_limited_target(q, T_goal)
+    ang = np.linalg.norm(Rotation.from_matrix(
+        T_cur[:3, :3].T @ T_lim[:3, :3]).as_rotvec())
+    assert ang == pytest.approx(0.1, abs=1e-6)
+
+
+def test_rig_exposes_diff_step_and_projector_tuning():
+    """코드 기본값 대신 rig solver: 에서 튜닝되는지 — 변경이 diff 에 남아야 한다."""
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+    rig = load_rig("rigs/nero_orca_right.yaml")
+    assert rig.solver.dtheta_max == pytest.approx(0.25)
+    assert rig.solver.proj_rcond == pytest.approx(1e-6)
+    assert rig.solver.k_limit == pytest.approx(0.30)
+
+    rig.solver.dtheta_max = 1.5
+    rig.solver.k_limit = 0.7
+    rig.solver.proj_rcond = 1e-8
+    s = RobotModel(rig).solver
+    assert s.dtheta_max == pytest.approx(1.5)
+    assert s._k_limit == pytest.approx(0.7)
+    assert s.proj_rcond == pytest.approx(1e-8)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 캘리브 on/off (calibration.enabled) + 캘리브 원점 p0
+#
+# on  : target = scale·(p0 + W(p − p0)),  rot = W·G     (p0/W 는 capture 시점)
+# off : target = p,  rot = G                            (리시버 좌표를 그대로 신뢰)
+#
+# enabled 는 지금까지 텔레옵 경로에서 무시됐다 — 껐다 켤 수가 없었다.
+# ─────────────────────────────────────────────────────────────────────────
+def _cal_pose(pos, quat=(0.0, 0.0, 0.0, 1.0)):
+    from whatslab.core.types import Pose
+    return Pose(pos=np.array(pos, dtype=float), quat=np.array(quat, dtype=float))
+
+
+def test_calib_disabled_passes_receiver_pose_through():
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=False)
+    q = Rotation.from_euler("z", 0.9).as_quat()
+    cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})   # 캡처해도 무시
+    T = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
+    assert T[:3, 3] == pytest.approx([0.3, -0.1, 0.2])         # 스케일 없음
+    assert T[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())   # W 없음
+
+
+def test_calib_enabled_uses_captured_origin():
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=0.9, input_reach=0.9)       # scale 1.0
+    p0 = [0.40, -0.12, 0.18]
+    assert cal.capture({"arm_pose": _cal_pose(p0)}) is True
+    assert cal.anchor == pytest.approx(p0)
+
+    T = cal.apply({"arm_pose": _cal_pose(p0)})["arm_target"]
+    assert T[:3, 3] == pytest.approx(p0)                       # 캘리브 지점 = 원점
+
+    T = cal.apply({"arm_pose": _cal_pose(np.array(p0) + [0.1, 0.0, 0.0])})["arm_target"]
+    assert T[:3, 3] == pytest.approx(np.array(p0) + [0.1, 0.0, 0.0])
+
+
+def test_calib_origin_rotates_only_the_displacement():
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=1.0, input_reach=1.0)
+    yaw = 0.7
+    q = Rotation.from_euler("z", yaw).as_quat()
+    p0 = np.array([0.4, 0.1, 0.2])
+    cal.capture({"arm_pose": _cal_pose(p0, q)})                # W = Rz(-yaw)
+    d = np.array([0.10, 0.05, 0.0])
+    T = cal.apply({"arm_pose": _cal_pose(p0 + d, q)})["arm_target"]
+    assert T[:3, 3] == pytest.approx(p0 + Rotation.from_euler("z", -yaw).as_matrix() @ d)
+
+
+def test_calib_before_capture_is_scale_only():
+    from whatslab.model.calibration import ArmCalibration
+
+    cal = ArmCalibration(reach_max=1.0, input_reach=0.5)       # scale 2.0
+    T = cal.apply({"arm_pose": _cal_pose([0.25, 0.0, 0.1])})["arm_target"]
+    assert T[:3, 3] == pytest.approx([0.5, 0.0, 0.2])
+
+
+def test_calib_enabled_flag_reaches_model_from_rig():
+    pytest.importorskip("pinocchio")
+    from whatslab.model.quest import QuestModel
+    from whatslab.robot import RobotModel, load_rig
+
+    rig = load_rig("rigs/nero_orca_right.yaml")
+    assert rig.calibration.enabled is True
+    assert QuestModel(RobotModel(rig)).calib["right"].enabled is True
+
+    rig.calibration.enabled = False
+    assert QuestModel(RobotModel(rig)).calib["right"].enabled is False

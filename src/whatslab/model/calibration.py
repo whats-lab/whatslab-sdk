@@ -18,25 +18,46 @@ def _Rz(a: float) -> np.ndarray:
 class ArmCalibration:
 
     def __init__(self, reach_max: Optional[float] = None,
-                 input_reach: Optional[float] = None):
+                 input_reach: Optional[float] = None,
+                 enabled: bool = True):
         self.reach_max = reach_max
-        self._W: Optional[np.ndarray] = None       # yaw-0 보정(Rz), 미캡처면 None
-        # 사람 도달반경(reach 스케일). rig 의 calibration.input_reach 로 초기화되고
-        # calibrate_reach 가 갱신한다(persist 하면 rig yaml 에도 저장).
+        self.enabled = bool(enabled)
+        self._W: Optional[np.ndarray] = None
+        self._p0: Optional[np.ndarray] = None
         self._input_reach: Optional[float] = input_reach
+
+    @property
+    def scale(self) -> float:
+        if self._input_reach and self.reach_max:
+            return float(self.reach_max / self._input_reach)
+        return 1.0
+
+    @property
+    def anchor(self) -> Optional[np.ndarray]:
+        if self._p0 is None:
+            return None
+        return self.scale * self._p0
 
     def apply(self, data: dict) -> dict:
         pose = data.get("arm_pose")
-        if pose is None:                        # 팔 목표 없음(=미추적/미사용 side) → 스킵
+        if pose is None:
             data["arm_target"] = None
             return data
-        pos = np.asarray(pose.pos, dtype=float)
-        if self._input_reach and self.reach_max:           # reach 스케일(사람→로봇)
-            pos = pos * (self.reach_max / self._input_reach)
+        p = np.asarray(pose.pos, dtype=float)
         G = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
         T = np.eye(4)
-        T[:3, 3] = pos
-        T[:3, :3] = (self._W @ G) if self._W is not None else G  # 캡처 전엔 상대 rot 그대로
+        if not self.enabled:
+            T[:3, 3] = p
+            T[:3, :3] = G
+            data["arm_target"] = T
+            return data
+        W = self._W
+        if self._p0 is not None:
+            d = p - self._p0
+            T[:3, 3] = self.scale * (self._p0 + (W @ d if W is not None else d))
+        else:
+            T[:3, 3] = self.scale * p
+        T[:3, :3] = (W @ G) if W is not None else G
         data["arm_target"] = T
         return data
 
@@ -46,6 +67,7 @@ class ArmCalibration:
             return False
         G = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
         self._W = _Rz(-_yaw(G))
+        self._p0 = np.asarray(pose.pos, dtype=float).copy()
         return True
 
     def set_reach(self, input_reach: float) -> None:

@@ -21,7 +21,7 @@ from whatslab.model import QuestModel, GloveModel
 | `GloveModel(robot)` | 프리셋: 팔=Quest 컨트롤러 IK, 손=글러브 리타게팅. 햅틱 지원. |
 | `HandModel(robot)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). |
 | `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃·`reseed()`·확실한 스톨** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `stall_*`/`reseed_*` 속성. |
-| `ArmCalibration(...)` | yaw 정렬 + reach 스케일 소유. |
+| `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + 캘리브 원점(`p0`) + reach 스케일 소유. `enabled=False` 면 리시버 좌표를 그대로 통과시킨다(rig `calibration.enabled`). |
 
 ### `TeleopModel` 메서드
 
