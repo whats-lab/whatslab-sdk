@@ -17,7 +17,7 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 from whatslab.core.types import HandCommand, InputSample
 from whatslab.model.base import TeleopModel
 from whatslab.model.glove import GloveModel
-from whatslab.receiver.glove_robot_hand import GloveRobotHandReceiver
+from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 
 
 def _packet(address: str, *args) -> bytes:
@@ -99,8 +99,8 @@ def test_no_input_returns_empty_q():
 
 
 def test_start_stop_delegate_to_both_receivers():
-    from whatslab.receiver.glove_human_hand import GloveHumanHandReceiver
-    from whatslab.receiver.quest_controller import QuestControllerReceiver
+    from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
+    from whatslab.receiver.quest.controller import QuestControllerReceiver
     m = _make_model()
     # 실 소켓 bind/close 왕복 검증 — 유니크 포트로 교체해 다른 테스트의 기본 포트
     # (4040/9000)와 절대 충돌하지 않게(결정적).
