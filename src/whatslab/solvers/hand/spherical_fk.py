@@ -12,29 +12,25 @@ from whatslab.paths import models_root
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────
-# 센서 1~16
-# ─────────────────────────────────────────────
 JOINT_ORDER = [
-    'thumb_cmc0',  # sensor  1
-    'thumb_cmc1',  # sensor  2 
-    'thumb_mcp',   # sensor  3
-    'thumb_ip',    # sensor  4
-    'index_mcp',   # sensor  5
-    'index_pip',   # sensor  6
-    'index_dip',   # sensor  7
-    'middle_mcp',  # sensor  8
-    'middle_pip',  # sensor  9
-    'middle_dip',  # sensor 10
-    'ring_mcp',    # sensor 11
-    'ring_pip',    # sensor 12
-    'ring_dip',    # sensor 13
-    'pinky_mcp',   # sensor 14
-    'pinky_pip',   # sensor 15
-    'pinky_dip',   # sensor 16
+    'thumb_cmc0',
+    'thumb_cmc1',
+    'thumb_mcp',
+    'thumb_ip',
+    'index_mcp',
+    'index_pip',
+    'index_dip',
+    'middle_mcp',
+    'middle_pip',
+    'middle_dip',
+    'ring_mcp',
+    'ring_pip',
+    'ring_dip',
+    'pinky_mcp',
+    'pinky_pip',
+    'pinky_dip',
 ]
 
-# URDF link suffix → Pinocchio joint suffix
 URDF_TO_JOINT = {
     'wrist':        None,        
     'thumb_cmc0':   'thumb_cmc0',
@@ -92,32 +88,27 @@ def build_model(urdf_path: str, hand_type: str = 'left') -> 'pin.Model':
         )
         return jid
 
-    # ── Thumb (4 joints + 1 tip) ──────────────────────────────────────────
     cmc0_id  = add_sph(UNIVERSE, 'thumb_cmc0',  joints[f'{pfx}thumb_cmc0'])
     cmc1_id  = add_sph(cmc0_id,  'thumb_cmc1',  joints[f'{pfx}thumb_cmc1_x'])
     tmcp_id  = add_sph(cmc1_id,  'thumb_mcp',   joints[f'{pfx}thumb_mcp'])
     tip_id   = add_sph(tmcp_id,  'thumb_ip',    joints[f'{pfx}thumb_ip'])
     _        = add_sph(tip_id,   'thumb_tip',   joints[f'{pfx}thumb_tip']) 
 
-    # ── Index (3 joints + 1 tip) ──────────────────────────────────────────
     imcp_id = add_sph(UNIVERSE, 'index_mcp', joints[f'{pfx}index_mcp_z'])
     ipip_id = add_sph(imcp_id,  'index_pip', joints[f'{pfx}index_pip'])
     idip_id = add_sph(ipip_id,  'index_dip', joints[f'{pfx}index_dip'])
     _       = add_sph(idip_id,  'index_tip', joints[f'{pfx}index_tip']) 
 
-    # ── Middle (3 joints + 1 tip) ─────────────────────────────────────────
     mmcp_id = add_sph(UNIVERSE, 'middle_mcp', joints[f'{pfx}middle_mcp_z'])
     mpip_id = add_sph(mmcp_id,  'middle_pip', joints[f'{pfx}middle_pip'])
     mdip_id = add_sph(mpip_id,  'middle_dip', joints[f'{pfx}middle_dip'])
     _       = add_sph(mdip_id,  'middle_tip', joints[f'{pfx}middle_tip']) 
 
-    # ── Ring (3 joints + 1 tip) ───────────────────────────────────────────
     rmcp_id = add_sph(UNIVERSE, 'ring_mcp', joints[f'{pfx}ring_mcp_z'])
     rpip_id = add_sph(rmcp_id,  'ring_pip', joints[f'{pfx}ring_pip'])
     rdip_id = add_sph(rpip_id,  'ring_dip', joints[f'{pfx}ring_dip'])
     _       = add_sph(rdip_id,  'ring_tip', joints[f'{pfx}ring_tip']) 
 
-    # ── Pinky (3 joints + 1 tip) ──────────────
     cmc_xyz  = np.array(joints[f'{pfx}pinky_0'])
     pmcp_xyz = np.array(joints[f'{pfx}pinky_mcp_z'])
     pmcp_id  = add_sph(UNIVERSE, 'pinky_mcp', (cmc_xyz + pmcp_xyz).tolist())
@@ -142,19 +133,16 @@ class HandSphericalFK:
         self.model = build_model(urdf_path, self.hand_type)
         self.data  = self.model.createData()
 
-        # joint name → joint id
         self.name_to_jid = {
             self.model.names[i]: i
             for i in range(1, self.model.njoints)
         }
 
-        # sensor index (1~16) → joint id
         self.sensor_to_jid = {
             s_idx + 1: self.name_to_jid[self.pfx + suffix]
             for s_idx, suffix in enumerate(JOINT_ORDER)
         }
 
-        # 23-index 위치 배열 매핑
         self._joint_map = {
             1: self.pfx + 'thumb_cmc0', 2: self.pfx + 'thumb_cmc1', 3: self.pfx + 'thumb_mcp',
             4: self.pfx + 'thumb_ip',   5: self.pfx + 'thumb_tip',
@@ -169,7 +157,6 @@ class HandSphericalFK:
                     hand_type, self.model.njoints, self.model.nq)
         logger.debug("  joints: %s", list(self.model.names[1:]))
 
-    # ─────────────────────────────────────────
     def sensor_to_q(self, sensor_quats_17: np.ndarray) -> np.ndarray:
         q = pin.neutral(self.model)   
         sign = 1 if self.hand_type == 'right' else -1 
@@ -192,7 +179,6 @@ class HandSphericalFK:
 
         return q
 
-    # ─────────────────────────────────────────
     def compute(self, sensor_quats_17: np.ndarray):
         q = self.sensor_to_q(sensor_quats_17)
         pin.forwardKinematics(self.model, self.data, q)
@@ -207,7 +193,6 @@ class HandSphericalFK:
 
         return q, positions, rotations
 
-    # ─────────────────────────────────────────
     def compute_positions(self, sensor_quats_17: np.ndarray) -> np.ndarray:
         _, pos_dict, _ = self.compute(sensor_quats_17)
         out = np.zeros((23, 3), dtype=np.float64)
@@ -225,14 +210,12 @@ class HandRerunViz:
         self.entity_prefix = entity_prefix
         pfx                = hand_type + '_'
 
-        # 전체 link name → joint name 매핑
         self.link_to_jname = {}
         for link_suf, joint_suf in URDF_TO_JOINT.items():
             if joint_suf is None:
                 continue
             self.link_to_jname[pfx + link_suf] = pfx + joint_suf
 
-    # ─────────────────────────────────────────
     def setup(self):
         try:
             import rerun as rr
@@ -278,7 +261,6 @@ class HandRerunViz:
                 continue
 
             filename = mesh_elem.get('filename', '')
-            # URDF 의 package://dexhand_description/... → models_root(dexhand share) 로 해석
             filename = filename.replace('package://dexhand_description/',
                                         models_root() + '/')
             if not os.path.exists(filename):
@@ -327,7 +309,6 @@ class HandRerunViz:
 
         logger.info("[HandRerunViz] 메쉬 등록 완료 (%d개 링크, 손목 포함)", n_logged)
 
-    # ─────────────────────────────────────────
     def update(self, sensor_quats_17: np.ndarray, timestamp: float = None):
         try:
             import rerun as rr
@@ -353,4 +334,3 @@ class HandRerunViz:
                     rotation=rr.Quaternion(xyzw=quat),
                 ),
             )
-

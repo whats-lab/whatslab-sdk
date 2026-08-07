@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import yaml
@@ -39,18 +39,13 @@ class Origin:
 class RobotSpec:
 
     name: str
-    kind: str                                            # "arm" | "hand"
-    urdf: str                                            # models 루트 기준 상대경로
-    axis_align: Origin = field(default_factory=Origin)   # URDF 관례 → 정준 정렬
-    # arm 전용
+    kind: str
+    urdf: str
+    axis_align: Origin = field(default_factory=Origin)
     ee_parent: Optional[str] = None
-    ee_origin: Origin = field(default_factory=Origin)    # parent→TCP (URDF origin)
-    # hand 전용
-    base_frame: Optional[str] = None                     # 장착점(손목)
-    retarget: Optional[str] = None                       # 리타게팅 config 이름(CONFIG_REGISTRY)
-    # target_ee 프레임(=IK 제어 프레임)을 정준 tool 규약(손끝=X, 손바닥=-Z)에
-    # 정렬하는 국소 회전. 메쉬는 안 움직이고 IK 제어 프레임 축만 돌린다
-    # (arm_ik ee_local_rpy). rpy 만 적용(xyz 는 현재 미사용). align_frames ee 모드로 튜닝.
+    ee_origin: Origin = field(default_factory=Origin)
+    base_frame: Optional[str] = None
+    retarget: Optional[str] = None
     ee_align: Origin = field(default_factory=Origin)
 
     @staticmethod
@@ -80,17 +75,21 @@ class RobotSpec:
 
 @dataclass
 class SolverCfg:
-    backend: str = "diff"            # dls | diff
+    backend: str = "diff"
     w_pos: float = 20.0
     w_ori: float = 10.0
     max_joint_velocity: float = 5.0
-    reach_max: Optional[float] = None              # target_ee 안전 반경(베이스 기준)
-    # 수치 반복 파라미터 — **코드 기본값을 고치지 말고 여기서 튜닝한다**(변경이
-    # 커밋 diff 에 남아야 한다). None 이면 백엔드 기본값.
-    max_iter: Optional[int] = None                 # dls: 프레임당 수렴 반복 상한
-    iters_per_call: Optional[int] = None           # diff: 틱당 스텝 수
-    tol: Optional[float] = None                    # 6D 오차 종료 임계
-    sugihara_bias: Optional[float] = None          # diff: 오차적응 감쇠 바닥값
+    reach_max: Optional[float] = None
+    max_iter: Optional[int] = None
+    iters_per_call: Optional[int] = None
+    tol: Optional[float] = None
+    dp_max: Optional[float] = None
+    dtheta_max: Optional[float] = None
+    dq_max_tick: Optional[float] = None
+    sugihara_bias: Optional[float] = None
+    k_posture: Optional[float] = None
+    k_limit: Optional[float] = None
+    joint_weights: Optional[Dict[str, float]] = None
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
@@ -109,7 +108,15 @@ class SolverCfg:
             max_iter=_opt("max_iter", int),
             iters_per_call=_opt("iters_per_call", int),
             tol=_opt("tol", float),
+            dp_max=_opt("dp_max", float),
+            dtheta_max=_opt("dtheta_max", float),
+            dq_max_tick=_opt("dq_max_tick", float),
             sugihara_bias=_opt("sugihara_bias", float),
+            k_posture=_opt("k_posture", float),
+            k_limit=_opt("k_limit", float),
+            joint_weights=({str(k): float(v)
+                            for k, v in d["joint_weights"].items()}
+                           if d.get("joint_weights") else None),
         )
 
 
@@ -132,17 +139,16 @@ class CalibrationCfg:
 
 @dataclass
 class RigConfig:
-
     name: str
     arm: Optional[RobotSpec]
     hand: Optional[RobotSpec]
-    mount: Origin                    # 정준 → 루트 로봇 베이스 (arm 없으면 hand)
-    attach: Origin                   # arm TCP → hand base_frame (조합 시)
+    mount: Origin
+    attach: Origin
     lock_joints: List[str]
     target_ee: Optional[str]
     solver: SolverCfg
     calibration: CalibrationCfg
-    path: Optional[str] = None       # 로드 원본 (캘리브 갱신용)
+    path: Optional[str] = None
 
     def resolve_target_ee(self) -> str:
         if self.target_ee:
@@ -186,10 +192,10 @@ def load_rig(path: str) -> RigConfig:
     if not os.path.exists(p):
         raise FileNotFoundError(f"rig config 없음: {path}")
     d = _load_yaml(p)
-    cfg_root = os.path.dirname(os.path.dirname(p))        # configs/
+    cfg_root = os.path.dirname(os.path.dirname(p))
 
     def _load_robot(ref) -> RobotSpec:
-        if isinstance(ref, dict):                          # 인라인 정의 허용
+        if isinstance(ref, dict):
             return RobotSpec.from_dict(ref)
         for base in (os.path.dirname(p), cfg_root):
             rp = os.path.join(base, ref)
@@ -218,10 +224,18 @@ def load_rig(path: str) -> RigConfig:
         calibration=CalibrationCfg.from_dict(d.get("calibration")),
         path=p,
     )
-    # hand 단독 rig: 위치 개념 없음 → calibration 무시 경고
     if arm is None and rig.calibration.complete:
         print("[rig] WARN: hand 단독 rig — calibration 은 무시됩니다", flush=True)
     return rig
+
+
+def _dump_atomic(path: str, d: dict) -> None:
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def save_calibration(rig: RigConfig, input_reach: float) -> None:
@@ -229,10 +243,9 @@ def save_calibration(rig: RigConfig, input_reach: float) -> None:
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
     cal = d.setdefault("calibration", {})
-    cal["enabled"] = True
+    cal.setdefault("enabled", True)
     cal["input_reach"] = round(float(input_reach), 4)
-    with open(rig.path, "w") as f:
-        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+    _dump_atomic(rig.path, d)
     rig.calibration = CalibrationCfg.from_dict(cal)
 
 
@@ -241,6 +254,5 @@ def save_reach_max(rig: RigConfig, reach_max: float) -> None:
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
     d.setdefault("solver", {})["reach_max"] = round(float(reach_max), 4)
-    with open(rig.path, "w") as f:
-        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+    _dump_atomic(rig.path, d)
     rig.solver.reach_max = float(reach_max)

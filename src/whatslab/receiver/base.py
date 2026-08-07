@@ -2,14 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 
-# 손가락 16관절 순서 (Unity/AGA 송신 순서 = 손 리타게터 JOINT_ORDER 와 동일)
-FINGER_JOINT_ORDER = [
-    "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip",
-    "index_mcp", "index_pip", "index_dip",
-    "middle_mcp", "middle_pip", "middle_dip",
-    "ring_mcp", "ring_pip", "ring_dip",
-    "pinky_mcp", "pinky_pip", "pinky_dip",
-]
 NUM_FINGER_JOINTS = 16
 
 

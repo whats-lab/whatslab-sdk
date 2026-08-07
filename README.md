@@ -77,7 +77,7 @@ The glove path follows Spine's OSC contract as documented in Spine's
 ## Quick start
 
 ```python
-from whatslab.model import GloveModel
+from whatslab.teleop import GloveModel
 
 m = GloveModel("rigs/nero_orca_right.yaml")   # arm = controller IK, hand = glove retarget
 m.start()
@@ -88,8 +88,10 @@ while True:
 ```
 
 Presets: `QuestModel` (hand-tracking), `GloveModel` (controller + glove),
-`HandModel` (hand only). For custom hardware combinations, subclass `TeleopModel`
-and override `get_data()`.
+`HandModel` (hand only). For a custom hardware combination, subclass `TeleopModel`
+and implement the single abstract hook `_get_raw_target()` — it decides which source
+feeds the arm EE target. Everything else (calibration, IK, retargeting, safety) is
+already wired.
 
 ## Examples & tools
 
@@ -111,7 +113,11 @@ Run the test suite with `pip install -e '.[all,dev]' && pytest`.
 
 ## Documentation
 
+- [**Guide**](docs/GUIDE.md) — bringing up a new robot, calibration workflow, arm-IK
+  tuning and how to judge a change, diagnostics, sending to real hardware.
 - [**API reference**](docs/API.md) — public symbols per subpackage, with signatures.
+- [**Changelog**](CHANGELOG.md) — version history. **0.2.0 contains breaking changes**
+  (`model.ik[s]` → `model.sides[s].ik`, `RobotModel.solve` removed).
 
 ## Acknowledgments
 

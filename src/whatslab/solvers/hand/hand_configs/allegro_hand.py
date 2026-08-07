@@ -17,10 +17,8 @@ class AllegroHandConfig(HandConfig):
     )
     _SCALE_FACTOR = [0.8, 0.8, 0.8, 0.8]
 
-    # 손가락당 로봇 링크 5구간 vs human 키포인트 4구간 → 영벡터를 팁(fixed) 구간으로
-    # 밀어 모든 구동관절(joint_N)에 방향 목표를 부여한다.
     _chains = [
-        FingerChain(  # Index (joint_8~11)
+        FingerChain(
             links=[
                 "{wrist}",
                 "link_8.0",
@@ -31,7 +29,7 @@ class AllegroHandConfig(HandConfig):
             ],
             human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip", "index_tip"],
         ),
-        FingerChain(  # Middle (joint_4~7)
+        FingerChain(
             links=[
                 "{wrist}",
                 "link_4.0",
@@ -42,7 +40,7 @@ class AllegroHandConfig(HandConfig):
             ],
             human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip", "middle_tip"],
         ),
-        FingerChain(  # Ring (joint_0~3)
+        FingerChain(
             links=[
                 "{wrist}",
                 "link_0.0",
@@ -53,7 +51,7 @@ class AllegroHandConfig(HandConfig):
             ],
             human=["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip", "ring_tip"],
         ),
-        FingerChain(  # Thumb (joint_12~15)
+        FingerChain(
             links=[
                 "{wrist}",
                 "link_12.0",

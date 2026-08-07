@@ -5,13 +5,13 @@ from typing import Dict, Optional
 from whatslab.core.types import Pose
 from whatslab.receiver.quest.hand import QuestHandReceiver
 
-from .base import TeleopModel
+from ..base import TeleopModel
 
 
 class QuestModel(TeleopModel):
 
     def __init__(self, robot):
-        rx = QuestHandReceiver()          # 포트=기본값(quest_base.QUEST_OSC_PORT)
+        rx = QuestHandReceiver()
         self.arm_source = rx
         self.hand_source = rx
         super().__init__(robot)
