@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 명령어
 
 ```bash
-$PY -m pytest -q -rs                            # 전체 (기준: 100 passed, skip 0)
+$PY -m pytest -q -rs                            # 전체 (기준: 118 passed, skip 0)
 $PY -m pytest tests/test_arm.py -q -rs          # 파일 단위
 $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 ```
@@ -63,8 +63,9 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   (`hand/retargeter.py` nlopt). 리시버도 rig 도 모른다.
 - `teleop/` = 파이프라인(`base.py`) + 전처리(`calibration.py`) + 장치별 조립
   (`models/quest.py`·`glove.py`·`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
-- `robot/` = rig config 또는 yaml 경로 → `RobotModel`(정의 + 기하, 무상태) + `RobotArmIK`
-  (런타임 정책, 유상태: 스톨 카운터·warm start). `solvers` 를 백엔드로 고른다.
+- `robot/` = rig config 또는 yaml 경로 → `RobotModel`(정의 + 기하 + 솔버 소유) +
+  `RobotArmIK`(런타임 정책, 유상태: warm start·콜드스타트 카운터). `solvers` 를
+  백엔드로 고른다. `RobotModel` 은 side 마다 하나씩 만든다 — 솔버가 유상태다.
 커스텀 조립을 원하는 소비자(sim/ROS2 노드)는 `teleop/models/quest.py` 를 본떠
 `TeleopModel` 을 상속하고 `_get_raw_target()` 만 구현하면 된다. 계약은
 `core/interfaces.py` 의 Protocol(`Receiver`/`HandController`/`ArmSolver`) — 구조적 타이핑이라
@@ -94,25 +95,27 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 
 **팔 IK 책임 분리** (이 층을 건드릴 때 반드시 구분):
 - `teleop/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
-  스케일은 **여기서만** 한다. `rig calibration.enabled` 는 **reach 스케일만** 게이트한다
-  (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
+  스케일은 **여기서만** 한다(전에 `RobotModel.solve` 에 두 번째 구현이 있었고 지웠다).
+  `rig calibration.enabled` 는 **reach 스케일만** 게이트한다 — off 여도 yaw
+  캘리브(`W`)는 그대로 동작한다.
   `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 만 쓴다 —
   `enabled` 는 이미 있으면 건드리지 않는다(없을 때만 true).
 - `robot/arm_ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망),
-  콜드 스타트(`_cold_start`), 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
-  **콜드 스타트에는 틱/이동 상한을 걸지 않는다** — 상한을 걸면 전역 해가 수 rad 떨어져
-  있을 때 두 분기 사이에 갇힌다(실측: 캘리 후 69.4 → 143.7mm 로 악화). 물리적
-  속도 제한은 하류의 `SafetyFilter`(`max_joint_velocity`) 몫이다. `reseed()` 는
-  `_q_prev` 도 비워야 다음 콜드 스타트가 잘리지 않는다.
-  위치·방위를 **둘 다** 맞출 때까지 프레임을 넘겨 재시도한다(`cold_max_tries`);
-  못 맞추면 경고하고 그 분기로 시작한다.
+  **첫 타깃 콜드 스타트**(`_cold_start`), 캘리 시 `reseed()`. 그 뒤로는 백엔드
+  `solve()` 만 부른다 — 스톨 탈출은 없다(전에 있었고 `|Δq|` 0.29 의 EE
+  순간이동 원인이었다). **콜드 스타트에는 틱/이동 상한을 걸지 않는다** — 상한을
+  걸면 전역 해가 수 rad 떨어져 있을 때 두 분기 사이에 갇힌다(실측: 캘리 후
+  69.4 → 143.7mm 로 악화). 물리적 속도 제한은 하류의
+  `SafetyFilter`(`max_joint_velocity`) 몫이다. 위치·방위를 **둘 다** 맞출 때까지
+  프레임을 넘겨 재시도한다(`cold_max_tries`); 못 맞추면 경고하고 그 분기로 시작한다.
+  `_cold_start` 는 `solve_robust(q_ref=...)` 에 시드를 **명시적으로** 넘긴다 —
+  기본값(공유 솔버의 `history_data`)을 쓰면 다른 인스턴스가 남긴 자세를 상속한다.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
 - `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
   `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장) /
   `DecoupledArmIK`(decoupled: 위치·방위를 관절 블록으로 나눠 푼다).
-  `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
-  `whatslab.solvers` 는 lazy `__getattr__` 이다 — import 만으로 pinocchio·
-  dex_retargeting 을 끌어오지 않는다(extra 격리). 새 심볼은 `_LAZY` 에 등록한다.
+  `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택. 새 공개 심볼은
+  `solvers/arm/__init__.py` 와 `solvers/__init__.py` 의 `__all__` 양쪽에 등록한다.
 
 **팔 IK 를 만질 때의 규칙** (전부 실측으로 확인된 것 — 어기면 같은 회귀가 반복된다):
 - **추종과 전역 탐색을 섞지 말 것.** 프레임 추종은 백엔드 `solve()`. `solve_robust`
@@ -120,8 +123,9 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
   넘는다 → **첫 타깃 / `reseed()` / 확실한 스톨** 에서만 부른다. 매 프레임 부르면
   정확도는 그대로인데(측정: 15.4 vs 15.7mm) 비용 6배 + 프레임마다 다른 분기로 튄다.
 - **전역 해를 무조건 채택하지 말 것.** 후보가 관절범위 균등 랜덤이라 현재 자세와
-  무관하다 → 거리 가중 선택(`reseed_w_dist`) + 개선분 확인(`reseed_min_gain`) +
-  틱당 이동 상한(`reseed_dq_max`) 세 겹이 있어야 EE 순간이동이 안 난다.
+  무관하다 → 채택 시 EE 가 순간이동한다. 그래서 지금은 첫 타깃과 `reseed()` 에서만
+  쓴다. 추종 중 회복이 다시 필요해지면 `solve_robust(q_ref=, w_dist=)` 의 거리
+  가중을 쓰고, 채택분은 `SafetyFilter` 예산으로 램프해 들어가야 한다.
 - **침묵 절단(시간 예산 등) 금지.** 후보를 조용히 버리면 전역 탐색이 사실상 꺼진
   채로 "동작하는 것처럼" 보인다(실제로 그렇게 8ms 예산이 탐색을 껐던 적이 있다).
 - **도달 가능한 목표로만 재면 여분 자유도의 가치가 안 보인다.** `fk` 궤적은 도달
