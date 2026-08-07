@@ -105,3 +105,40 @@ def test_model_uniform_reach_scale():
     T2 = np.eye(4); T2[:3, 3] = [0.4, 0.0, 0.2]
     m.sync_state(np.zeros(n)); q_manual = m.solve(T2)
     assert np.allclose(q_cal, q_manual, atol=1e-6)
+
+
+def test_robot_model_accepts_path_or_config():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+
+    rig = load_rig("rigs/nero_orca_right.yaml")
+    a = RobotModel(rig)
+    b = RobotModel("rigs/nero_orca_right.yaml")
+    c = RobotModel.from_yaml("rigs/nero_orca_right.yaml")
+
+    for m in (b, c):
+        assert m.rig.name == a.rig.name
+        assert m.arm_joint_names == a.arm_joint_names
+        assert np.allclose(m._M, a._M)
+    assert a.rig is rig
+
+
+def test_robot_model_accepts_pathlike():
+    pytest.importorskip("pinocchio")
+    from pathlib import Path
+
+    from whatslab.paths import configs_root
+    from whatslab.robot import RobotModel
+
+    p = Path(configs_root()) / "rigs" / "nero_orca_right.yaml"
+    assert RobotModel(p).rig.name == "nero_orca_right"
+
+
+def test_teleop_model_accepts_rig_path():
+    pytest.importorskip("pinocchio")
+    from whatslab.teleop import QuestModel
+
+    m = QuestModel("rigs/nero_orca_right.yaml")
+    assert m.robot is not None
+    assert m.robot.rig.name == "nero_orca_right"
+    assert m.robots["left"] is m.robots["right"]

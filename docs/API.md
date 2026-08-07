@@ -58,7 +58,8 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 
 | 심볼 | 설명 |
 |---|---|
-| `RobotModel.from_yaml(path)` | rig/robot yaml → 모델. |
+| `RobotModel(rig)` | `rig` 는 `RigConfig` 또는 rig yaml 경로(str/PathLike). 경로면 `load_rig` 로 읽는다. |
+| `RobotModel.from_yaml(path)` | `RobotModel(path)` 와 동일(구 API 유지). |
 | `RobotModel.solve(T_canonical)` | 정준 목표 4x4 → 팔 관절각. |
 | `RobotModel.ee_pose(q_arm)` | FK: 관절각 → EE 4x4. |
 | `RobotModel.to_base(T)` / `to_canonical(T)` | 정준↔베이스 프레임 변환. |

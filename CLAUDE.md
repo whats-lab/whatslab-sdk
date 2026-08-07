@@ -63,7 +63,7 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   (`hand/retargeter.py` nlopt). 리시버도 rig 도 모른다.
 - `teleop/` = 파이프라인(`base.py`) + 전처리(`calibration.py`) + 장치별 조립
   (`models/quest.py`·`glove.py`·`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
-- `robot/` = rig config → `RobotModel`(정의 + 기하, 무상태) + `RobotArmIK`
+- `robot/` = rig config 또는 yaml 경로 → `RobotModel`(정의 + 기하, 무상태) + `RobotArmIK`
   (런타임 정책, 유상태: 스톨 카운터·warm start). `solvers` 를 백엔드로 고른다.
 커스텀 조립을 원하는 소비자(sim/ROS2 노드)는 `teleop/models/quest.py` 를 본떠
 `TeleopModel` 을 상속하고 `_get_raw_target()` 만 구현하면 된다. 계약은
