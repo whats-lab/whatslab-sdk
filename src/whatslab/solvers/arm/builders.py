@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .arm_ik import ArmIK, DiffArmIK
+from .arm_ik import ArmIK, DecoupledArmIK, DiffArmIK
 
 
 def backend_cls(backend: str):
@@ -8,7 +8,9 @@ def backend_cls(backend: str):
         return ArmIK
     if backend == "diff":
         return DiffArmIK
-    raise ValueError(f"unknown IK backend {backend!r} (dls|diff)")
+    if backend == "decoupled":
+        return DecoupledArmIK
+    raise ValueError(f"unknown IK backend {backend!r} (dls|diff|decoupled)")
 
 
 _backend_cls = backend_cls

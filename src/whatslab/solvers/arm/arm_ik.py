@@ -98,6 +98,7 @@ class _ArmSolverBase:
         self._k_limit = 0.15
         self._smooth = 0.2               
         
+        self._joint_w = np.ones(self.model.nv)
         self._q_neutral = pin.neutral(self.model)
         self.data = self.model.createData()
         self.init_data = np.zeros(self.model.nq)
@@ -159,6 +160,23 @@ class _ArmSolverBase:
             self.init_data = q
             self.history_data = q
 
+    def set_joint_weights(self, weights: Optional[dict]) -> None:
+        w = np.ones(self.model.nv)
+        for name, cost in (weights or {}).items():
+            if not self.model.existJointName(name):
+                raise ValueError(f"joint_weights 에 없는 관절: {name}")
+            c = float(cost)
+            if c <= 0.0:
+                raise ValueError(f"joint_weights[{name}] 는 양수여야 한다: {c}")
+            j = self.model.joints[self.model.getJointId(name)]
+            w[j.idx_v:j.idx_v + j.nv] = c
+        self._joint_w = w
+
+    def _damped_pinv(self, WJ: np.ndarray, damp2: float) -> np.ndarray:
+        wi = 1.0 / self._joint_w
+        I = np.eye(WJ.shape[0])
+        return (wi[:, None] * WJ.T) @ np.linalg.inv((WJ * wi) @ WJ.T + damp2 * I)
+
     def _error_and_jac(self, q: np.ndarray, T: np.ndarray):
         q = np.asarray(q, dtype=float)
         pin.forwardKinematics(self.model, self.data, q)
@@ -197,7 +215,6 @@ class _ArmSolverBase:
         q = np.array(q0, dtype=float)
         w = self._task_w
         damp2 = self._damp * self._damp
-        I6 = np.eye(6)
         In = np.eye(self.model.nq)
         for _ in range(self.max_iter):
             e, J = self._error_and_jac(q, T)
@@ -205,7 +222,7 @@ class _ArmSolverBase:
                 break
             we = w * e
             WJ = w[:, None] * J
-            Jpinv = WJ.T @ np.linalg.solve(WJ @ WJ.T + damp2 * I6, I6)
+            Jpinv = self._damped_pinv(WJ, damp2)
             dq_task = -Jpinv @ we
             N = In - Jpinv @ WJ
             dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
@@ -347,7 +364,6 @@ class DiffArmIK(_ArmSolverBase):
         q_start = np.array(self.history_data, dtype=float)
         q = q_start.copy()
         w = self._task_w
-        I6 = np.eye(6)
         In = np.eye(self.model.nq)
         try:
             T = self._rate_limited_target(q, T_goal)
@@ -358,7 +374,7 @@ class DiffArmIK(_ArmSolverBase):
                 we = w * e
                 WJ = w[:, None] * J
                 damp2 = float(we @ we) + self.sugihara_bias
-                Jpinv = WJ.T @ np.linalg.inv(WJ @ WJ.T + damp2 * I6)
+                Jpinv = self._damped_pinv(WJ, damp2)
                 dq_task = -Jpinv @ we
                 N = In - Jpinv @ WJ
                 dq_null = (self.k_posture * (self.q_posture - q)
@@ -370,15 +386,110 @@ class DiffArmIK(_ArmSolverBase):
                 q = pin.integrate(self.model, q, dq)
                 
             
-            step = q - q_start
-            sn = np.linalg.norm(step)
-            if sn > self.dq_max_tick:
-                q = q_start + step * (self.dq_max_tick / sn)
-            sol_q = np.clip(q, self._lo, self._hi)
-            if self._smooth > 0.0:
-                sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
-            if not np.all(np.isfinite(sol_q)):
-                raise ValueError("IK 해에 NaN")
+            sol_q = self._finish_tick(q_start, q)
+        except Exception as e:
+            if not safe:
+                raise
+            self._warn_once(e)
+            sol_q = self.history_data.copy()
+        self.init_data = sol_q
+        self.history_data = sol_q
+        return sol_q
+
+    def _finish_tick(self, q_start: np.ndarray, q: np.ndarray) -> np.ndarray:
+        step = q - q_start
+        sn = np.linalg.norm(step)
+        if sn > self.dq_max_tick:
+            q = q_start + step * (self.dq_max_tick / sn)
+        sol_q = np.clip(q, self._lo, self._hi)
+        if self._smooth > 0.0:
+            sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
+        if not np.all(np.isfinite(sol_q)):
+            raise ValueError("IK 해에 NaN")
+        return sol_q
+
+
+class DecoupledArmIK(DiffArmIK):
+
+    wc_frame = "wrist_center"
+
+    def set_task_split(self, orientation_joints: Optional[Sequence[str]] = None) -> None:
+        m = self.model
+        names = [n for n in m.names if n != "universe"]
+        ori = list(orientation_joints) if orientation_joints else names[-3:]
+        missing = [n for n in ori if not m.existJointName(n)]
+        if missing:
+            raise ValueError(f"orientation_joints 에 없는 관절: {missing}")
+        rank = {n: i for i, n in enumerate(names)}
+        ori.sort(key=lambda n: rank[n])
+        pos = [n for n in names if n not in set(ori)]
+        if not pos:
+            raise ValueError("orientation_joints 가 전 관절을 차지 — 위치 관절이 없다")
+
+        def vidx(sel):
+            out = []
+            for n in sel:
+                j = m.joints[m.getJointId(n)]
+                out.extend(range(j.idx_v, j.idx_v + j.nv))
+            return np.array(out, dtype=int)
+
+        self._ori_idx = vidx(ori)
+        self._pos_idx = vidx(pos)
+        self.orientation_joints = ori
+        self.position_joints = pos
+
+        jid = m.getJointId(ori[0])
+        if not m.existFrame(self.wc_frame):
+            parent = int(m.parents[jid])
+            m.addFrame(pin.Frame(self.wc_frame, parent,
+                                 m.getFrameId(m.names[parent]),
+                                 m.jointPlacements[jid], pin.FrameType.OP_FRAME))
+            self.data = m.createData()
+            self._fk_data = m.createData()
+        self.wc_id = m.getFrameId(self.wc_frame)
+
+    def _block_step(self, J: np.ndarray, e: np.ndarray, g: np.ndarray) -> np.ndarray:
+        damp2 = float(e @ e) + self.sugihara_bias
+        Jp = J.T @ np.linalg.inv(J @ J.T + damp2 * np.eye(J.shape[0]))
+        return Jp @ e + (np.eye(J.shape[1]) - Jp @ J) @ g
+
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
+        if not hasattr(self, "_pos_idx"):
+            self.set_task_split()
+        T_goal = np.asarray(target_pose, dtype=float)
+        q_start = np.array(self.history_data, dtype=float)
+        q = q_start.copy()
+        pi, oi = self._pos_idx, self._ori_idx
+        try:
+            T = self._rate_limited_target(q, T_goal)
+            R_t, p_t = T[:3, :3], T[:3, 3]
+            T_se3 = pin.SE3(T)
+            for _ in range(self.iters_per_call):
+                pin.forwardKinematics(self.model, self.data, q)
+                pin.updateFramePlacements(self.model, self.data)
+                oMe = self.data.oMf[self.ee_id]
+                oMw = self.data.oMf[self.wc_id]
+                iMd = oMe.actInv(T_se3)
+                e_o = pin.log6(iMd).vector[3:]
+                v = oMe.rotation.T @ (oMw.translation - oMe.translation)
+                e_p = (p_t + R_t @ v) - oMw.translation
+                if np.linalg.norm(e_p) < self.tol and np.linalg.norm(e_o) < self.tol:
+                    break
+                Jw = pin.computeFrameJacobian(self.model, self.data, q, self.wc_id,
+                                              pin.LOCAL_WORLD_ALIGNED)[:3][:, pi]
+                Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id,
+                                              pin.LOCAL)
+                Je = (-pin.Jlog6(iMd.inverse()) @ Jf)[3:][:, oi]
+                g = self._k_limit * self._limit_gradient(q)
+                dq = np.zeros(self.model.nv)
+                dq[pi] = self._block_step(Jw, e_p, g[pi])
+                dq[oi] = self._block_step(Je, -e_o, g[oi])
+                dq = self._soft_limit_scale(q, dq)
+                n = np.linalg.norm(dq)
+                if n > 0.5:
+                    dq *= 0.5 / n
+                q = pin.integrate(self.model, q, dq)
+            sol_q = self._finish_tick(q_start, q)
         except Exception as e:
             if not safe:
                 raise

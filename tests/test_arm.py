@@ -15,9 +15,10 @@ def _nero_solver(backend: str = "dls"):
 
 def test_backend_cls_selection():
     pytest.importorskip("pinocchio")
-    from whatslab.solvers import ArmIK, DiffArmIK, backend_cls
+    from whatslab.solvers import ArmIK, DecoupledArmIK, DiffArmIK, backend_cls
     assert backend_cls("dls") is ArmIK
     assert backend_cls("diff") is DiffArmIK
+    assert backend_cls("decoupled") is DecoupledArmIK
     with pytest.raises(ValueError):
         backend_cls("nope")
 
@@ -287,23 +288,21 @@ def test_static_target_settles_without_oscillation():
     assert worst < 5e-3, f"정지 목표 정착 실패: {worst*1e3:.1f} mm"
 
 
-def test_reseed_clears_tick_cap_anchor():
+def test_reseed_clears_warm_start():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
-    rig = load_rig("rigs/nero_arm.yaml")
-    robot = RobotModel(rig)
-    ik = RobotArmIK(robot)
+    robot = RobotModel(load_rig("rigs/nero_arm.yaml"))
     s = robot.solver
-    T = robot.to_canonical(s.fk(s.q_neutral + 0.4))
-    ik.solve(T)
-    assert ik._q_prev is not None
+    ik = RobotArmIK(robot)
+    ik.solve(robot.to_canonical(s.fk(s.q_neutral + 0.4)))
+    assert ik._warm is not None
     ik.reseed()
-    assert ik._q_prev is None, "reseed 후 틱 상한 기준점이 남으면 콜드 스타트가 잘린다"
+    assert ik._warm is None
     assert ik._seeded is False and ik._cold_tries == 0
 
 
-def test_cold_start_ignores_tick_and_step_caps():
+def test_cold_start_is_uncapped():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
@@ -311,7 +310,6 @@ def test_cold_start_ignores_tick_and_step_caps():
     robot = RobotModel(rig)
     s = robot.solver
     ik = RobotArmIK(robot)
-    ik.tick_dq_max = 0.05
 
     lo, hi = s._lo, s._hi
     q_far = lo + (hi - lo) * 0.8
@@ -321,17 +319,16 @@ def test_cold_start_ignores_tick_and_step_caps():
     q0 = np.asarray(ik.solve(T_near), dtype=float)
     ik.reseed()
     q1 = np.asarray(ik.solve(T_far), dtype=float)
-    assert float(np.linalg.norm(q1 - q0)) > ik.tick_dq_max
+    assert float(np.linalg.norm(q1 - q0)) > 0.5
     assert s.pose_error(q1, robot.to_base(T_far))[0] < 5e-3
 
-    # 콜드 스타트 재시도 프레임에서도 상한이 걸리면 안 된다
     ik.reseed()
     ik.cold_pos_tol = 0.0
     ik.cold_max_tries = 3
     prev = np.asarray(ik.solve(T_near), dtype=float)
     assert ik._seeded is False
     q2 = np.asarray(ik.solve(T_far), dtype=float)
-    assert float(np.linalg.norm(q2 - prev)) > ik.tick_dq_max
+    assert float(np.linalg.norm(q2 - prev)) > 0.5
 
 
 def test_get_data_publishes_raw_target():
@@ -391,3 +388,62 @@ def test_two_arm_iks_on_one_robot_do_not_interfere():
     assert e_both.mean() < e_solo.mean() + 5e-3, (
         f"다른 side 가 solver 상태를 오염시킨다: 단독 {e_solo.mean()*1e3:.1f}mm "
         f"vs 양쪽 {e_both.mean()*1e3:.1f}mm")
+
+
+def _orientation_step(robot, dtheta=0.4):
+    from scipy.spatial.transform import Rotation
+    s = robot.solver
+    q0 = 0.5 * (s._lo + s._hi)
+    s.sync_state(q0)
+    T = s.fk(q0).copy()
+    T[:3, :3] = T[:3, :3] @ Rotation.from_euler("y", dtheta).as_matrix()
+    q1 = np.asarray(s.solve(robot.to_canonical(T)), dtype=float)
+    return np.abs(q1 - q0)
+
+
+def test_joint_weights_shift_effort_to_cheap_joints():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+
+    def build(weights):
+        rig = load_rig("rigs/nero_orca_right.yaml")
+        rig.solver.joint_weights = weights
+        return RobotModel(rig)
+
+    flat = build(None)
+    arm = [n for n in flat.arm_joint_names[:4]]
+    heavy = build({n: 5.0 for n in arm})
+    i_arm = [flat.arm_joint_names.index(n) for n in arm]
+
+    d_flat = _orientation_step(flat)
+    d_heavy = _orientation_step(heavy)
+    share_flat = d_flat[i_arm].sum() / max(d_flat.sum(), 1e-12)
+    share_heavy = d_heavy[i_arm].sum() / max(d_heavy.sum(), 1e-12)
+    assert share_heavy < share_flat, (
+        f"팔을 무겁게 해도 팔 사용 비중이 안 줄었다: {share_flat:.2f} → {share_heavy:.2f}")
+
+
+def test_joint_weights_reject_bad_input():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+    robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
+    with pytest.raises(ValueError):
+        robot.solver.set_joint_weights({"nope": 2.0})
+    with pytest.raises(ValueError):
+        robot.solver.set_joint_weights({"joint1": 0.0})
+
+
+def test_decoupled_wrist_center_is_upstream_of_orientation_joints():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+    rig = load_rig("rigs/nero_orca_right.yaml")
+    rig.solver.backend = "decoupled"
+    s = RobotModel(rig).solver
+    q = 0.5 * (s._lo + s._hi)
+    p0 = s.frame_pose(s.wc_frame, q)[:3, 3]
+    for i in s._ori_idx:
+        q2 = q.copy()
+        q2[i] += 0.3
+        p = s.frame_pose(s.wc_frame, q2)[:3, 3]
+        assert np.linalg.norm(p - p0) < 1e-9, (
+            f"방위 관절 {s.model.names[int(i) + 1]} 이 손목중심을 움직인다")
