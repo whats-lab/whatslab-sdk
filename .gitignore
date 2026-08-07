@@ -21,3 +21,6 @@ venv/
 
 # 텔레옵 진단 덤프 (--dump-targets)
 run*.npz
+
+# Vive 트래커 스모크 테스트 — openvr 의존이 선언돼 있지 않다
+examples/vive_smoke.py
