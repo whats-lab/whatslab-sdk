@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from typing import List, Optional
+import os
+from dataclasses import fields
+from typing import List, Optional, Union
 
 import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
-from whatslab.teleop.arm.builders import backend_cls
+from whatslab.solvers.arm.builders import backend_cls
+from whatslab.solvers.hand import HandRetargetController
 
 from .config import RigConfig, load_rig
+
+_RIG_ONLY_SOLVER_KEYS = frozenset({
+    "backend", "w_pos", "w_ori", "max_joint_velocity", "reach_max",
+    "joint_weights",
+})
 
 
 def clamp_reach(T_base: np.ndarray, reach_max: Optional[float]) -> np.ndarray:
@@ -25,33 +33,34 @@ def clamp_reach(T_base: np.ndarray, reach_max: Optional[float]) -> np.ndarray:
 
 class RobotModel:
 
-    def __init__(self, rig: RigConfig):
+    def __init__(self, rig: Union[str, "os.PathLike[str]", RigConfig]):
+        if not isinstance(rig, RigConfig):
+            rig = load_rig(os.fspath(rig))
         self.rig = rig
         self.has_arm = rig.arm is not None
         self.has_hand = rig.hand is not None
 
-        # 정준 → 루트 로봇 베이스 (URDF 좌표). mount ∘ axis_align 합성.
         root = rig.arm if self.has_arm else rig.hand
-        self._M = rig.mount.T @ root.axis_align.T          # 4x4
+        self._M = rig.mount.T @ root.axis_align.T
         self._M_inv = np.linalg.inv(self._M)
 
-        self.solver = None           # 팔 IK (arm 있을 때만)
+        self.solver = None
         self.arm_joint_names: List[str] = []
         if self.has_arm:
             self.solver = self._build_arm_solver()
+            self.solver.set_joint_weights(rig.solver.joint_weights)
             self._apply_solver_tuning(self.solver)
             self.arm_joint_names = list(self.solver.active_joint_names())
 
     def _apply_solver_tuning(self, solver) -> None:
         sol = self.rig.solver
-        for attr, val in (("max_iter", sol.max_iter),
-                          ("iters_per_call", sol.iters_per_call),
-                          ("tol", sol.tol),
-                          ("sugihara_bias", sol.sugihara_bias)):
-            if val is not None and hasattr(solver, attr):
-                setattr(solver, attr, val)
+        for f in fields(sol):
+            if f.name in _RIG_ONLY_SOLVER_KEYS:
+                continue
+            val = getattr(sol, f.name)
+            if val is not None and hasattr(solver, f.name):
+                setattr(solver, f.name, val)
 
-    # ---------------------------------------------------------------- build
     def _build_arm_solver(self):
         rig = self.rig
         arm = rig.arm
@@ -73,9 +82,6 @@ class RobotModel:
                 ee_local_rpy=list(rig.hand.ee_align.rpy),
                 **common,
             )
-        # arm 단독: TCP 프레임("ee")을 ee.origin(URDF origin 관례)으로 등록.
-        # ee.parent 의 지지 조인트(fixed 프레임이면 그 프레임을 지탱하는 조인트)가
-        # 잠기면 TCP 를 구동할 수 없다 → 에러.
         m_arm = pin.buildModelFromUrdf(arm.urdf_abspath())
         if m_arm.existJointName(arm.ee_parent):
             support_joint = arm.ee_parent
@@ -87,8 +93,6 @@ class RobotModel:
             raise ValueError(
                 f"lock_joints 가 ee.parent({arm.ee_parent})의 지지 조인트"
                 f"({support_joint})를 잠금 — TCP 를 구동할 수 없습니다")
-        # ArmIK 의 tool 인자는 (회전 후 회전축 기준 이동) 관례라 변환해 전달:
-        #   T(R,p) = Rot(rpy) · Trans(Rᵀp)
         R = arm.ee_origin.T[:3, :3]
         p = np.asarray(arm.ee_origin.xyz, dtype=float)
         return cls(
@@ -101,33 +105,14 @@ class RobotModel:
             **common,
         )
 
-    # ------------------------------------------------------------ factories
-    @classmethod
-    def from_yaml(cls, path: str) -> "RobotModel":
-        return cls(load_rig(path))
-
     def make_hand_controller(self, config_name: str, side: str):
-        from whatslab.teleop.hand import HandRetargetController
         return HandRetargetController(side, config_name)
 
-    # ------------------------------------------------------ 정준 데카르트 API
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:
         return self._M_inv @ np.asarray(T_canonical, dtype=float)
 
     def to_canonical(self, T_base: np.ndarray) -> np.ndarray:
         return self._M @ np.asarray(T_base, dtype=float)
-
-    def solve(self, T_canonical: np.ndarray) -> np.ndarray:
-        assert self.has_arm, "arm 없는 rig — solve 불가"
-        sol = self.rig.solver
-        T_c = np.asarray(T_canonical, dtype=float).copy()
-
-        # uniform reach 스케일 (사람 도달반경 → 로봇 reach). 원점 0 기준 등방.
-        cal = self.rig.calibration
-        if cal.enabled and cal.input_reach and sol.reach_max:
-            T_c[:3, 3] *= sol.reach_max / cal.input_reach
-
-        return self.solver.solve(self.clamp_reach(self.to_base(T_c)))
 
     def clamp_reach(self, T_base: np.ndarray) -> np.ndarray:
         return clamp_reach(T_base, self.rig.solver.reach_max)

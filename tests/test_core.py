@@ -1,4 +1,3 @@
-"""core 타입/인터페이스 — 의존성 없음, 항상 실행."""
 import numpy as np
 
 from whatslab.core.types import (
@@ -30,7 +29,6 @@ def test_pose_matrix_roundtrip():
 
     back = Pose.from_matrix(T)
     assert np.allclose(back.pos, p.pos)
-    # 쿼터니언은 부호 모호성 → 회전행렬로 비교
     assert np.allclose(back.to_matrix()[:3, :3], T[:3, :3], atol=1e-8)
 
 
@@ -41,16 +39,13 @@ def test_input_sample_defaults():
 
 
 def test_skeleton_consistency():
-    # 23 노드, 16 sensed, wrist 가 유일한 root
     assert len(HUMAN_HAND) == 23
     assert len(SENSED_JOINTS) == 16
     roots = [j for j in HUMAN_HAND if j.parent is None]
     assert len(roots) == 1 and roots[0].name == "wrist"
-    # 모든 parent 는 실재 노드
     names = {j.name for j in HUMAN_HAND}
     for j in HUMAN_HAND:
         assert j.parent is None or j.parent in names
-    # JOINT_INDEX 는 선언 순서
     assert JOINT_INDEX["wrist"] == 0 and JOINT_INDEX["pinky_tip"] == 22
 
 
@@ -68,7 +63,7 @@ def test_handpose_empty_defaults_identity():
     hp = HandPose()
     arr = hp.to_sensor_array()
     assert arr.shape == (17, 4)
-    assert np.allclose(arr[:, 3], 1.0)   # 미채움 → 항등
+    assert np.allclose(arr[:, 3], 1.0)
 
 
 def test_hand_command_defaults():
@@ -79,7 +74,6 @@ def test_hand_command_defaults():
 
 
 def test_protocols_are_runtime_checkable():
-    # Protocol 자체가 runtime_checkable 로 선언됐는지 (isinstance 사용 가능)
     class _R:
         def start(self): ...
         def stop(self): ...
@@ -87,6 +81,5 @@ def test_protocols_are_runtime_checkable():
 
     assert isinstance(_R(), Receiver)
     assert not isinstance(object(), Receiver)
-    # HandController / ArmSolver 도 Protocol
     assert hasattr(HandController, "_is_runtime_protocol") or True
     assert ArmSolver is not None

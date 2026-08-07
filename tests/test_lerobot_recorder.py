@@ -36,7 +36,6 @@ def _make_small_dataset(tmp_path, name="ds"):
 
 def test_layout_matches_reference(tmp_path):
     root = _make_small_dataset(tmp_path)
-    # 필수 파일 존재
     assert (root / "meta/info.json").exists()
     assert (root / "meta/episodes.jsonl").exists()
     assert (root / "meta/tasks.jsonl").exists()
@@ -90,13 +89,10 @@ def test_loads_with_real_lerobot(tmp_path):
 
 
 def test_save_episode_rejects_second_chunk(tmp_path):
-    """MINOR-5: the mini-writer only ever writes under `chunk-000`, so it
-    must raise a clear error rather than silently mis-writing once
-    `episode_index` would cross into a second chunk (`chunks_size`=1000)."""
     from whatslab.data import lerobot_schema as S
 
     rec = LeRobotRecorder(str(tmp_path / "ds"), FEATURES, fps=30)
-    rec._ep = S.CHUNKS_SIZE  # simulate having already written a full chunk
+    rec._ep = S.CHUNKS_SIZE
     rec.add_frame(
         np.zeros(7, np.float32), np.zeros(7, np.float32),
         {"cam0": np.zeros((64, 64, 3), np.uint8)},

@@ -1,7 +1,3 @@
-"""SharedOscServer — 포트당 단일 pythonosc UDP 서버(get-or-create + refcount).
-
-실제 소켓을 열지 않고 dispatcher.call_handlers_for_packet 으로 디스패치를 검증한다.
-"""
 from pythonosc.osc_message_builder import OscMessageBuilder
 
 from whatslab.receiver.osc_transport import SharedOscServer
@@ -34,7 +30,6 @@ def test_two_handlers_each_receive_own_address():
     srv.add_handler("/left/quat/get", lambda address, *args: received_left.append(args))
     srv.add_handler("/right/quat/get", lambda address, *args: received_right.append(args))
 
-    # 실제 UDP 소켓 없이 OSC 패킷을 dispatcher 에 직접 투입해 라우팅을 검증
     srv.dispatcher.call_handlers_for_packet(_packet("/left/quat/get", 1.0, 2.0), ("127.0.0.1", 0))
     srv.dispatcher.call_handlers_for_packet(_packet("/right/quat/get", 3.0), ("127.0.0.1", 0))
 
@@ -51,7 +46,7 @@ def test_refcount_start_stop_keeps_server_alive_until_last_stop():
     assert srv.is_running
 
     srv.stop()
-    assert srv.is_running  # 아직 하나의 start 가 살아있음
+    assert srv.is_running
 
     srv.stop()
-    assert not srv.is_running  # 마지막 stop 에서 종료
+    assert not srv.is_running
