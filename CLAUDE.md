@@ -82,8 +82,14 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
   `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 만 쓴다 —
   `enabled` 는 이미 있으면 건드리지 않는다(없을 때만 true).
-- `robot/arm_ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
-  `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
+- `robot/arm_ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망),
+  콜드 스타트(`_cold_start`), 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
+  **콜드 스타트에는 틱/이동 상한을 걸지 않는다** — 상한을 걸면 전역 해가 수 rad 떨어져
+  있을 때 두 분기 사이에 갇힌다(실측: 캘리 후 69.4 → 143.7mm 로 악화). 물리적
+  속도 제한은 하류의 `SafetyFilter`(`max_joint_velocity`) 몫이다. `reseed()` 는
+  `_q_prev` 도 비워야 다음 콜드 스타트가 잘리지 않는다.
+  위치·방위를 **둘 다** 맞출 때까지 프레임을 넘겨 재시도한다(`cold_max_tries`);
+  못 맞추면 경고하고 그 분기로 시작한다.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
 - `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
   `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장).

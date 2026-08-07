@@ -83,6 +83,9 @@ class SolverCfg:
     max_iter: Optional[int] = None
     iters_per_call: Optional[int] = None
     tol: Optional[float] = None
+    dp_max: Optional[float] = None
+    dtheta_max: Optional[float] = None
+    dq_max_tick: Optional[float] = None
     sugihara_bias: Optional[float] = None
 
     @staticmethod
@@ -102,6 +105,9 @@ class SolverCfg:
             max_iter=_opt("max_iter", int),
             iters_per_call=_opt("iters_per_call", int),
             tol=_opt("tol", float),
+            dp_max=_opt("dp_max", float),
+            dtheta_max=_opt("dtheta_max", float),
+            dq_max_tick=_opt("dq_max_tick", float),
             sugihara_bias=_opt("sugihara_bias", float),
         )
 
