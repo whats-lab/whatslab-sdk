@@ -25,7 +25,8 @@ class TeleopModel(ABC):
         uniq = {id(r): r for r in self.robots.values()}
         self.robot = next(iter(uniq.values())) if len(uniq) == 1 else None
 
-        self.safety = None
+        self._safety = None
+        self._safety_side: Dict[str, object] = {}
         self._t_prev = None
 
         self.target: Dict[str, Optional[np.ndarray]] = {}
@@ -136,14 +137,37 @@ class TeleopModel(ABC):
             self.target[s] = data[s].get("arm_target")
         return data
 
+    @property
+    def safety(self):
+        return self._safety
+
+    @safety.setter
+    def safety(self, f) -> None:
+        self._safety = f
+        self._safety_side = {}
+
+    def _safety_step(self, side: str, v, dt):
+        proto = self._safety
+        f = self._safety_side.get(side)
+        if f is None:
+            f = proto.clone() if hasattr(proto, "clone") else proto
+            self._safety_side[side] = f
+        if f is not proto:
+            f.set_enabled(proto.enabled)
+            if proto.estopped:
+                f.trip()
+            else:
+                f.reset()
+        return f.step(v, dt)
+
     def get_q(self) -> Dict[str, Dict[str, float]]:
         data = self._apply_calib(self.get_data())
         q = self.solve(data)
-        if self.safety is not None:
+        if self._safety is not None:
             now = time.monotonic()
             dt = None if self._t_prev is None else now - self._t_prev
             self._t_prev = now
-            q = {s: self.safety.step(v, dt) for s, v in q.items()}
+            q = {s: self._safety_step(s, v, dt) for s, v in q.items()}
             self._sync_ik(q)
         self.q = q
         return q
