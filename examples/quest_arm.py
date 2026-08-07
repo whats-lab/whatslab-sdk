@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 from whatslab.teleop import GloveModel, QuestModel
-from whatslab.robot import RobotModel, load_rig
+from whatslab.robot import RobotModel
 
 
 def _build_model(args, robot):
@@ -35,19 +35,14 @@ def main():
     ap.add_argument("--speed", type=int, default=20, help="nero 속도 퍼센트 (텔레옵은 낮게)")
     args = ap.parse_args()
 
-    rig = load_rig(args.rig)
-    robot = RobotModel(rig)
+    robot = RobotModel(args.rig)
     model = _build_model(args, robot)
 
-    print(f"[setup] rig={rig.name} arm={args.arm} hand={'on' if robot.has_hand else 'off'} "
-          f"reach_max={rig.solver.reach_max}")
     print(f"[setup] arm_joints={robot.arm_joint_names}")
 
     if not args.no_safety:
         from robot_io import attach_safety
         sf = attach_safety(model, robot, args.rate)
-        print(f"[safety] rate-limit {'on' if sf else 'off(설정 없음)'} "
-              f"({rig.solver.max_joint_velocity} rad/s @ {args.rate:g}Hz)")
 
     model.start()
 

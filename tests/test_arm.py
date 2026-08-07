@@ -270,3 +270,65 @@ def test_yaw_calibration_works_regardless_of_enabled():
         assert cal.ready is True
         T = cal.apply({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})["arm_target"]
         assert T[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
+
+
+def test_static_target_settles_without_oscillation():
+    pytest.importorskip("pinocchio")
+    s = _nero_solver("diff")
+    rng = np.random.default_rng(3)
+    lo, hi = s._lo, s._hi
+    worst = 0.0
+    for _ in range(6):
+        q_true = lo + (hi - lo) * (0.2 + 0.6 * rng.random(s.nq))
+        T = s.fk(q_true)
+        s.sync_state(s.q_neutral)
+        errs = [s.pose_error(s.solve(T), T)[0] for _ in range(60)]
+        worst = max(worst, float(np.mean(errs[-10:])))
+    assert worst < 5e-3, f"정지 목표 정착 실패: {worst*1e3:.1f} mm"
+
+
+def test_reseed_clears_tick_cap_anchor():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
+
+    rig = load_rig("rigs/nero_arm.yaml")
+    robot = RobotModel(rig)
+    ik = RobotArmIK(robot)
+    s = robot.solver
+    T = robot.to_canonical(s.fk(s.q_neutral + 0.4))
+    ik.solve(T)
+    assert ik._q_prev is not None
+    ik.reseed()
+    assert ik._q_prev is None, "reseed 후 틱 상한 기준점이 남으면 콜드 스타트가 잘린다"
+    assert ik._seeded is False and ik._cold_tries == 0
+
+
+def test_cold_start_ignores_tick_and_step_caps():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
+
+    rig = load_rig("rigs/nero_arm.yaml")
+    robot = RobotModel(rig)
+    s = robot.solver
+    ik = RobotArmIK(robot)
+    ik.tick_dq_max = 0.05
+
+    lo, hi = s._lo, s._hi
+    q_far = lo + (hi - lo) * 0.8
+    T_far = robot.to_canonical(s.fk(q_far))
+    T_near = robot.to_canonical(s.fk(s.q_neutral + 0.1))
+
+    q0 = np.asarray(ik.solve(T_near), dtype=float)
+    ik.reseed()
+    q1 = np.asarray(ik.solve(T_far), dtype=float)
+    assert float(np.linalg.norm(q1 - q0)) > ik.tick_dq_max
+    assert s.pose_error(q1, robot.to_base(T_far))[0] < 5e-3
+
+    # 콜드 스타트 재시도 프레임에서도 상한이 걸리면 안 된다
+    ik.reseed()
+    ik.cold_pos_tol = 0.0
+    ik.cold_max_tries = 3
+    prev = np.asarray(ik.solve(T_near), dtype=float)
+    assert ik._seeded is False
+    q2 = np.asarray(ik.solve(T_far), dtype=float)
+    assert float(np.linalg.norm(q2 - prev)) > ik.tick_dq_max

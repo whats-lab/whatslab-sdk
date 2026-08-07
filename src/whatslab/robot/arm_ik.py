@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from .model import clamp_reach
+
+logger = logging.getLogger(__name__)
 
 
 class RobotArmIK:
@@ -16,6 +20,11 @@ class RobotArmIK:
     reseed_dq_max = 0.3
     tick_dq_max = 0.5
 
+    cold_restarts = 40
+    cold_pos_tol = 0.002
+    cold_ori_tol = 0.02
+    cold_max_tries = 5
+
     def __init__(self, robot):
         assert robot.has_arm, "arm 없는 rig 로 RobotArmIK 불가"
         self._robot = robot
@@ -24,6 +33,7 @@ class RobotArmIK:
         self._stall = 0
         self._cooldown = 0
         self._q_prev = None
+        self._cold_tries = 0
 
     def solve(self, T_canonical: np.ndarray) -> np.ndarray:
         r = self._robot
@@ -31,8 +41,7 @@ class RobotArmIK:
                           r.rig.solver.reach_max)
         solver = r.solver
         if not self._seeded and hasattr(solver, "solve_robust"):
-            q = np.asarray(solver.solve_robust(T_b), dtype=float)
-            self._seeded = True
+            q = self._cold_start(solver, T_b)
         else:
             q = np.asarray(solver.solve(T_b), dtype=float)
             q = self._recover_if_stalled(solver, q, T_b)
@@ -86,6 +95,22 @@ class RobotArmIK:
         self._cooldown = self.reseed_cooldown
         return q
 
+    def _cold_start(self, solver, T_b):
+        q = np.asarray(solver.solve_robust(
+            T_b, restarts=self.cold_restarts, pos_tol=self.cold_pos_tol,
+            ori_tol=self.cold_ori_tol, seed=self._cold_tries), dtype=float)
+        pe, oe = solver.pose_error(q, T_b)
+        self._cold_tries += 1
+        locked = (pe <= self.cold_pos_tol and oe <= self.cold_ori_tol)
+        if locked or self._cold_tries >= self.cold_max_tries:
+            self._seeded = True
+            if not locked:
+                logger.warning(
+                    "cold start: %d 회 시도에도 위치/방위를 못 맞춤 "
+                    "(pos %.1fmm, ori %.1f°) — 나쁜 분기로 추종을 시작한다",
+                    self._cold_tries, pe * 1e3, np.degrees(oe))
+        return q
+
     @staticmethod
     def _score(solver, q, T_b) -> float:
         pe, oe = solver.pose_error(q, T_b)
@@ -93,8 +118,10 @@ class RobotArmIK:
 
     def reseed(self) -> None:
         self._seeded = False
+        self._cold_tries = 0
         self._stall = 0
         self._cooldown = 0
+        self._q_prev = None
         solver = getattr(self._robot, "solver", None)
         if solver is not None and hasattr(solver, "sync_state") \
                 and hasattr(solver, "q_neutral"):

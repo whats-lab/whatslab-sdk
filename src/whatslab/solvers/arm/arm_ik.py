@@ -318,7 +318,7 @@ class DiffArmIK(_ArmSolverBase):
 
     iters_per_call = 100
     dp_max = 1.0           
-    dtheta_max = 3.15       
+    dtheta_max = 0.25       
     dq_max_tick = 0.5        
     k_posture = 0.0        
     sugihara_bias = 1e-4   

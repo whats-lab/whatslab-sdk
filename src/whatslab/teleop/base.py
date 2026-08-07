@@ -177,6 +177,9 @@ class TeleopModel(ABC):
             calib = self.calib.get(s)
             if calib is not None and r_max[s] > 0.0:
                 calib.set_reach(r_max[s])
+                ik = self.ik.get(s)
+                if ik is not None and hasattr(ik, "reseed"):
+                    ik.reseed()
                 if persist:
                     robot = self.robots.get(s)
                     if robot is not None:
