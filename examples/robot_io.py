@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import threading
+import time
 from typing import Dict, List, Optional
 
 _ORCA_LEVELS = {"thumb": ["thumb_cmc", "thumb_abd", "thumb_mcp", "thumb_dip"]}
@@ -185,6 +187,12 @@ class RobotBridge:
         self.arm = self.hand = None
         self.sending = False
         self.status = None
+        self.dropped = 0
+        self.sent = 0
+        self._latest = None
+        self._lock = threading.Lock()
+        self._pump_thread = None
+        self._pumping = False
 
     def connect_arm(self) -> str:
         s = AgxArmSender(self.robot.arm_joint_names, channel=self.args.can,
@@ -211,6 +219,7 @@ class RobotBridge:
 
     def disconnect(self) -> None:
         self.sending = False
+        self._stop_pump()
         for s in (self.arm, self.hand):
             if s is not None:
                 s.close()
@@ -226,15 +235,43 @@ class RobotBridge:
     def send(self, q) -> None:
         if not self.sending or not q:
             return
-        for s in (self.arm, self.hand):
-            if s is None or not s.connected:
+        with self._lock:
+            if self._latest is not None:
+                self.dropped += 1
+            self._latest = dict(q)
+        if self._pump_thread is None or not self._pump_thread.is_alive():
+            self._pumping = True
+            self._pump_thread = threading.Thread(target=self._pump, daemon=True,
+                                                 name="robot-send")
+            self._pump_thread.start()
+
+    def _stop_pump(self) -> None:
+        self._pumping = False
+        th = self._pump_thread
+        self._pump_thread = None
+        if th is not None and th.is_alive():
+            th.join(timeout=1.0)
+
+    def _pump(self) -> None:
+        while self._pumping:
+            with self._lock:
+                q, self._latest = self._latest, None
+            if q is None:
+                time.sleep(0.001)
                 continue
-            try:
-                s.send(q)
-            except Exception as e:
-                self.sending = False
-                if self.status is not None:
-                    self.status.content = f"**전송 오류 → 송신 중단**: `{e}`"
+            for s in (self.arm, self.hand):
+                if s is None or not s.connected:
+                    continue
+                try:
+                    s.send(q)
+                except Exception as e:
+                    self.sending = False
+                    self._pumping = False
+                    if self.status is not None:
+                        self.status.content = f"**전송 오류 → 송신 중단**: `{e}`"
+                    print(f"[robot] 전송 오류 → 송신 중단: {e}", flush=True)
+                    return
+            self.sent += 1
 
 
 def build_robot_panel(model, robot, args) -> RobotBridge:
@@ -248,6 +285,7 @@ def build_robot_panel(model, robot, args) -> RobotBridge:
         b_hand = srv.gui.add_button("손 연결 (orca)")
         cb_send = srv.gui.add_checkbox("송신", initial_value=False)
         b_wrist = srv.gui.add_button("손 명령값 보기")
+        b_rate = srv.gui.add_button("전송 통계")
         b_stop = srv.gui.add_button("E-STOP", color="red")
         b_off = srv.gui.add_button("전체 해제")
 
@@ -268,6 +306,11 @@ def build_robot_panel(model, robot, args) -> RobotBridge:
             _say(bridge.connect_hand())
         except Exception as e:
             _say(f"**손 연결 실패**: `{e}`")
+
+    @b_rate.on_click
+    def _(_e):
+        _say(f"송신 {bridge.sent}회 / 드롭 {bridge.dropped}회 "
+             f"(드롭 = 하드웨어가 루프 속도를 못 따라간 프레임)")
 
     @b_wrist.on_click
     def _(_e):
