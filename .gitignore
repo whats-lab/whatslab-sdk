@@ -18,3 +18,6 @@ venv/
 !assets/quest/*.apk
 .ruff_cache
 .superpowers
+
+# 텔레옵 진단 덤프 (--dump-targets)
+run*.npz

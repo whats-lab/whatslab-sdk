@@ -89,7 +89,6 @@ class SolverCfg:
     sugihara_bias: Optional[float] = None
     k_posture: Optional[float] = None
     k_limit: Optional[float] = None
-    orientation_joints: Optional[List[str]] = None
     joint_weights: Optional[Dict[str, float]] = None
 
     @staticmethod
@@ -115,8 +114,6 @@ class SolverCfg:
             sugihara_bias=_opt("sugihara_bias", float),
             k_posture=_opt("k_posture", float),
             k_limit=_opt("k_limit", float),
-            orientation_joints=(list(d["orientation_joints"])
-                                if d.get("orientation_joints") else None),
             joint_weights=({str(k): float(v)
                             for k, v in d["joint_weights"].items()}
                            if d.get("joint_weights") else None),
