@@ -249,8 +249,9 @@ def test_calib_enabled_flag_reaches_teleop_path():
         rig = load_rig("rigs/nero_orca_right.yaml")
         rig.calibration.enabled = flag
         m = QuestModel(RobotModel(rig))
-        assert m.calib["right"].enabled is flag
-        out[flag] = m.calib["right"].apply({"arm_pose": pose})["arm_target"][:3, 3]
+        c = m.sides["right"].calib
+        assert c.enabled is flag
+        out[flag] = c.apply({"arm_pose": pose})["arm_target"][:3, 3]
 
     assert out[False] == pytest.approx(pose.pos)
     scale = rig.solver.reach_max / rig.calibration.input_reach
@@ -344,10 +345,10 @@ def test_get_data_publishes_raw_target():
             return {"left": None, "right": pose}
 
     m = _M(None)
-    assert m.raw_target == {}
+    assert all(v.raw_target is None for v in m.sides.values())
     m.get_data()
-    assert m.raw_target["right"] is pose
-    assert m.raw_target["left"] is None
+    assert m.sides["right"].raw_target is pose
+    assert m.sides["left"].raw_target is None
     assert len(calls) == 1
 
 

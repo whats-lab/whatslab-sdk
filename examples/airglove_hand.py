@@ -21,7 +21,7 @@ def main():
     src = args.urdf_root or "(패키지 내장 URDF)"
     print(f"[setup] config={args.config} side={args.side} models={src}")
     m = HandModel(hand_config=args.config, side=args.side, urdf_root=args.urdf_root)
-    ctrl = m.retarget[args.side]
+    ctrl = m.sides[args.side].retarget
 
     viz_human = viz_robot = None
     if args.viz:

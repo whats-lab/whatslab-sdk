@@ -70,14 +70,21 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 `core/interfaces.py` 의 Protocol(`Receiver`/`HandController`/`ArmSolver`) — 구조적 타이핑이라
 시그니처만 맞으면 커스텀 구현이 그대로 꽂힌다. 이 방향을 깨는 import 를 추가하지 말 것.
 
-**side 간 상태 공유는 이 코드베이스의 반복 버그다.** `SIDES` 는 항상 둘이고 같은
-rig 를 쓰면 **관절 이름도 같다** — 그래서 side 별 상태를 들고 있는 컴포넌트를
-공유하면 두 side 가 서로를 밀어낸다. 실측으로 두 번 터졌다: 솔버 `history_data`
-(오른쪽만 2.6mm → 양쪽 347mm, `RobotArmIK._warm` 복원으로 수정), `SafetyFilter._last`
-(오른손 8.9 → 72.2mm, 실기 221mm. side 별 `clone()` 으로 수정). **side 를 도는
-루프에 유상태 객체를 하나만 끼우고 있으면 그건 버그다.** 특히 한쪽 컨트롤러가
-반대쪽 팔 rig 에 도달 불가일 때(왼손 → 오른팔 rig) 그쪽 IK 가 계속 쓰레기 q 를
-내므로 오염이 크게 증폭된다.
+**side 별 상태는 `SideModel`(`teleop/side.py`) 안에만 둔다.** `TeleopModel.sides`
+(`{side: SideModel}`)가 유일한 소유자이고 항상 `SIDES` 전부를 담는다(로봇 없는
+side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·`calib`·
+`safety` + 이 틱의 `raw_target`·`target`·`q` 를 들고 있다.
+
+이 구조는 실측 버그 3개의 결과다. 전에는 side 로 키를 잡은 딕셔너리가 8개
+병렬로 있었고, 그중 하나가 side 별이 아닐 때마다 터졌다 — `SIDES` 는 항상 둘이고
+같은 rig 를 쓰면 **관절 이름도 같아서** 유상태 컴포넌트를 공유하면 두 side 가
+서로를 밀어낸다: 솔버 `history_data`(오른쪽만 2.6mm → 양쪽 347mm),
+`SafetyFilter._last`(8.9 → 72.2mm, 실기 221mm), `_cold_start` 가 공유 솔버의
+`history_data` 를 시드로 씀(26.1 → 13.6mm). **side 를 도는 루프에 유상태 객체를
+하나만 끼우고 있으면 그건 버그다** — 새 side 별 상태는 `SideModel` 필드로 넣는다.
+특히 한쪽 컨트롤러가 반대쪽 팔 rig 에 도달 불가일 때(왼손 → 오른팔 rig) 그쪽 IK 가
+계속 쓰레기 q 를 내므로 오염이 크게 증폭된다. 한 팔만 쓸 때는
+`TeleopModel([None, rig])` 로 반대쪽을 끈다(`examples/quest_arm.py --sides`).
 
 **정준 프레임**(x=앞, z=위, 오른손계)이 전 경계의 불변식이다. 리시버 출력, `TeleopModel`
 입출력, `RobotModel` 의 데카르트 API 모두 정준. `RobotModel`(`robot/model.py`)은
