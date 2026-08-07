@@ -31,7 +31,7 @@ class _Recorder:
             return
         have = all(n in q_map for n in arm_names)
         q = np.array([q_map[n] for n in arm_names], dtype=float) if have else None
-        T_b = self.robot.to_base(T)
+        T_b = self.robot.clamp_reach(self.robot.to_base(T))
         pe = oe = np.nan
         ee = np.full((4, 4), np.nan)
         if q is not None:

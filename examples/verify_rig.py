@@ -3,15 +3,16 @@ import argparse
 
 import numpy as np
 
-from whatslab.robot import RobotModel, load_rig, save_reach_max
+from whatslab.robot import RobotArmIK, RobotModel, load_rig, save_reach_max
 
 PASS_POS_MM = 5.0
 SETTLE_TICKS = 150
 
 
 def _solve_settled(model, T_c):
+    ik = RobotArmIK(model)
     for _ in range(SETTLE_TICKS):
-        q = model.solve(T_c)
+        q = ik.solve(T_c)
     T = model.ee_pose(q)
     pos_err = float(np.linalg.norm(T[:3, 3] - T_c[:3, 3]))
     R = T[:3, :3].T @ T_c[:3, :3]

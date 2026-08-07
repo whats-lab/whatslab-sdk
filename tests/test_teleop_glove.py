@@ -366,3 +366,25 @@ def test_teleop_model_still_accepts_duck_typed_robot():
     m = _Passthrough(duck)
     assert m.sides["right"].robot is duck
     assert m.sides["left"].robot is duck
+
+
+def test_every_exported_preset_is_instantiable():
+    pytest.importorskip("pinocchio")
+    pytest.importorskip("dex_retargeting")
+    import whatslab.teleop as T
+
+    from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
+    from whatslab.receiver.quest.controller import QuestControllerReceiver
+    from whatslab.receiver.quest.hand import QuestHandReceiver
+
+    rig = "rigs/nero_orca_right.yaml"
+    made = [T.QuestModel(rig), T.GloveModel(rig), T.HandModel()]
+    for m in made:
+        assert set(m.sides) >= set(m.SIDES)
+        q = m.get_q()
+        assert set(q) == set(m.SIDES)
+        assert all(isinstance(v, dict) for v in q.values())
+    assert made[2].sides["right"].retarget is not None
+    assert made[0].hand_source is not None and made[1].hand_source is not None
+    for r in (GloveHumanHandReceiver, QuestControllerReceiver, QuestHandReceiver):
+        assert r is not None
