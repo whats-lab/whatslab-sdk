@@ -80,8 +80,8 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 - `teleop/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
   스케일은 **여기서만** 한다. `rig calibration.enabled` 는 **reach 스케일만** 게이트한다
   (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
-  `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 를 쓰면서
-  `enabled` 를 **true 로 덮어쓴다**(`robot/config.py`).
+  `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 만 쓴다 —
+  `enabled` 는 이미 있으면 건드리지 않는다(없을 때만 true).
 - `robot/arm_ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
   `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
@@ -116,6 +116,9 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   값은 `tools/align_frames.py` 3단계(robot→attach→ee)로 튜닝해 확정한다.
 - 캘리브 결과는 rig yaml 에 역기록된다(`robot/config.py` 의 `save_calibration`,
   `save_reach_max`) → 커밋 diff 에 `input_reach`/`reach_max` 만 바뀐 게 정상.
+  쓰기는 임시파일 + `os.replace` 로 원자적이다 — 텔레옵이 도는 중에 다른
+  프로세스가 같은 yaml 을 읽어도 잘린 파일을 보지 않는다(실제로 pytest 가
+  `backend: 'dl'` 로 읽어 깨진 적이 있다).
 
 **손 리타게팅** — `HandPose`(사람 골격, 관절명→회전)가 정본이고 `to_sensor_array()` 로의
 배열화는 `solvers/hand/controller.py` 경계에서만 일어난다. 엔진은

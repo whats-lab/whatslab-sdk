@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
@@ -46,7 +47,7 @@ class TeleopModel(ABC):
 
     def _as_side_map(self, robot) -> Dict[str, RobotModel]:
         def _load(r):
-            return r if isinstance(r, RobotModel) else RobotModel(r)
+            return RobotModel(r) if isinstance(r, (str, os.PathLike)) else r
         if robot is None:
             return {}
         if isinstance(robot, dict):
