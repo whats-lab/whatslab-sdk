@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 from abc import ABC, abstractmethod
@@ -12,6 +13,8 @@ from whatslab.robot import RobotModel, save_calibration
 from whatslab.robot.config import RigConfig, load_rig
 
 from .side import SideModel, _has_fingers
+
+logger = logging.getLogger(__name__)
 
 
 class TeleopModel(ABC):
@@ -54,6 +57,10 @@ class TeleopModel(ABC):
         rig = self._as_rig(robot)
         if rig is not None:
             return {s: RobotModel(rig) for s in self.SIDES}
+        logger.warning(
+            "%s 인스턴스를 주면 양쪽 side 가 그 유상태 솔버를 공유한다 — side 가"
+            " 서로를 밀어낸다(실측 2.6 → 347mm). rig 경로/RigConfig 를 주거나"
+            " {side: model} 로 따로 주라.", type(robot).__name__)
         return {s: robot for s in self.SIDES}
 
     @property

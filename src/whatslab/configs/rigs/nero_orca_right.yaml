@@ -29,6 +29,7 @@ solver:
   reach_max: 0.9204
   max_iter: 50
   iters_per_call: 20
+  sugihara_bias: 1.0e-4
   joint_weights:
     joint1: 2.5
     joint2: 2.5

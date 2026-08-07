@@ -134,6 +134,22 @@ from whatslab.data import LeRobotRecorder
 | `tighten(base, ...)` | 한계를 보수적으로 조임. |
 | `SafetyFilter` | clamp + rate-limit + hold/estop 상태기. `step(desired, dt=None)`, `trip`, `reset`, `estopped`, `enabled`, `set_enabled`, `seed`, `holding`, `clone`. **상태(`_last`)를 들고 있으므로 side 마다 하나씩 필요하다** — `clone()` 으로 복제한다. |
 
+## 알려진 결합·제약
+
+- **`receiver.quest.CONTROLLER_POS_OFFSET`** (`[0.02, -0.04, 0.1]`) 는 컨트롤러 마운트
+  편차 보정으로 리시버가 `controller.pos` 에 가산한다(외부 설정 불가). **Quest 앱
+  (PoseDataTracker)의 같은 이름 상수와 값이 일치해야 한다** — 저장소가 달라 자동
+  검증이 안 되므로 앱을 올릴 때 함께 확인한다.
+- **reach 스케일은 정준 원점 기준, `reach_max` 는 로봇 베이스 기준**이다. 둘의 중심이
+  `mount.xyz` 만큼 떨어져 있으면 최대로 뻗은 목표가 `clamp_reach` 에 잘린다
+  (`mount.xyz = [0, -0.15, -0.3]`, 오프셋 0.335m 에서 최악 방향 초과 335mm — 실기
+  run6 에서는 초과 프레임 0.3%, 초과분 최대 30mm). `Diag` 의 `clamp` 비율이 높으면
+  이것부터 본다.
+- **`whatslab.robot` import 가 `hand` extra 를 요구한다.** 함수 안 import 금지
+  방침(모든 import 는 모듈 최상단)의 결과다 — `robot/model.py` 가
+  `solvers.hand.HandRetargetController` 를 최상단에서 끌어온다. extra 를 나눠
+  설치하는 소비자는 `[all]` 을 써야 한다. `[arm]` 만으로는 `RobotModel` 을 못 쓴다.
+
 ## whatslab.paths — 자산 경로 해석
 
 - `models_root()` — URDF/메쉬 루트. `WHATSLAB_MODELS_ROOT` > `dexhand_description` 패키지 share(lazy import).

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -10,6 +11,8 @@ from whatslab.core.types import Pose
 from whatslab.robot import RobotArmIK, RobotModel
 
 from .calibration import ArmCalibration
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,8 +47,14 @@ class SideModel:
         return out
 
     def attach_safety(self, prototype) -> None:
-        self.safety = (prototype.clone() if hasattr(prototype, "clone")
-                       else prototype)
+        if hasattr(prototype, "clone"):
+            self.safety = prototype.clone()
+            return
+        logger.warning(
+            "%s: 안전필터에 clone() 이 없어 side 간 공유한다 — 두 side 가 같은 관절"
+            " 이름을 쓰면 서로를 속도제한한다(실측 8.9 → 72.2mm). clone() 을 구현하라.",
+            type(prototype).__name__)
+        self.safety = prototype
 
     def filter(self, q: Dict[str, float], dt: Optional[float],
                prototype) -> Dict[str, float]:

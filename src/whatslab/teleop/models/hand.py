@@ -18,3 +18,6 @@ class HandModel(TeleopModel):
         self.sides[side] = SideModel(
             side=side, robot=None,
             retarget=HandRetargetController(side, hand_config, urdf_root=urdf_root))
+
+    def _get_raw_target(self):
+        return {s: None for s in self.SIDES}

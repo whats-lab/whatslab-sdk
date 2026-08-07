@@ -38,8 +38,8 @@ def main():
     period, last_log = 1.0 / args.rate, 0.0
     try:
         while True:
-            q = m.get_q(args.side)
-            tracked = bool(m.get_data(args.side).get("tracked"))
+            q = m.get_q()[args.side]
+            tracked = bool(m.get_data()[args.side].get("tracked"))
             now = time.monotonic()
             if viz_human is not None and tracked:
                 eng = ctrl.engine
