@@ -29,6 +29,7 @@ class TeleopModel(ABC):
         self._t_prev = None
 
         self.target: Dict[str, Optional[np.ndarray]] = {}
+        self.raw_target: Dict[str, Optional[Pose]] = {}
         self.q: Dict[str, Dict[str, float]] = {}
 
         self.ik: Dict[str, RobotArmIK] = {}
@@ -81,6 +82,7 @@ class TeleopModel(ABC):
 
     def get_data(self) -> Dict[str, dict]:
         poses = self._get_raw_target()
+        self.raw_target = poses
         out: Dict[str, dict] = {}
         for s in self.SIDES:
             arm_s = self.arm_source.get(s) if self.arm_source else None

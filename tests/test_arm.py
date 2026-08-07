@@ -332,3 +332,23 @@ def test_cold_start_ignores_tick_and_step_caps():
     assert ik._seeded is False
     q2 = np.asarray(ik.solve(T_far), dtype=float)
     assert float(np.linalg.norm(q2 - prev)) > ik.tick_dq_max
+
+
+def test_get_data_publishes_raw_target():
+    from whatslab.core.types import Pose
+    from whatslab.teleop.base import TeleopModel
+
+    pose = Pose(pos=np.array([0.3, 0.0, 0.1]), quat=np.array([0.0, 0.0, 0.0, 1.0]))
+    calls = []
+
+    class _M(TeleopModel):
+        def _get_raw_target(self):
+            calls.append(1)
+            return {"left": None, "right": pose}
+
+    m = _M(None)
+    assert m.raw_target == {}
+    m.get_data()
+    assert m.raw_target["right"] is pose
+    assert m.raw_target["left"] is None
+    assert len(calls) == 1
