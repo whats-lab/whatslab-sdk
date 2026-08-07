@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
+import os
+from typing import List, Optional, Union
 
 import numpy as np
 import pinocchio as pin
@@ -26,7 +27,9 @@ def clamp_reach(T_base: np.ndarray, reach_max: Optional[float]) -> np.ndarray:
 
 class RobotModel:
 
-    def __init__(self, rig: RigConfig):
+    def __init__(self, rig: Union[str, "os.PathLike[str]", RigConfig]):
+        if not isinstance(rig, RigConfig):
+            rig = load_rig(os.fspath(rig))
         self.rig = rig
         self.has_arm = rig.arm is not None
         self.has_hand = rig.hand is not None
@@ -97,7 +100,7 @@ class RobotModel:
 
     @classmethod
     def from_yaml(cls, path: str) -> "RobotModel":
-        return cls(load_rig(path))
+        return cls(path)
 
     def make_hand_controller(self, config_name: str, side: str):
         return HandRetargetController(side, config_name)

@@ -46,9 +46,7 @@ class TeleopModel(ABC):
 
     def _as_side_map(self, robot) -> Dict[str, RobotModel]:
         def _load(r):
-            if isinstance(r, str):
-                return RobotModel.from_yaml(r)
-            return r
+            return r if isinstance(r, RobotModel) else RobotModel(r)
         if robot is None:
             return {}
         if isinstance(robot, dict):
