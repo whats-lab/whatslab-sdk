@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from whatslab.teleop.hand.hand_configs import CONFIG_REGISTRY
+from whatslab.solvers.hand.hand_configs import CONFIG_REGISTRY
 
 
 EXPECTED_HANDS = {
@@ -48,7 +48,7 @@ def test_finger_chain_consistency():
 def test_hand_retarget_end_to_end():
     pytest.importorskip("dex_retargeting")
     pytest.importorskip("pinocchio")
-    from whatslab.teleop.hand import HandRetargeter
+    from whatslab.solvers.hand import HandRetargeter
 
     r = HandRetargeter("right", "allegro_hand")
     assert len(r.joint_names) == 16
@@ -65,7 +65,7 @@ def test_hand_controller_from_input_sample():
     pytest.importorskip("dex_retargeting")
     pytest.importorskip("pinocchio")
     from whatslab.core.types import HandPose, InputSample
-    from whatslab.teleop.hand import HandRetargetController
+    from whatslab.solvers.hand import HandRetargetController
 
     ctrl = HandRetargetController("right", "allegro_hand")
     hand = HandPose.from_sensor_array(np.tile([0, 0, 0, 1.0], (17, 1)), tracked=True)

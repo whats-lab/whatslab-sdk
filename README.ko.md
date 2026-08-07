@@ -79,7 +79,7 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 ## 빠른 시작
 
 ```python
-from whatslab.model import GloveModel
+from whatslab.teleop import GloveModel
 
 m = GloveModel("rigs/nero_orca_right.yaml")   # 팔 = 컨트롤러 IK, 손 = 글러브 리타게팅
 m.start()

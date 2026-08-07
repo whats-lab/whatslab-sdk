@@ -6,7 +6,7 @@ import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
-from whatslab.teleop.arm.builders import backend_cls
+from whatslab.solvers.arm.builders import backend_cls
 
 from .config import RigConfig, load_rig
 
@@ -99,7 +99,7 @@ class RobotModel:
         return cls(load_rig(path))
 
     def make_hand_controller(self, config_name: str, side: str):
-        from whatslab.teleop.hand import HandRetargetController
+        from whatslab.solvers.hand import HandRetargetController
         return HandRetargetController(side, config_name)
 
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:

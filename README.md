@@ -77,7 +77,7 @@ The glove path follows Spine's OSC contract as documented in Spine's
 ## Quick start
 
 ```python
-from whatslab.model import GloveModel
+from whatslab.teleop import GloveModel
 
 m = GloveModel("rigs/nero_orca_right.yaml")   # arm = controller IK, hand = glove retarget
 m.start()

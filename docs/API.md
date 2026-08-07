@@ -8,10 +8,10 @@
 
 ---
 
-## whatslab.model — 사용자 대면 최상위 텔레옵 API
+## whatslab.teleop — 사용자 대면 최상위 텔레옵 API
 
 ```python
-from whatslab.model import QuestModel, GloveModel
+from whatslab.teleop import QuestModel, GloveModel
 ```
 
 | 심볼 | 설명 |
