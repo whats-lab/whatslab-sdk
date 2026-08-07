@@ -13,7 +13,7 @@ except ImportError as e:  # pragma: no cover
         "dex_retargeting 필요: pip install 'whatslab-sdk[hand]'"
     ) from e
 
-from whatslab.teleop.core.constants import (
+from whatslab.solvers.core.constants import (
     HUBER_DELTA,
     IK_MAX_EVAL,
     NORM_DELTA,

@@ -43,7 +43,6 @@ def _neutral() -> np.ndarray:
 
 
 class GloveHumanHandReceiver(GloveReceiverBase):
-
     def __init__(
         self,
         glove_port: int = GLOVE_OSC_PORT,

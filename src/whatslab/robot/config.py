@@ -125,7 +125,6 @@ class CalibrationCfg:
 
 @dataclass
 class RigConfig:
-
     name: str
     arm: Optional[RobotSpec]
     hand: Optional[RobotSpec]

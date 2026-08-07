@@ -49,16 +49,23 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 
 ## 아키텍처
 
-**파이프라인** (`src/whatslab/model/base.py`) — `TeleopModel.get_q()` 가 매 호출마다
+**파이프라인** (`src/whatslab/teleop/base.py`) — `TeleopModel.get_q()` 가 매 호출마다
 `get_data() → _apply_calib() → solve()` 를 엮어 `{side: {joint_name: rad}}` 를 낸다.
 캐시 없음, 항상 양손(`SIDES = ("left","right")`) 처리. 서브클래스가 구현할 추상 훅은
 `_get_raw_target()` **하나**뿐 — 어느 소스를 팔 EE 목표로 쓸지와 그 프레임을 정한다
-(`model/quest.py` = 손목, `model/glove.py` = 컨트롤러+글러브 햅틱). side 를 `None` 으로
+(`teleop/quest.py` = 손목, `teleop/glove.py` = 컨트롤러+글러브 햅틱). side 를 `None` 으로
 주면 그 side 는 IK 를 건너뛰고, 목표/손가락 입력이 없는 컴포넌트는 q 에서 **생략**된다
 (0 을 채우지 않는다).
 
-**레이어 규칙** — `receiver → core`, `model → core·robot`. receiver 는 model 을 import
-하지 않는다. 컴포넌트를 엮는 조립은 소비자(sim/ROS2 노드) 몫이다. 계약은
+**레이어 규칙** — `core ← receiver`, `core·paths ← solvers`, `core·robot·solvers·receiver
+← teleop`. 즉 `teleop` 만 위쪽이고 나머지는 서로를 모른다:
+- `solvers/` = **수치 해법만**. 팔 IK(`arm/arm_ik.py` DLS)·손 리타게팅
+  (`hand/retargeter.py` nlopt). 리시버도 rig 도 모른다.
+- `teleop/` = 파이프라인(`base.py`)·정책(`ik.py` `RobotArmIK`)·전처리(`calibration.py`)
+  + 장치별 조립(`quest.py`/`glove.py`/`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
+- `robot/` = rig config → `RobotModel`(정의 + 기하). `solvers` 를 백엔드로 고른다.
+커스텀 조립을 원하는 소비자(sim/ROS2 노드)는 `teleop/quest.py` 를 본떠
+`TeleopModel` 을 상속하고 `_get_raw_target()` 만 구현하면 된다. 계약은
 `core/interfaces.py` 의 Protocol(`Receiver`/`HandController`/`ArmSolver`) — 구조적 타이핑이라
 시그니처만 맞으면 커스텀 구현이 그대로 꽂힌다. 이 방향을 깨는 import 를 추가하지 말 것.
 
@@ -69,17 +76,17 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 현재 q·목표·평활 상태는 호출자/솔버가 소유한다.
 
 **팔 IK 책임 분리** (이 층을 건드릴 때 반드시 구분):
-- `model/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
+- `teleop/calibration.py` `ArmCalibration` — yaw 정렬 스냅샷 + 사람→로봇 reach 스케일.
   스케일은 **여기서만** 한다. `rig calibration.enabled` 는 **reach 스케일만** 게이트한다
   (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
   `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 를 쓰면서
   `enabled` 를 **true 로 덮어쓴다**(`robot/config.py`).
-- `model/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
+- `teleop/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
   `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
-- `teleop/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
+- `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
   `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장).
-  `teleop/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
+  `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
 
 **팔 IK 를 만질 때의 규칙** (전부 실측으로 확인된 것 — 어기면 같은 회귀가 반복된다):
 - **추종과 전역 탐색을 섞지 말 것.** 프레임 추종은 백엔드 `solve()`. `solve_robust`
@@ -108,9 +115,9 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   `save_reach_max`) → 커밋 diff 에 `input_reach`/`reach_max` 만 바뀐 게 정상.
 
 **손 리타게팅** — `HandPose`(사람 골격, 관절명→회전)가 정본이고 `to_sensor_array()` 로의
-배열화는 `teleop/hand/controller.py` 경계에서만 일어난다. 엔진은
-`teleop/hand/retargeter.py`(dex-retargeting 2단계 vector+position IK, `maxeval` 종료라
-결정적). 로봇 손 추가는 `teleop/hand/hand_configs/` 에 config 를 등록하는 방식.
+배열화는 `solvers/hand/controller.py` 경계에서만 일어난다. 엔진은
+`solvers/hand/retargeter.py`(dex-retargeting 2단계 vector+position IK, `maxeval` 종료라
+결정적). 로봇 손 추가는 `solvers/hand/hand_configs/` 에 config 를 등록하는 방식.
 추적이 끊기면 직전 명령을 유지한다(급변 방지).
 
 **자산 경로** (`paths.py`) — `models_root()`: `WHATSLAB_MODELS_ROOT` > `dexhand_description`

@@ -6,8 +6,8 @@ import pytest
 from pythonosc.osc_message_builder import OscMessageBuilder
 
 from whatslab.core.types import HandCommand, InputSample
-from whatslab.model.base import TeleopModel
-from whatslab.model.glove import GloveModel
+from whatslab.teleop.base import TeleopModel
+from whatslab.teleop.glove import GloveModel
 from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 
 

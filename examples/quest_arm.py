@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from whatslab.model import GloveModel, QuestModel
+from whatslab.teleop import GloveModel, QuestModel
 from whatslab.robot import RobotModel, load_rig
 
 

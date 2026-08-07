@@ -15,7 +15,7 @@ def _nero_solver(backend: str = "dls"):
 
 def test_backend_cls_selection():
     pytest.importorskip("pinocchio")
-    from whatslab.teleop.arm import ArmIK, DiffArmIK, backend_cls
+    from whatslab.solvers.arm import ArmIK, DiffArmIK, backend_cls
     assert backend_cls("dls") is ArmIK
     assert backend_cls("diff") is DiffArmIK
     with pytest.raises(ValueError):
@@ -23,7 +23,7 @@ def test_backend_cls_selection():
 
 
 def test_arm_ik_lazy_requires_pinocchio():
-    import whatslab.teleop.arm as arm
+    import whatslab.solvers.arm as arm
 
     if importlib.util.find_spec("pinocchio") is None:
         with pytest.raises(ModuleNotFoundError):
@@ -53,7 +53,7 @@ def test_dls_end_to_end_bundled_urdf():
 
 def test_arm_ik_no_casadi_dependency():
     pytest.importorskip("pinocchio")
-    import whatslab.teleop.arm.arm_ik as m
+    import whatslab.solvers.arm.arm_ik as m
     src = open(m.__file__, encoding="utf-8").read()
     assert "import casadi" not in src
     assert "from pinocchio import casadi" not in src
@@ -82,7 +82,7 @@ def test_diff_backend_tracks_and_is_continuous():
 def test_robot_arm_ik_no_teleport_on_teleop_targets():
     pytest.importorskip("pinocchio")
     from scipy.spatial.transform import Rotation
-    from whatslab.model.ik import RobotArmIK
+    from whatslab.teleop.ik import RobotArmIK
     from whatslab.robot import RobotModel, load_rig
 
     ik = RobotArmIK(RobotModel(load_rig("rigs/nero_orca_right.yaml")))
@@ -103,7 +103,7 @@ def test_robot_arm_ik_no_teleport_on_teleop_targets():
 
 
 def _orca_rig_ik():
-    from whatslab.model.ik import RobotArmIK
+    from whatslab.teleop.ik import RobotArmIK
     from whatslab.robot import RobotModel, load_rig
     robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
     return robot, RobotArmIK(robot)
@@ -213,7 +213,7 @@ def _cal_pose(pos, quat=(0.0, 0.0, 0.0, 1.0)):
 def test_calib_disabled_skips_reach_scale_but_keeps_yaw():
     from scipy.spatial.transform import Rotation
 
-    from whatslab.model.calibration import ArmCalibration
+    from whatslab.teleop.calibration import ArmCalibration
 
     cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=False)
     q = Rotation.from_euler("z", 0.9).as_quat()
@@ -227,7 +227,7 @@ def test_calib_disabled_skips_reach_scale_but_keeps_yaw():
 def test_calib_enabled_applies_scale_and_yaw():
     from scipy.spatial.transform import Rotation
 
-    from whatslab.model.calibration import ArmCalibration
+    from whatslab.teleop.calibration import ArmCalibration
 
     cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=True)
     q = Rotation.from_euler("z", 0.9).as_quat()
@@ -240,7 +240,7 @@ def test_calib_enabled_applies_scale_and_yaw():
 
 def test_calib_enabled_flag_reaches_teleop_path():
     pytest.importorskip("pinocchio")
-    from whatslab.model.quest import QuestModel
+    from whatslab.teleop.quest import QuestModel
     from whatslab.robot import RobotModel, load_rig
 
     pose = _cal_pose([0.45, -0.10, 0.05])
@@ -261,7 +261,7 @@ def test_calib_enabled_flag_reaches_teleop_path():
 def test_yaw_calibration_works_regardless_of_enabled():
     from scipy.spatial.transform import Rotation
 
-    from whatslab.model.calibration import ArmCalibration
+    from whatslab.teleop.calibration import ArmCalibration
 
     q = Rotation.from_euler("z", 1.2).as_quat()
     for flag in (True, False):

@@ -11,7 +11,7 @@ ORCA_SIGN: Dict[str, float] = {}
 
 
 def orca_joint_map(side: str = "right") -> Dict[str, str]:
-    from whatslab.teleop.hand.hand_configs import OrcaHandConfig
+    from whatslab.solvers.hand.hand_configs import OrcaHandConfig
     cfg = OrcaHandConfig()
     out: Dict[str, str] = {}
     for finger, chain in zip(_FINGER_ORDER, cfg._get_fingers(side)):

@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from whatslab.model import HandModel
+from whatslab.teleop import HandModel
 
 
 def main():

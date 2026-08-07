@@ -9,7 +9,7 @@ class HandModel(TeleopModel):
 
     def __init__(self, hand_config: str = "orca_hand", side: str = "right",
                  urdf_root: str | None = None, hand_source=None):
-        from whatslab.teleop.hand import HandRetargetController
+        from whatslab.solvers.hand import HandRetargetController
         self._side = side
         self.hand_source = hand_source if hand_source is not None else GloveHumanHandReceiver()
         super().__init__(robot=None)

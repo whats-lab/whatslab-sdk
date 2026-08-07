@@ -9,7 +9,7 @@ from whatslab.core.types import InputSample, Pose
 from ..base import norm_quat
 from .base import QUEST_OSC_PORT, QuestReceiverBase
 
-CONTROLLER_POS_OFFSET = np.array([0.02, -0.04, 0.08])
+CONTROLLER_POS_OFFSET = np.array([0.02, -0.04, 0.1])
 
 
 class QuestControllerReceiver(QuestReceiverBase):
