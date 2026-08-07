@@ -28,7 +28,7 @@ solver:
   max_joint_velocity: 5.0
   reach_max: 0.9204
   max_iter: 50
-  iters_per_call: 100         
+  iters_per_call: 20
 calibration:
   enabled: true
   input_reach: 0.8305

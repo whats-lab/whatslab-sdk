@@ -46,9 +46,11 @@ def tighten(base: Dict[str, JointLimit],
 class SafetyFilter:
 
     def __init__(self, limits: Dict[str, JointLimit], dt: float,
-                 initial: Optional[Dict[str, float]] = None):
+                 initial: Optional[Dict[str, float]] = None,
+                 dt_max: Optional[float] = None):
         self._lim = dict(limits)
         self._dt = float(dt)
+        self._dt_max = float(dt_max) if dt_max is not None else 4.0 * float(dt)
         self._last: Dict[str, float] = dict(initial or {})
         self._estopped = False
         self._enabled = True
@@ -74,9 +76,11 @@ class SafetyFilter:
     def holding(self) -> bool:
         return self._estopped or not self._enabled
 
-    def step(self, desired: Optional[Dict[str, float]]) -> Dict[str, float]:
+    def step(self, desired: Optional[Dict[str, float]],
+             dt: Optional[float] = None) -> Dict[str, float]:
         if self._estopped or not self._enabled or desired is None:
             return dict(self._last)
+        step_dt = self._dt if dt is None else min(max(float(dt), 0.0), self._dt_max)
         out: Dict[str, float] = {}
         for name, val in desired.items():
             lim = self._lim.get(name)
@@ -86,7 +90,7 @@ class SafetyFilter:
                 continue
             v = min(max(float(val), lim.lower), lim.upper)
             if prev is not None and lim.velocity != _INF:
-                dmax = lim.velocity * self._dt
+                dmax = lim.velocity * step_dt
                 v = min(max(v, prev - dmax), prev + dmax)
             out[name] = v
         self._last = {**self._last, **out}

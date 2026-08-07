@@ -26,6 +26,7 @@ class TeleopModel(ABC):
         self.robot = next(iter(uniq.values())) if len(uniq) == 1 else None
 
         self.safety = None
+        self._t_prev = None
 
         self.target: Dict[str, Optional[np.ndarray]] = {}
         self.q: Dict[str, Dict[str, float]] = {}
@@ -137,7 +138,10 @@ class TeleopModel(ABC):
         data = self._apply_calib(self.get_data())
         q = self.solve(data)
         if self.safety is not None:
-            q = {s: self.safety.step(v) for s, v in q.items()}
+            now = time.monotonic()
+            dt = None if self._t_prev is None else now - self._t_prev
+            self._t_prev = now
+            q = {s: self.safety.step(v, dt) for s, v in q.items()}
         self.q = q
         return q
 
