@@ -10,6 +10,7 @@ import numpy as np
 from whatslab.core.interfaces import HandController
 from whatslab.core.types import Pose
 from whatslab.robot import RobotArmIK, RobotModel, save_calibration
+from whatslab.robot.config import RigConfig, load_rig
 from .calibration import ArmCalibration
 
 
@@ -22,8 +23,9 @@ class TeleopModel(ABC):
     def __init__(self, robot):
         self.robots: Dict[str, RobotModel] = self._as_side_map(robot)
 
-        uniq = {id(r): r for r in self.robots.values()}
-        self.robot = next(iter(uniq.values())) if len(uniq) == 1 else None
+        vals = list(self.robots.values())
+        uniq = {id(getattr(r, "rig", r)) for r in vals}
+        self.robot = vals[0] if len(uniq) == 1 and vals else None
 
         self._safety = None
         self._safety_side: Dict[str, object] = {}
@@ -48,17 +50,28 @@ class TeleopModel(ABC):
             if r.has_hand and cfg:
                 self.retarget[s] = r.make_hand_controller(cfg, s)
 
+    @staticmethod
+    def _as_rig(r):
+        if isinstance(r, RigConfig):
+            return r
+        if isinstance(r, (str, os.PathLike)):
+            return load_rig(os.fspath(r))
+        return None
+
     def _as_side_map(self, robot) -> Dict[str, RobotModel]:
         def _load(r):
-            return RobotModel(r) if isinstance(r, (str, os.PathLike)) else r
+            rig = self._as_rig(r)
+            return RobotModel(rig) if rig is not None else r
         if robot is None:
             return {}
         if isinstance(robot, dict):
             return {s: _load(r) for s, r in robot.items()}
         if isinstance(robot, (list, tuple)):
             return {self.SIDES[i]: _load(r) for i, r in enumerate(robot) if r is not None}
-        r = _load(robot)
-        return {s: r for s in self.SIDES}
+        rig = self._as_rig(robot)
+        if rig is not None:
+            return {s: RobotModel(rig) for s in self.SIDES}
+        return {s: robot for s in self.SIDES}
 
     @property
     def _receivers(self) -> list:
