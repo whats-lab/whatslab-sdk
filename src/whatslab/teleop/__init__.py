@@ -1,9 +1,5 @@
 from .base import TeleopModel
 from .calibration import ArmCalibration
-from .glove import GloveModel
-from .hand import HandModel
-from .ik import RobotArmIK
-from .quest import QuestModel
+from .models import GloveModel, HandModel, QuestModel
 
-__all__ = ["TeleopModel", "QuestModel", "GloveModel", "HandModel",
-           "RobotArmIK", "ArmCalibration"]
+__all__ = ["TeleopModel", "QuestModel", "GloveModel", "HandModel", "ArmCalibration"]

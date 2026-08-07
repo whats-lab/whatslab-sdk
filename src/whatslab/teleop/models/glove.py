@@ -10,7 +10,7 @@ from whatslab.core.types import Pose
 from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
 from whatslab.receiver.quest.controller import QuestControllerReceiver
 
-from .base import TeleopModel
+from ..base import TeleopModel
 
 logger = logging.getLogger(__name__)
 

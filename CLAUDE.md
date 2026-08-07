@@ -53,7 +53,7 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 `get_data() → _apply_calib() → solve()` 를 엮어 `{side: {joint_name: rad}}` 를 낸다.
 캐시 없음, 항상 양손(`SIDES = ("left","right")`) 처리. 서브클래스가 구현할 추상 훅은
 `_get_raw_target()` **하나**뿐 — 어느 소스를 팔 EE 목표로 쓸지와 그 프레임을 정한다
-(`teleop/quest.py` = 손목, `teleop/glove.py` = 컨트롤러+글러브 햅틱). side 를 `None` 으로
+(`teleop/models/quest.py` = 손목, `teleop/models/glove.py` = 컨트롤러+글러브 햅틱). side 를 `None` 으로
 주면 그 side 는 IK 를 건너뛰고, 목표/손가락 입력이 없는 컴포넌트는 q 에서 **생략**된다
 (0 을 채우지 않는다).
 
@@ -61,10 +61,11 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 ← teleop`. 즉 `teleop` 만 위쪽이고 나머지는 서로를 모른다:
 - `solvers/` = **수치 해법만**. 팔 IK(`arm/arm_ik.py` DLS)·손 리타게팅
   (`hand/retargeter.py` nlopt). 리시버도 rig 도 모른다.
-- `teleop/` = 파이프라인(`base.py`)·정책(`ik.py` `RobotArmIK`)·전처리(`calibration.py`)
-  + 장치별 조립(`quest.py`/`glove.py`/`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
-- `robot/` = rig config → `RobotModel`(정의 + 기하). `solvers` 를 백엔드로 고른다.
-커스텀 조립을 원하는 소비자(sim/ROS2 노드)는 `teleop/quest.py` 를 본떠
+- `teleop/` = 파이프라인(`base.py`) + 전처리(`calibration.py`) + 장치별 조립
+  (`models/quest.py`·`glove.py`·`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
+- `robot/` = rig config → `RobotModel`(정의 + 기하, 무상태) + `RobotArmIK`
+  (런타임 정책, 유상태: 스톨 카운터·warm start). `solvers` 를 백엔드로 고른다.
+커스텀 조립을 원하는 소비자(sim/ROS2 노드)는 `teleop/models/quest.py` 를 본떠
 `TeleopModel` 을 상속하고 `_get_raw_target()` 만 구현하면 된다. 계약은
 `core/interfaces.py` 의 Protocol(`Receiver`/`HandController`/`ArmSolver`) — 구조적 타이핑이라
 시그니처만 맞으면 커스텀 구현이 그대로 꽂힌다. 이 방향을 깨는 import 를 추가하지 말 것.
@@ -72,7 +73,7 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 **정준 프레임**(x=앞, z=위, 오른손계)이 전 경계의 불변식이다. 리시버 출력, `TeleopModel`
 입출력, `RobotModel` 의 데카르트 API 모두 정준. `RobotModel`(`robot/model.py`)은
 "정준 샌드위치": 입력 4x4 → `to_base()` → IK, **q 출력은 무변환**(관절공간은 프레임 무관),
-데카르트 출력은 요청 시에만 `to_canonical()`. `RobotModel` 은 무상태(정의 + 기하 함수만);
+데카르트 출력은 요청 시에만 `to_canonical()`. `RobotModel` 은 무상태(정의 + 기하 함수만; 같은 패키지의 `RobotArmIK` 는 유상태);
 현재 q·목표·평활 상태는 호출자/솔버가 소유한다.
 
 **팔 IK 책임 분리** (이 층을 건드릴 때 반드시 구분):
@@ -81,12 +82,12 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   (`RobotModel.solve` 의 기존 의미와 같다) — off 여도 yaw 캘리브(`W`)는 그대로 동작한다.
   `calibrate_reach(persist=True)` 는 `save_calibration` 으로 `input_reach` 를 쓰면서
   `enabled` 를 **true 로 덮어쓴다**(`robot/config.py`).
-- `teleop/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
+- `robot/arm_ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
   `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
-- `solvers/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
+- `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
   `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장).
-  `solvers/builders.py:backend_cls(rig.solver.backend)` 로 선택.
+  `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
   `whatslab.solvers` 는 lazy `__getattr__` 이다 — import 만으로 pinocchio·
   dex_retargeting 을 끌어오지 않는다(extra 격리). 새 심볼은 `_LAZY` 에 등록한다.
 
@@ -133,8 +134,13 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   맞춘 의도적 핀이다. 상한을 풀면 소비자 env 가 오염된다.
 - **pip 전용 스택 유지.** casadi/IPOPT·conda-forge pinocchio 를 도입하지 않는다(팔 IK 가
   해석 야코비안 + DLS 인 이유). 손·팔·viz 가 pip `pin` 하나를 공유한다.
-- 무거운 의존(python-osc 등)은 **`start()` 안에서 lazy import** — 모듈 import 만으로
-  extra 를 강제하지 않는다.
+- **lazy import 금지.** 함수 안에서 import 하지 않는다 — 전부 모듈 최상단이다.
+  결과로 `import whatslab.teleop` 이 pinocchio·dex_retargeting·torch·nlopt·python-osc
+  를 전부 끌어온다(약 0.9초). extra 를 나눠 설치하는 소비자는 `[all]` 을 써야 한다.
+  예외는 둘뿐이고 각각 하드한 이유가 있다:
+  `paths.models_root()` 의 `dexhand_description`(= `WHATSLAB_MODELS_ROOT` 로
+  덮어쓰면 패키지 없이 동작해야 한다), `solvers/hand/spherical_fk.py` 의 `rerun`
+  (선언된 의존이 아니다 — 최상단으로 올리면 모듈 자체가 못 뜬다).
 - 기본 OSC 포트: Quest 9000(`receiver/quest_base.py`), 글러브 수신 4040 / 송신 4042
   (`receiver/glove_base.py`). 포트별 서버는 `osc_transport._registry` 싱글턴을 공유하므로,
   테스트는 `tests/conftest.py` 의 autouse 픽스처가 매번 레지스트리를 비운다.
