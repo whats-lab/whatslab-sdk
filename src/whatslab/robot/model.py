@@ -42,6 +42,9 @@ class RobotModel:
         self.arm_joint_names: List[str] = []
         if self.has_arm:
             self.solver = self._build_arm_solver()
+            self.solver.set_joint_weights(rig.solver.joint_weights)
+            if hasattr(self.solver, "set_task_split"):
+                self.solver.set_task_split(rig.solver.orientation_joints)
             self._apply_solver_tuning(self.solver)
             self.arm_joint_names = list(self.solver.active_joint_names())
 

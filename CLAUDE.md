@@ -92,7 +92,8 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   못 맞추면 경고하고 그 분기로 시작한다.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
 - `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
-  `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장).
+  `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장) /
+  `DecoupledArmIK`(decoupled: 위치·방위를 관절 블록으로 나눠 푼다).
   `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
   `whatslab.solvers` 는 lazy `__getattr__` 이다 — import 만으로 pinocchio·
   dex_retargeting 을 끌어오지 않는다(extra 격리). 새 심볼은 `_LAZY` 에 등록한다.
@@ -114,6 +115,17 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 - **정확도는 `tools/bench_arm_ik.py --traj fk` 로만 판정한다.** 좌표계로 합성한
   궤적은 도달 불가 구간을 지나 솔버 품질과 도달성을 섞는다. `fk` 궤적(유효 q → FK)
   은 하한이 0 이라 남는 오차가 전부 솔버 탓이다. 의심되면 `--floor`.
+- **여분 자유도 배분은 `joint_weights` 로 하고 엄격 분리는 마지막 수단.** 구형
+  손목이라고 `backend: decoupled` 가 유리한 게 아니다 — nero 는 joint5·6·7 축이
+  0.0mm 로 정확히 교차하는데도, joint6 가동범위가 `[-41.8°, 54.4°]` 뿐이라 분리하면
+  팔의 방위 기여 경로가 끊겨 66~72% 프레임에서 joint6 가 포화한다(실측: pos 89.3→
+  51.4mm 로 좋아지지만 ori 18.3→38.1° 로 무너짐). 가중 DLS 는 커플링을 유지해
+  손목 포화 시 팔이 이어받는다(joint1~4=2.5: run2 31.4→13.8mm / run 15.6→6.3mm,
+  방위도 동시 개선). 가중치는 **비율과 절대 스케일이 둘 다 의미가 있다** — 감쇠항
+  `λ²I` 는 `W` 와 함께 스케일되지 않으므로 `arm=2.0` 과 `wrist=0.5` 는 다르게 동작한다.
+- **가중치는 시작점을 여러 개 잡고 판정한다.** 단일 시작점 리플레이는 초기 basin
+  탈출 여부가 지배해서 후보 순위가 뒤집힌다(실측: 같은 설정이 시작점 0 에서 89mm,
+  15% 지점에서 5mm). 데이터셋 2개 × 시작점 6개가 최소선이다.
 - **수치 반복값은 rig `solver:` 에서만 튜닝한다**(`max_iter`/`iters_per_call`/`tol`).
   코드 기본값을 고치면 diff 에 남지 않는다 — `max_iter` 가 코드에서 5 로 내려가
   전역 탐색 후보가 전부 미수렴했던 사례가 있다.
@@ -128,7 +140,9 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
   `save_reach_max`) → 커밋 diff 에 `input_reach`/`reach_max` 만 바뀐 게 정상.
   쓰기는 임시파일 + `os.replace` 로 원자적이다 — 텔레옵이 도는 중에 다른
   프로세스가 같은 yaml 을 읽어도 잘린 파일을 보지 않는다(실제로 pytest 가
-  `backend: 'dl'` 로 읽어 깨진 적이 있다).
+  `backend: 'dl'` 로 읽어 깨진 적이 있다). 다만 `yaml.safe_dump` 로 **재직렬화**
+  하므로 **rig yaml 의 주석은 캘리브 저장 시 사라진다** — rig 값의 근거는 주석이
+  아니라 이 파일이나 `docs/API.md` 에 쓴다(robots yaml 은 안 쓰이므로 무관).
 
 **손 리타게팅** — `HandPose`(사람 골격, 관절명→회전)가 정본이고 `to_sensor_array()` 로의
 배열화는 `solvers/hand/controller.py` 경계에서만 일어난다. 엔진은

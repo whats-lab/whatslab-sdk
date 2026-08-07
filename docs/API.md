@@ -20,7 +20,7 @@ from whatslab.teleop import QuestModel, GloveModel
 | `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
 | `GloveModel(robot)` | 프리셋: 팔=Quest 컨트롤러 IK, 손=글러브 리타게팅. 햅틱 지원. |
 | `HandModel(robot)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). |
-| `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃·`reseed()`·확실한 스톨** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `stall_*`/`reseed_*` 속성. |
+| `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃(`_cold_start`)과 `reseed()`** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `cold_*` 속성. |
 | `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + reach 스케일 소유. `enabled=False` 면 **reach 스케일만** 건너뛴다 — yaw 캘리브는 그대로 동작한다(rig `calibration.enabled`). |
 
 ### `TeleopModel` 메서드
@@ -67,7 +67,29 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `RobotModel.sync_state(q_arm)` | IK 웜스타트용 현재 상태 갱신. |
 | `RobotModel.make_hand_controller(config_name, side)` | 손 리타게팅 컨트롤러 생성. |
 | `load_robot(path)` / `load_rig(path)` | yaml → `RobotSpec` / `RigConfig`. |
-| `save_calibration(rig, input_reach)` / `save_reach_max(rig, reach_max)` | 캘리브 값을 rig yaml 에 기록. |
+| `save_calibration(rig, input_reach)` / `save_reach_max(rig, reach_max)` | 캘리브 값을 rig yaml 에 기록. **yaml 을 재직렬화하므로 rig yaml 의 주석은 지워진다.** |
+
+### rig `solver:` — 관절별 태스크 배분
+
+여분 자유도를 어느 관절에 쓸지 정하는 두 가지 방법. 둘 다 rig yaml 전용이고
+코드 변경이 필요 없다.
+
+| 키 | 설명 |
+|---|---|
+| `joint_weights: {관절명: 비용}` | **권장.** 가중 DLS 의 관절 비용 `W`(기본 1.0, 양수). `dq = W⁻¹Jᵀ(JW⁻¹Jᵀ+λ²I)⁻¹e` — 싼 관절이 먼저 쓰인다. 커플링을 유지하므로 싼 관절이 한계에 걸리면 비싼 관절이 이어받는다. 모든 백엔드에 적용. |
+| `backend: decoupled` + `orientation_joints: [...]` | **엄격 분리.** 위치는 나머지 관절이 손목중심(= `orientation_joints[0]` 의 원점) 프레임으로, 방위는 `orientation_joints` 가 EE 프레임으로 각각 푼다. 지정 없으면 마지막 3개. 손목이 3축 전부 넓은 가동범위를 가질 때만 유리하다 — 좁으면 팔의 방위 기여 경로가 끊겨 오히려 나빠진다. |
+
+`nero_orca_right` 실측(run2 3021프레임 + run 301프레임, 시작점 6개 평균):
+
+| 설정 | run2 pos/ori | run pos/ori |
+|---|---|---|
+| 균등 (기본) | 31.4mm / 6.9° | 15.6mm / 7.9° |
+| `joint_weights` joint1~4 = 2.5 | **13.8mm / 7.2°** | **6.3mm / 4.7°** |
+| `backend: decoupled` | 54.8mm / 39.2° | — |
+
+nero 는 joint5·6·7 축이 정확히 한 점에서 만나는 구형 손목이지만 joint6 가동범위가
+`[-41.8°, 54.4°]` 뿐이라, 엄격 분리는 66~72% 프레임에서 joint6 포화로 방위를 놓친다.
+그래서 기본 rig 는 가중치 쪽을 쓴다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 

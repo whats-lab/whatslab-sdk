@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import yaml
@@ -87,6 +87,8 @@ class SolverCfg:
     dtheta_max: Optional[float] = None
     dq_max_tick: Optional[float] = None
     sugihara_bias: Optional[float] = None
+    orientation_joints: Optional[List[str]] = None
+    joint_weights: Optional[Dict[str, float]] = None
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
@@ -109,6 +111,11 @@ class SolverCfg:
             dtheta_max=_opt("dtheta_max", float),
             dq_max_tick=_opt("dq_max_tick", float),
             sugihara_bias=_opt("sugihara_bias", float),
+            orientation_joints=(list(d["orientation_joints"])
+                                if d.get("orientation_joints") else None),
+            joint_weights=({str(k): float(v)
+                            for k, v in d["joint_weights"].items()}
+                           if d.get("joint_weights") else None),
         )
 
 
