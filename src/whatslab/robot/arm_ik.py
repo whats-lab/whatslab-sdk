@@ -33,6 +33,7 @@ class RobotArmIK:
         self._stall = 0
         self._cooldown = 0
         self._q_prev = None
+        self._warm = None
         self._cold_tries = 0
 
     def solve(self, T_canonical: np.ndarray) -> np.ndarray:
@@ -40,6 +41,8 @@ class RobotArmIK:
         T_b = clamp_reach(r.to_base(np.asarray(T_canonical, dtype=float)),
                           r.rig.solver.reach_max)
         solver = r.solver
+        if self._warm is not None and hasattr(solver, "sync_state"):
+            solver.sync_state(self._warm)
         if not self._seeded and hasattr(solver, "solve_robust"):
             q = self._cold_start(solver, T_b)
         else:
@@ -50,6 +53,7 @@ class RobotArmIK:
                 f"IK 해({q.shape[0]}) != arm_joint_names({len(self.joint_names)}) — "
                 "rig/solver 관절 구성 불일치")
         self._q_prev = q.copy()
+        self._warm = q.copy()
         return q
 
     def _cap_tick_step(self, q, solver):
@@ -122,12 +126,14 @@ class RobotArmIK:
         self._stall = 0
         self._cooldown = 0
         self._q_prev = None
+        self._warm = None
         solver = getattr(self._robot, "solver", None)
         if solver is not None and hasattr(solver, "sync_state") \
                 and hasattr(solver, "q_neutral"):
             solver.sync_state(solver.q_neutral)
 
     def sync_state(self, q_arm) -> None:
+        self._warm = np.array(q_arm, dtype=float)
         self._robot.sync_state(q_arm)
 
     def ee_pose(self, q_arm) -> np.ndarray:
