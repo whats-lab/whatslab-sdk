@@ -99,6 +99,7 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `types.HandCommand` | 리타게팅 출력(로봇 손 관절각). |
 | `types.JointSpec` | 관절 이름/한계 스펙. |
 | `interfaces.Receiver` / `HandController` / `ArmSolver` | 컴포넌트 Protocol(구조적 타이핑). |
+| `interfaces.GlobalArmSolver` | `ArmSolver` + `solve_robust`·`pose_error`·`sync_state`·`q_neutral`. `RobotArmIK` 가 콜드 스타트·`reseed()` 에서 요구하는 계약이다(런타임에는 `hasattr` 로 확인). 커스텀 백엔드를 끼울 때 이 표면을 맞추면 콜드 스타트도 동작한다. |
 
 ## whatslab.data — LeRobot 데이터셋 sink (경량, lerobot 라이브러리 불요)
 

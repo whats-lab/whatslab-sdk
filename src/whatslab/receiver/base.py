@@ -2,13 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 
-FINGER_JOINT_ORDER = [
-    "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip",
-    "index_mcp", "index_pip", "index_dip",
-    "middle_mcp", "middle_pip", "middle_dip",
-    "ring_mcp", "ring_pip", "ring_dip",
-    "pinky_mcp", "pinky_pip", "pinky_dip",
-]
 NUM_FINGER_JOINTS = 16
 
 
