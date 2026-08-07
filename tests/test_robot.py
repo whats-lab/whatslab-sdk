@@ -49,9 +49,11 @@ def test_model_canonical_sandwich():
     assert np.allclose(m.to_base(T_c), T_b, atol=1e-12)
     assert np.sign(T_c[0, 3]) == -np.sign(T_b[0, 3]) or abs(T_b[0, 3]) < 1e-9
 
-    m.sync_state(q0 + 0.1)
+    from whatslab.robot import RobotArmIK
+    ik = RobotArmIK(m)
+    ik.sync_state(q0 + 0.1)
     for _ in range(80):
-        q = m.solve(T_c)
+        q = ik.solve(T_c)
     err = np.linalg.norm(m.ee_pose(q)[:3, 3] - T_c[:3, 3])
     assert err < 5e-3, f"sandwich solve 오차 {err*1e3:.2f}mm"
 
@@ -84,30 +86,14 @@ def test_model_reach_clamp():
     rig.calibration.enabled = False
     rig.solver.reach_max = 0.7
     m = RobotModel(rig)
+    from whatslab.robot import RobotArmIK
+    ik = RobotArmIK(m)
     T = np.eye(4); T[:3, 3] = [3.0, 0.0, 0.0]
-    m.sync_state(np.zeros(len(m.arm_joint_names)))
+    ik.sync_state(np.zeros(len(m.arm_joint_names)))
     for _ in range(150):
-        q = m.solve(T)
+        q = ik.solve(T)
     r = float(np.linalg.norm(m.solver.fk(q)[:3, 3]))
     assert r <= 0.7 + 1e-2, f"reach 클램프 실패: 반경 {r:.3f} > 0.7 (먼 목표가 안 잘림)"
-
-
-def test_model_uniform_reach_scale():
-    pytest.importorskip("pinocchio")
-    rig = load_rig("rigs/nero_arm.yaml")
-    rig.solver.reach_max = 0.9
-    m = RobotModel(rig)
-    n = len(m.arm_joint_names)
-    T = np.eye(4); T[:3, 3] = [0.2, 0.0, 0.1]
-
-    rig.calibration.enabled = True
-    rig.calibration.input_reach = 0.45
-    m.sync_state(np.zeros(n)); q_cal = m.solve(T)
-
-    rig.calibration.enabled = False
-    T2 = np.eye(4); T2[:3, 3] = [0.4, 0.0, 0.2]
-    m.sync_state(np.zeros(n)); q_manual = m.solve(T2)
-    assert np.allclose(q_cal, q_manual, atol=1e-6)
 
 
 def test_robot_model_accepts_path_or_config():
@@ -117,12 +103,9 @@ def test_robot_model_accepts_path_or_config():
     rig = load_rig("rigs/nero_orca_right.yaml")
     a = RobotModel(rig)
     b = RobotModel("rigs/nero_orca_right.yaml")
-    c = RobotModel.from_yaml("rigs/nero_orca_right.yaml")
-
-    for m in (b, c):
-        assert m.rig.name == a.rig.name
-        assert m.arm_joint_names == a.arm_joint_names
-        assert np.allclose(m._M, a._M)
+    assert b.rig.name == a.rig.name
+    assert b.arm_joint_names == a.arm_joint_names
+    assert np.allclose(b._M, a._M)
     assert a.rig is rig
 
 

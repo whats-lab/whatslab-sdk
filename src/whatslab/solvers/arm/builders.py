@@ -11,6 +11,3 @@ def backend_cls(backend: str):
     if backend == "decoupled":
         return DecoupledArmIK
     raise ValueError(f"unknown IK backend {backend!r} (dls|diff|decoupled)")
-
-
-_backend_cls = backend_cls
