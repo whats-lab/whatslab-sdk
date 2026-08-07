@@ -423,6 +423,18 @@ def test_joint_weights_shift_effort_to_cheap_joints():
         f"팔을 무겁게 해도 팔 사용 비중이 안 줄었다: {share_flat:.2f} → {share_heavy:.2f}")
 
 
+def test_neutral_is_mid_range_and_posture_pull_is_on():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+    s = RobotModel(load_rig("rigs/nero_orca_right.yaml")).solver
+    mid = 0.5 * (s._lo + s._hi)
+    assert np.allclose(s.q_neutral, mid), "중립 자세가 관절범위 중앙이 아니다"
+    assert not np.allclose(s.q_neutral, 0.0), (
+        "비대칭 범위 관절이 있는데 중립이 전부 0 이다")
+    assert s.k_posture > 0.0, "중앙으로 밀어넣는 힘이 꺼져 있으면 코너에 갇힌다"
+    assert np.allclose(s.q_posture, s.q_neutral)
+
+
 def test_joint_weights_reject_bad_input():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotModel, load_rig
