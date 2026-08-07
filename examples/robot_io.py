@@ -24,10 +24,11 @@ def orca_joint_map(side: str = "right") -> Dict[str, str]:
 class OrcaHandSender:
 
     def __init__(self, side: str = "right", wrist_joint: Optional[str] = None,
-                 model_version: str = "v2"):
+                 model_version: str = "v2", move_to_neutral: bool = False):
         self.side = side
         self.wrist_joint = wrist_joint
         self.model_version = model_version
+        self.move_to_neutral = bool(move_to_neutral)
         self.hand = None
         self._map = orca_joint_map(side)
 
@@ -39,8 +40,27 @@ class OrcaHandSender:
         if not ok:
             self.hand = None
             raise RuntimeError(f"orca 연결 실패: {msg}")
-        self.hand.enable_torque()
+        self.hand.init_joints(move_to_neutral=self.move_to_neutral)
+        self._verify_mapping()
         return msg
+
+    def _verify_mapping(self) -> None:
+        ids = list(getattr(getattr(self.hand, "config", None), "joint_ids", ()) or ())
+        if not ids:
+            print("[orca] WARN: config.joint_ids 를 읽을 수 없어 매핑 검증을 건너뜁니다",
+                  flush=True)
+            return
+        want = set(self._map.values()) | ({"wrist"} if self.wrist_joint else set())
+        missing = sorted(want - set(ids))
+        unsent = sorted(set(ids) - want)
+        if missing:
+            print(f"[orca] WARN: 하드웨어에 없는 관절명 {missing} — 이 명령은 "
+                  f"set_joint_positions 가 조용히 버립니다 (model_version="
+                  f"{self.model_version})", flush=True)
+        if unsent:
+            print(f"[orca] 명령하지 않는 하드웨어 관절: {unsent}", flush=True)
+        if not missing and not unsent:
+            print(f"[orca] 관절 매핑 {len(want)}/{len(ids)} 일치", flush=True)
 
     def close(self) -> None:
         if self.hand is not None:
@@ -70,7 +90,7 @@ class OrcaHandSender:
 class AgxArmSender:
 
     def __init__(self, joint_names: List[str], channel: str = "can0",
-                 speed_percent: int = 20):
+                 speed_percent: int = 40):
         self.nero_joints = [n for n in joint_names if n.startswith("joint")]
         self.channel = channel
         self.speed_percent = int(speed_percent)
