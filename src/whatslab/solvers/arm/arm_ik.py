@@ -391,110 +391,15 @@ class DiffArmIK(_ArmSolverBase):
                     dq *= 0.5 / n
                 q = pin.integrate(self.model, q, dq)
 
-            sol_q = self._finish_tick(q_start, q)
-        except Exception as e:
-            if not safe:
-                raise
-            self._warn_once(e)
-            sol_q = self.history_data.copy()
-        self.init_data = sol_q
-        self.history_data = sol_q
-        return sol_q
-
-    def _finish_tick(self, q_start: np.ndarray, q: np.ndarray) -> np.ndarray:
-        step = q - q_start
-        sn = np.linalg.norm(step)
-        if sn > self.dq_max_tick:
-            q = q_start + step * (self.dq_max_tick / sn)
-        sol_q = np.clip(q, self._lo, self._hi)
-        if self._smooth > 0.0:
-            sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
-        if not np.all(np.isfinite(sol_q)):
-            raise ValueError("IK 해에 NaN")
-        return sol_q
-
-
-class DecoupledArmIK(DiffArmIK):
-
-    wc_frame = "wrist_center"
-
-    def set_task_split(self, orientation_joints: Optional[Sequence[str]] = None) -> None:
-        m = self.model
-        names = [n for n in m.names if n != "universe"]
-        ori = list(orientation_joints) if orientation_joints else names[-3:]
-        missing = [n for n in ori if not m.existJointName(n)]
-        if missing:
-            raise ValueError(f"orientation_joints 에 없는 관절: {missing}")
-        rank = {n: i for i, n in enumerate(names)}
-        ori.sort(key=lambda n: rank[n])
-        pos = [n for n in names if n not in set(ori)]
-        if not pos:
-            raise ValueError("orientation_joints 가 전 관절을 차지 — 위치 관절이 없다")
-
-        def vidx(sel):
-            out = []
-            for n in sel:
-                j = m.joints[m.getJointId(n)]
-                out.extend(range(j.idx_v, j.idx_v + j.nv))
-            return np.array(out, dtype=int)
-
-        self._ori_idx = vidx(ori)
-        self._pos_idx = vidx(pos)
-        self.orientation_joints = ori
-        self.position_joints = pos
-
-        jid = m.getJointId(ori[0])
-        if not m.existFrame(self.wc_frame):
-            parent = int(m.parents[jid])
-            m.addFrame(pin.Frame(self.wc_frame, parent,
-                                 m.getFrameId(m.names[parent]),
-                                 m.jointPlacements[jid], pin.FrameType.OP_FRAME))
-            self.data = m.createData()
-            self._fk_data = m.createData()
-        self.wc_id = m.getFrameId(self.wc_frame)
-
-    def _block_step(self, J: np.ndarray, e: np.ndarray, g: np.ndarray) -> np.ndarray:
-        damp2 = float(e @ e) + self.sugihara_bias
-        Jp = J.T @ np.linalg.inv(J @ J.T + damp2 * np.eye(J.shape[0]))
-        return Jp @ e + (np.eye(J.shape[1]) - Jp @ J) @ g
-
-    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        if not hasattr(self, "_pos_idx"):
-            self.set_task_split()
-        T_goal = np.asarray(target_pose, dtype=float)
-        q_start = np.array(self.history_data, dtype=float)
-        q = q_start.copy()
-        pi, oi = self._pos_idx, self._ori_idx
-        try:
-            T = self._rate_limited_target(q, T_goal)
-            R_t, p_t = T[:3, :3], T[:3, 3]
-            T_se3 = pin.SE3(T)
-            for _ in range(self.iters_per_call):
-                pin.forwardKinematics(self.model, self.data, q)
-                pin.updateFramePlacements(self.model, self.data)
-                oMe = self.data.oMf[self.ee_id]
-                oMw = self.data.oMf[self.wc_id]
-                iMd = oMe.actInv(T_se3)
-                e_o = pin.log6(iMd).vector[3:]
-                v = oMe.rotation.T @ (oMw.translation - oMe.translation)
-                e_p = (p_t + R_t @ v) - oMw.translation
-                if np.linalg.norm(e_p) < self.tol and np.linalg.norm(e_o) < self.tol:
-                    break
-                Jw = pin.computeFrameJacobian(self.model, self.data, q, self.wc_id,
-                                              pin.LOCAL_WORLD_ALIGNED)[:3][:, pi]
-                Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id,
-                                              pin.LOCAL)
-                Je = (-pin.Jlog6(iMd.inverse()) @ Jf)[3:][:, oi]
-                g = self.k_limit * self._limit_gradient(q)
-                dq = np.zeros(self.model.nv)
-                dq[pi] = self._block_step(Jw, e_p, g[pi])
-                dq[oi] = self._block_step(Je, -e_o, g[oi])
-                dq = self._soft_limit_scale(q, dq)
-                n = np.linalg.norm(dq)
-                if n > 0.5:
-                    dq *= 0.5 / n
-                q = pin.integrate(self.model, q, dq)
-            sol_q = self._finish_tick(q_start, q)
+            step = q - q_start
+            sn = np.linalg.norm(step)
+            if sn > self.dq_max_tick:
+                q = q_start + step * (self.dq_max_tick / sn)
+            sol_q = np.clip(q, self._lo, self._hi)
+            if self._smooth > 0.0:
+                sol_q = self._smooth * q_start + (1.0 - self._smooth) * sol_q
+            if not np.all(np.isfinite(sol_q)):
+                raise ValueError("IK 해에 NaN")
         except Exception as e:
             if not safe:
                 raise

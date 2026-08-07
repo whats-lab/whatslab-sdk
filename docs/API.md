@@ -70,16 +70,15 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `load_robot(path)` / `load_rig(path)` | yaml → `RobotSpec` / `RigConfig`. |
 | `save_calibration(rig, input_reach)` / `save_reach_max(rig, reach_max)` | 캘리브 값을 rig yaml 에 기록. **yaml 을 재직렬화하므로 rig yaml 의 주석은 지워진다.** |
 
-### rig `solver:` — 관절별 태스크 배분
+### rig `solver:` — 여분 자유도 배분
 
-여분 자유도를 어느 관절에 쓸지 정하는 두 가지 방법. 둘 다 rig yaml 전용이고
-코드 변경이 필요 없다.
+어느 관절을 먼저 쓸지, 자세를 어디로 되돌릴지. 둘 다 rig yaml 전용이고 코드 변경이
+필요 없다.
 
 | 키 | 설명 |
 |---|---|
-| `joint_weights: {관절명: 비용}` | **권장.** 가중 DLS 의 관절 비용 `W`(기본 1.0, 양수). `dq = W⁻¹Jᵀ(JW⁻¹Jᵀ+λ²I)⁻¹e` — 싼 관절이 먼저 쓰인다. 커플링을 유지하므로 싼 관절이 한계에 걸리면 비싼 관절이 이어받는다. 모든 백엔드에 적용. |
+| `joint_weights: {관절명: 비용}` | 가중 DLS 의 관절 비용 `W`(기본 1.0, 양수). `dq = W⁻¹Jᵀ(JW⁻¹Jᵀ+λ²I)⁻¹e` — 싼 관절이 먼저 쓰인다. 커플링을 유지하므로 싼 관절이 한계에 걸리면 비싼 관절이 이어받는다. **비율과 절대 스케일이 둘 다 의미가 있다**(감쇠항 `λ²I` 는 `W` 와 함께 스케일되지 않는다). |
 | `k_posture` / `k_limit` | 널스페이스에서 자세를 `q_neutral`(= 관절범위 중앙)로 되돌리는 힘 / 한계 근처에서 밀어내는 힘. 기본 0.05 / 1.0. **0 으로 두면 여분 자유도가 코너에 박혀 안 나온다.** |
-| `backend: decoupled` + `orientation_joints: [...]` | **엄격 분리.** 위치는 나머지 관절이 손목중심(= `orientation_joints[0]` 의 원점) 프레임으로, 방위는 `orientation_joints` 가 EE 프레임으로 각각 푼다. 지정 없으면 마지막 3개. 손목이 3축 전부 넓은 가동범위를 가질 때만 유리하다 — 좁으면 팔의 방위 기여 경로가 끊겨 오히려 나빠진다. |
 
 `nero_orca_right` 실측(실기 녹화 run6 8747프레임 + run5 4058프레임, 시작점 3개 평균):
 
@@ -88,11 +87,6 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `k_posture=0`, 중립=0 | 21.9mm / 13.3° / 13.6% | 16.9mm / 5.6° / 7.4% |
 | 현재 기본값 | **12.5mm / 4.8° / 4.9%** | **10.1mm / 1.0° / 1.4%** |
 | 전역탐색 하한 | 2.4mm / 4.4° | — |
-
-nero 는 joint5·6·7 축이 0.0mm 로 정확히 교차하는 구형 손목이지만 joint6 가동범위가
-`[-41.8°, 54.4°]` 뿐이라, 엄격 분리(`decoupled`)는 66~72% 프레임에서 joint6 포화로
-방위를 놓친다(pos 는 89.3→51.4mm 로 좋아지지만 ori 가 18.3→38.1° 로 무너진다).
-그래서 기본 rig 는 가중치 + 자세 복귀력 쪽을 쓴다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 

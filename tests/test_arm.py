@@ -15,10 +15,9 @@ def _nero_solver(backend: str = "dls"):
 
 def test_backend_cls_selection():
     pytest.importorskip("pinocchio")
-    from whatslab.solvers import ArmIK, DecoupledArmIK, DiffArmIK, backend_cls
+    from whatslab.solvers import ArmIK, DiffArmIK, backend_cls
     assert backend_cls("dls") is ArmIK
     assert backend_cls("diff") is DiffArmIK
-    assert backend_cls("decoupled") is DecoupledArmIK
     with pytest.raises(ValueError):
         backend_cls("nope")
 
@@ -446,17 +445,3 @@ def test_joint_weights_reject_bad_input():
         robot.solver.set_joint_weights({"joint1": 0.0})
 
 
-def test_decoupled_wrist_center_is_upstream_of_orientation_joints():
-    pytest.importorskip("pinocchio")
-    from whatslab.robot import RobotModel, load_rig
-    rig = load_rig("rigs/nero_orca_right.yaml")
-    rig.solver.backend = "decoupled"
-    s = RobotModel(rig).solver
-    q = 0.5 * (s._lo + s._hi)
-    p0 = s.frame_pose(s.wc_frame, q)[:3, 3]
-    for i in s._ori_idx:
-        q2 = q.copy()
-        q2[i] += 0.3
-        p = s.frame_pose(s.wc_frame, q2)[:3, 3]
-        assert np.linalg.norm(p - p0) < 1e-9, (
-            f"방위 관절 {s.model.names[int(i) + 1]} 이 손목중심을 움직인다")
