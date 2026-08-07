@@ -25,8 +25,8 @@ class _Recorder:
         self.rows = []
 
     def tick(self, now, q_map, arm_names):
-        raw = self.model.raw_target.get(self.side)
-        T = self.model.target.get(self.side)
+        m = self.model.sides[self.side]
+        raw, T = m.raw_target, m.target
         if raw is None or T is None:
             return
         have = all(n in q_map for n in arm_names)
@@ -37,7 +37,7 @@ class _Recorder:
         if q is not None:
             pe, oe = self.robot.solver.pose_error(q, T_b)
             ee = self.robot.solver.fk(q)
-        c = self.model.calib.get(self.side)
+        c = self.model.sides[self.side].calib
         self.rows.append(dict(
             t=now,
             raw_pos=np.asarray(raw.pos, dtype=float),
@@ -99,9 +99,9 @@ def main():
         ap.error(f"--side {args.side} 가 --sides {args.sides} 에 없습니다")
 
     model = _build_model(args, args.rig)
-    robot = model.robots[args.side]
+    robot = model.sides[args.side].robot
 
-    print(f"[setup] sides={sorted(model.robots)} arm_joints={robot.arm_joint_names}")
+    print(f"[setup] sides={sorted(s for s, v in model.sides.items() if v.ik)} arm_joints={robot.arm_joint_names}")
 
     if not args.no_safety:
         from robot_io import attach_safety
@@ -154,7 +154,7 @@ def main():
             q = model.get_q()
             right_q = q.get(args.side) or {}
             if diag is not None:
-                raw = model.raw_target.get(args.side)
+                raw = model.sides[args.side].raw_target
                 q_arm_v = (np.array([right_q[n] for n in arm_names], dtype=float)
                            if all(n in right_q for n in arm_names) else None)
                 diag.tick(raw, q_arm_v, now)
@@ -167,12 +167,12 @@ def main():
                 arm_q = [right_q[n] for n in arm_names]
                 hand_names = [k for k in right_q if k not in arm_set]
                 hand_q = [right_q[n] for n in hand_names]
-                viz.update(arm_q, target_pose=model.target.get(args.side),
+                viz.update(arm_q, target_pose=model.sides[args.side].target,
                            hand_q=hand_q, hand_names=hand_names, timestamp=now)
             if now - last > 0.2:
                 last = now
                 arm_q = [round(right_q[n], 3) for n in arm_names] if has_arm_q else "--"
-                tgt = "on" if model.target.get(args.side) is not None else "--"
+                tgt = "on" if model.sides[args.side].target is not None else "--"
                 print(f"\r[q] arm={arm_q} hand={len(right_q) - len(arm_names)}j target={tgt}   ",
                       end="", flush=True)
             next_t += period

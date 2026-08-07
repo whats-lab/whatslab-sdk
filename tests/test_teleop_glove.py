@@ -196,7 +196,7 @@ def test_calibrate_yaw_captures_arm_target_side():
 
     out = m.calibrate_yaw()
     assert out["right"] is True and out["left"] is False
-    assert m.calib["right"].ready
+    assert m.sides["right"].calib.ready
 
 
 def test_send_feedback_sends_osc_to_mock_glove_client():
@@ -364,5 +364,5 @@ def test_teleop_model_still_accepts_duck_typed_robot():
 
     duck = _FakeRobot()
     m = _Passthrough(duck)
-    assert m.robots["right"] is duck
-    assert m.robots["left"] is duck
+    assert m.sides["right"].robot is duck
+    assert m.sides["left"].robot is duck

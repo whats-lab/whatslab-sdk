@@ -7,11 +7,11 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from whatslab.core.interfaces import HandController
 from whatslab.core.types import Pose
-from whatslab.robot import RobotArmIK, RobotModel, save_calibration
+from whatslab.robot import RobotModel, save_calibration
 from whatslab.robot.config import RigConfig, load_rig
-from .calibration import ArmCalibration
+
+from .side import SideModel, _has_fingers
 
 
 class TeleopModel(ABC):
@@ -21,34 +21,17 @@ class TeleopModel(ABC):
     SIDES = ("left", "right")
 
     def __init__(self, robot):
-        self.robots: Dict[str, RobotModel] = self._as_side_map(robot)
+        robots = self._as_side_map(robot)
+        self.sides: Dict[str, SideModel] = {
+            s: SideModel.build(s, robots.get(s))
+            for s in (*self.SIDES, *(k for k in robots if k not in self.SIDES))}
 
-        vals = list(self.robots.values())
-        uniq = {id(getattr(r, "rig", r)) for r in vals}
-        self.robot = vals[0] if len(uniq) == 1 and vals else None
+        have = [v.robot for v in self.sides.values() if v.robot is not None]
+        rigs = {id(getattr(r, "rig", r)) for r in have}
+        self.robot = have[0] if len(rigs) == 1 else None
 
         self._safety = None
-        self._safety_side: Dict[str, object] = {}
         self._t_prev = None
-
-        self.target: Dict[str, Optional[np.ndarray]] = {}
-        self.raw_target: Dict[str, Optional[Pose]] = {}
-        self.q: Dict[str, Dict[str, float]] = {}
-
-        self.ik: Dict[str, RobotArmIK] = {}
-        self.retarget: Dict[str, HandController] = {}
-        self.calib: Dict[str, ArmCalibration] = {}
-
-        for s, r in self.robots.items():
-            cfg = r.rig.hand.retarget if r.rig.hand is not None else None
-            if r.has_arm:
-                self.ik[s] = RobotArmIK(r)
-                self.calib[s] = ArmCalibration(
-                    reach_max=r.rig.solver.reach_max,
-                    input_reach=r.rig.calibration.input_reach,
-                    enabled=r.rig.calibration.enabled)
-            if r.has_hand and cfg:
-                self.retarget[s] = r.make_hand_controller(cfg, s)
 
     @staticmethod
     def _as_rig(r):
@@ -96,17 +79,17 @@ class TeleopModel(ABC):
 
     def get_data(self) -> Dict[str, dict]:
         poses = self._get_raw_target()
-        self.raw_target = poses
         out: Dict[str, dict] = {}
         for s in self.SIDES:
             arm_s = self.arm_source.get(s) if self.arm_source else None
             hand_s = self.hand_source.get(s) if self.hand_source else None
             arm_pose = poses.get(s)
+            self.sides[s].raw_target = arm_pose
             out[s] = {
                 "arm_pose": arm_pose,
                 "fingers": hand_s,
                 "q": self._joint_q(arm_s, hand_s),
-                "tracked": arm_pose is not None or self._has_fingers(hand_s),
+                "tracked": arm_pose is not None or _has_fingers(hand_s),
             }
         return out
 
@@ -118,36 +101,12 @@ class TeleopModel(ABC):
             return arm_s.joint_q
         return None
 
-    def _solve_side(self, side: str, data: dict) -> Dict[str, float]:
-        if data.get("q") is not None:
-            return dict(data["q"])
-        q: Dict[str, float] = {}
-        ik = self.ik.get(side)
-        T = data.get("arm_target")
-        if ik is not None and T is not None:
-            q_arm = np.asarray(ik.solve(T), dtype=float)
-            q.update(zip(ik.joint_names, (float(v) for v in q_arm)))
-        retarget = self.retarget.get(side)
-        fingers = data.get("fingers")
-        if retarget is not None and self._has_fingers(fingers):
-            cmd = retarget.compute(fingers)
-            q.update(zip(cmd.joint_names, (float(v) for v in cmd.joint_angles)))
-        return q
-
-    @staticmethod
-    def _has_fingers(fingers) -> bool:
-        return (fingers is not None and fingers.hand is not None
-                and fingers.hand.tracked)
-
     def solve(self, data: Dict[str, dict]) -> Dict[str, Dict[str, float]]:
-        return {s: self._solve_side(s, data[s]) for s in self.SIDES}
+        return {s: self.sides[s].solve(data[s]) for s in self.SIDES}
 
     def _apply_calib(self, data: Dict[str, dict]) -> Dict[str, dict]:
         for s in self.SIDES:
-            calib = self.calib.get(s)
-            if calib is not None:
-                data[s] = calib.apply(data[s])
-            self.target[s] = data[s].get("arm_target")
+            data[s] = self.sides[s].apply_calib(data[s])
         return data
 
     @property
@@ -157,21 +116,8 @@ class TeleopModel(ABC):
     @safety.setter
     def safety(self, f) -> None:
         self._safety = f
-        self._safety_side = {}
-
-    def _safety_step(self, side: str, v, dt):
-        proto = self._safety
-        f = self._safety_side.get(side)
-        if f is None:
-            f = proto.clone() if hasattr(proto, "clone") else proto
-            self._safety_side[side] = f
-        if f is not proto:
-            f.set_enabled(proto.enabled)
-            if proto.estopped:
-                f.trip()
-            else:
-                f.reset()
-        return f.step(v, dt)
+        for m in self.sides.values():
+            m.safety = None
 
     def get_q(self) -> Dict[str, Dict[str, float]]:
         data = self._apply_calib(self.get_data())
@@ -180,21 +126,22 @@ class TeleopModel(ABC):
             now = time.monotonic()
             dt = None if self._t_prev is None else now - self._t_prev
             self._t_prev = now
-            q = {s: self._safety_step(s, v, dt) for s, v in q.items()}
-            self._sync_ik(q)
-        self.q = q
+            for s, v in q.items():
+                m = self.sides[s]
+                q[s] = m.filter(v, dt, self._safety)
+                m.sync_ik(q[s])
+        for s, v in q.items():
+            self.sides[s].q = v
         return q
 
-    def _sync_ik(self, q: Dict[str, Dict[str, float]]) -> None:
-        for s, ik in self.ik.items():
-            v = q.get(s) or {}
-            if all(n in v for n in ik.joint_names):
-                ik.sync_state([v[n] for n in ik.joint_names])
+    @property
+    def q(self) -> Dict[str, Dict[str, float]]:
+        return {s: m.q for s, m in self.sides.items()}
 
     def set_reach(self, input_reach: float) -> Dict[str, bool]:
         out: Dict[str, bool] = {}
         for s in self.SIDES:
-            calib = self.calib.get(s)
+            calib = self.sides[s].calib
             if calib is not None:
                 calib.set_reach(float(input_reach))
             out[s] = calib is not None
@@ -204,12 +151,11 @@ class TeleopModel(ABC):
         data = self.get_data()
         out: Dict[str, bool] = {}
         for s in self.SIDES:
-            calib = self.calib.get(s)
-            ok = bool(calib.capture(data[s])) if calib is not None else False
+            m = self.sides[s]
+            ok = bool(m.calib.capture(data[s])) if m.calib is not None else False
             out[s] = ok
-            ik = self.ik.get(s)
-            if ok and ik is not None and hasattr(ik, "reseed"):
-                ik.reseed()
+            if ok:
+                m.reseed()
         return out
 
     def calibrate_reach(self, duration: float = 8.0, rate_hz: float = 60.0,
@@ -221,19 +167,17 @@ class TeleopModel(ABC):
             for s in self.SIDES:
                 pose = data[s].get("arm_pose")
                 if pose is not None:
-                    r_max[s] = max(r_max[s], float(np.linalg.norm(np.asarray(pose.pos, dtype=float))))
+                    r_max[s] = max(r_max[s], float(np.linalg.norm(
+                        np.asarray(pose.pos, dtype=float))))
             time.sleep(period)
         for s in self.SIDES:
-            calib = self.calib.get(s)
-            if calib is not None and r_max[s] > 0.0:
-                calib.set_reach(r_max[s])
-                ik = self.ik.get(s)
-                if ik is not None and hasattr(ik, "reseed"):
-                    ik.reseed()
-                if persist:
-                    robot = self.robots.get(s)
-                    if robot is not None:
-                        save_calibration(robot.rig, r_max[s])
+            m = self.sides[s]
+            if m.calib is None or r_max[s] <= 0.0:
+                continue
+            m.calib.set_reach(r_max[s])
+            m.reseed()
+            if persist and getattr(m.robot, "rig", None) is not None:
+                save_calibration(m.robot.rig, r_max[s])
         return r_max
 
     def send_feedback(self, data) -> None:

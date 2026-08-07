@@ -101,7 +101,7 @@ class OrcaHandSender:
 class AgxArmSender:
 
     def __init__(self, joint_names: List[str], channel: str = "can0",
-                 speed_percent: int = 40):
+                 speed_percent: int = 60):
         self.nero_joints = [n for n in joint_names if n.startswith("joint")]
         self.channel = channel
         self.speed_percent = int(speed_percent)
@@ -200,7 +200,7 @@ class RobotBridge:
         msg = s.connect()
         self.arm = s
         fb = s.read_joint_angles()
-        ik = self.model.ik.get(self.args.side)
+        ik = self.model.sides[self.args.side].ik
         if fb is not None and ik is not None:
             q_now = list(ik._robot.solver.history_data)
             for i in range(min(len(s.nero_joints), len(fb), len(q_now))):
@@ -369,7 +369,7 @@ class Diag:
         if raw_pose is not None:
             self.n_in += 1
             self.in_p = max(self.in_p, float(np.linalg.norm(np.asarray(raw_pose.pos))))
-        T = self.model.target.get(self.side)
+        T = self.model.sides[self.side].target
         rm = self.robot.rig.solver.reach_max
         if T is not None:
             self.tgt_p = max(self.tgt_p, float(np.linalg.norm(T[:3, 3])))
@@ -387,7 +387,7 @@ class Diag:
             self.q_prev = np.array(q_arm, dtype=float)
         if now - self.t0 < self.window:
             return
-        c = self.model.calib.get(self.side)
+        c = self.model.sides[self.side].calib
         flags = "W" if (c is not None and c.ready) else "-"
         print(f"[diag] in {self.n_in:3d}/{self.n:3d} |p|{self.in_p:5.2f}m  "
               f"tgt|p|{self.tgt_p:5.2f}  base|p|{self.base_p:5.2f} clamp "
