@@ -30,7 +30,11 @@ class OrcaHandSender:
         self.model_version = model_version
         self.move_to_neutral = bool(move_to_neutral)
         self.hand = None
+        self.last_sent: Dict[str, float] = {}
+        self._warned_missing = None
         self._map = orca_joint_map(side)
+        if wrist_joint:
+            self._map[wrist_joint] = "wrist"
 
     def connect(self) -> str:
         from orca_core import OrcaHand
@@ -50,7 +54,7 @@ class OrcaHandSender:
             print("[orca] WARN: config.joint_ids 를 읽을 수 없어 매핑 검증을 건너뜁니다",
                   flush=True)
             return
-        want = set(self._map.values()) | ({"wrist"} if self.wrist_joint else set())
+        want = set(self._map.values())
         missing = sorted(want - set(ids))
         unsent = sorted(set(ids) - want)
         if missing:
@@ -81,10 +85,15 @@ class OrcaHandSender:
         for jn, oid in self._map.items():
             if jn in q:
                 pose[oid] = math.degrees(q[jn]) * ORCA_SIGN.get(oid, 1.0)
-        if self.wrist_joint and self.wrist_joint in q:
-            pose["wrist"] = math.degrees(q[self.wrist_joint]) * ORCA_SIGN.get("wrist", 1.0)
-        if pose:
-            self.hand.set_joint_positions(pose, num_steps=1)
+        if not pose:
+            return
+        missing = sorted(set(self._map.values()) - set(pose))
+        if missing != self._warned_missing:
+            self._warned_missing = missing
+            if missing:
+                print(f"[orca] WARN: q 에 없어 전송되지 않는 관절 {missing}", flush=True)
+        self.last_sent = pose
+        self.hand.set_joint_positions(pose, num_steps=1)
 
 
 class AgxArmSender:
@@ -238,6 +247,7 @@ def build_robot_panel(model, robot, args) -> RobotBridge:
         b_arm = srv.gui.add_button("팔 연결 (nero)")
         b_hand = srv.gui.add_button("손 연결 (orca)")
         cb_send = srv.gui.add_checkbox("송신", initial_value=False)
+        b_wrist = srv.gui.add_button("손 명령값 보기")
         b_stop = srv.gui.add_button("E-STOP", color="red")
         b_off = srv.gui.add_button("전체 해제")
 
@@ -258,6 +268,17 @@ def build_robot_panel(model, robot, args) -> RobotBridge:
             _say(bridge.connect_hand())
         except Exception as e:
             _say(f"**손 연결 실패**: `{e}`")
+
+    @b_wrist.on_click
+    def _(_e):
+        h = bridge.hand
+        if h is None or not h.last_sent:
+            _say("손 미연결 또는 아직 전송 없음")
+            return
+        w = h.last_sent.get("wrist")
+        th = {k: round(v, 1) for k, v in h.last_sent.items() if k.startswith("thumb")}
+        _say(f"wrist `{w:+.1f}°` / thumb `{th}`" if w is not None
+             else f"wrist 미전송 / thumb `{th}`")
 
     @cb_send.on_update
     def _(_e):
