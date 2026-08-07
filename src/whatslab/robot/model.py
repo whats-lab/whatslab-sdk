@@ -56,7 +56,9 @@ class RobotModel:
                           ("sugihara_bias", sol.sugihara_bias),
                           ("dp_max", sol.dp_max),
                           ("dtheta_max", sol.dtheta_max),
-                          ("dq_max_tick", sol.dq_max_tick)):
+                          ("dq_max_tick", sol.dq_max_tick),
+                          ("k_posture", sol.k_posture),
+                          ("k_limit", sol.k_limit)):
             if val is not None and hasattr(solver, attr):
                 setattr(solver, attr, val)
 

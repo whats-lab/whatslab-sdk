@@ -95,15 +95,27 @@ class _ArmSolverBase:
         self._hi = np.where(np.isfinite(self.model.upperPositionLimit),
                             self.model.upperPositionLimit, np.pi)
         self._limit_margin = 0.10
-        self._k_limit = 0.15
-        self._smooth = 0.2               
-        
+        self.k_limit = 1.0
+        self._smooth = 0.2
+
         self._joint_w = np.ones(self.model.nv)
-        self._q_neutral = pin.neutral(self.model)
+        self._q_neutral = self._mid_range_config()
         self.data = self.model.createData()
         self.init_data = np.zeros(self.model.nq)
         self.history_data = np.zeros(self.model.nq)
         self._fk_data = self.model.createData()
+
+    def _mid_range_config(self) -> np.ndarray:
+        q = pin.neutral(self.model)
+        lo = self.model.lowerPositionLimit
+        hi = self.model.upperPositionLimit
+        for j in self.model.joints:
+            if j.nq != 1 or j.nv != 1:
+                continue
+            i = j.idx_q
+            if np.isfinite(lo[i]) and np.isfinite(hi[i]):
+                q[i] = 0.5 * (lo[i] + hi[i])
+        return q
 
     @classmethod
     def from_appended(
@@ -225,7 +237,7 @@ class _ArmSolverBase:
             Jpinv = self._damped_pinv(WJ, damp2)
             dq_task = -Jpinv @ we
             N = In - Jpinv @ WJ
-            dq = dq_task + N @ (self._k_limit * self._limit_gradient(q))
+            dq = dq_task + N @ (self.k_limit * self._limit_gradient(q))
             dq = self._soft_limit_scale(q, dq)
             n = np.linalg.norm(dq)
             if n > 1.0:
@@ -337,7 +349,7 @@ class DiffArmIK(_ArmSolverBase):
     dp_max = 1.0           
     dtheta_max = 0.25       
     dq_max_tick = 0.5        
-    k_posture = 0.0        
+    k_posture = 0.05
     sugihara_bias = 1e-4   
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
@@ -378,7 +390,7 @@ class DiffArmIK(_ArmSolverBase):
                 dq_task = -Jpinv @ we
                 N = In - Jpinv @ WJ
                 dq_null = (self.k_posture * (self.q_posture - q)
-                           + self._k_limit * self._limit_gradient(q))
+                           + self.k_limit * self._limit_gradient(q))
                 dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
                 n = np.linalg.norm(dq)
                 if n > 0.5:
@@ -480,7 +492,7 @@ class DecoupledArmIK(DiffArmIK):
                 Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id,
                                               pin.LOCAL)
                 Je = (-pin.Jlog6(iMd.inverse()) @ Jf)[3:][:, oi]
-                g = self._k_limit * self._limit_gradient(q)
+                g = self.k_limit * self._limit_gradient(q)
                 dq = np.zeros(self.model.nv)
                 dq[pi] = self._block_step(Jw, e_p, g[pi])
                 dq[oi] = self._block_step(Je, -e_o, g[oi])
