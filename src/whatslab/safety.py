@@ -71,6 +71,16 @@ class SafetyFilter:
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = bool(enabled)
 
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def clone(self) -> "SafetyFilter":
+        out = SafetyFilter(self._lim, self._dt, self._last, self._dt_max)
+        out._estopped = self._estopped
+        out._enabled = self._enabled
+        return out
+
     def seed(self, positions: Dict[str, float]) -> None:
         self._last = dict(positions)
 
