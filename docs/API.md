@@ -77,6 +77,7 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | 키 | 설명 |
 |---|---|
 | `joint_weights: {관절명: 비용}` | **권장.** 가중 DLS 의 관절 비용 `W`(기본 1.0, 양수). `dq = W⁻¹Jᵀ(JW⁻¹Jᵀ+λ²I)⁻¹e` — 싼 관절이 먼저 쓰인다. 커플링을 유지하므로 싼 관절이 한계에 걸리면 비싼 관절이 이어받는다. 모든 백엔드에 적용. |
+| `k_posture` / `k_limit` | 널스페이스에서 자세를 `q_neutral`(= 관절범위 중앙)로 되돌리는 힘 / 한계 근처에서 밀어내는 힘. 기본 0.05 / 1.0. **0 으로 두면 여분 자유도가 코너에 박혀 안 나온다.** |
 | `backend: decoupled` + `orientation_joints: [...]` | **엄격 분리.** 위치는 나머지 관절이 손목중심(= `orientation_joints[0]` 의 원점) 프레임으로, 방위는 `orientation_joints` 가 EE 프레임으로 각각 푼다. 지정 없으면 마지막 3개. 손목이 3축 전부 넓은 가동범위를 가질 때만 유리하다 — 좁으면 팔의 방위 기여 경로가 끊겨 오히려 나빠진다. |
 
 `nero_orca_right` 실측(run2 3021프레임 + run 301프레임, 시작점 6개 평균):
