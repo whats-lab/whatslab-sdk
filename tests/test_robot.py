@@ -144,7 +144,10 @@ def test_teleop_model_accepts_rig_path():
     m = QuestModel("rigs/nero_orca_right.yaml")
     assert m.robot is not None
     assert m.robot.rig.name == "nero_orca_right"
-    assert m.robots["left"] is m.robots["right"]
+    assert m.robots["left"] is not m.robots["right"], (
+        "side 가 RobotModel 을 공유하면 유상태 솔버도 공유된다")
+    assert m.robots["left"].solver is not m.robots["right"].solver
+    assert m.robots["left"].rig is m.robots["right"].rig
 
 
 def test_save_calibration_is_atomic_and_keeps_enabled(tmp_path):

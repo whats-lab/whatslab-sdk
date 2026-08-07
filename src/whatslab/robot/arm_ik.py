@@ -43,9 +43,13 @@ class RobotArmIK:
         return q
 
     def _cold_start(self, solver, T_b):
+        q_ref = self._warm
+        if q_ref is None and hasattr(solver, "q_neutral"):
+            q_ref = solver.q_neutral
         q = np.asarray(solver.solve_robust(
             T_b, restarts=self.cold_restarts, pos_tol=self.cold_pos_tol,
-            ori_tol=self.cold_ori_tol, seed=self._cold_tries), dtype=float)
+            ori_tol=self.cold_ori_tol, seed=self._cold_tries,
+            q_ref=q_ref), dtype=float)
         pe, oe = solver.pose_error(q, T_b)
         self._cold_tries += 1
         locked = (pe <= self.cold_pos_tol and oe <= self.cold_ori_tol)
