@@ -84,9 +84,11 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 - `teleop/ik.py` `RobotArmIK` — 정준→베이스 변환, `reach_max` 클램프(안전망), 첫 타깃
   `solve_robust` 시드, 스톨 시 전역 재탐색(`_recover_if_stalled`), 캘리 시 `reseed()`.
   계약은 `solve(T_canonical) -> q_arm` + `joint_names` 둘뿐 — 커스텀 IK 교체 가능.
-- `solvers/arm/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
+- `solvers/arm_ik.py` — 수치 해법만. `ArmIK`(dls: 매 프레임 수렴, 정밀) /
   `DiffArmIK`(diff: 틱당 소수 스텝 + rate-limit + null-space, 텔레옵 권장).
-  `solvers/arm/builders.py:backend_cls(rig.solver.backend)` 로 선택.
+  `solvers/builders.py:backend_cls(rig.solver.backend)` 로 선택.
+  `whatslab.solvers` 는 lazy `__getattr__` 이다 — import 만으로 pinocchio·
+  dex_retargeting 을 끌어오지 않는다(extra 격리). 새 심볼은 `_LAZY` 에 등록한다.
 
 **팔 IK 를 만질 때의 규칙** (전부 실측으로 확인된 것 — 어기면 같은 회귀가 반복된다):
 - **추종과 전역 탐색을 섞지 말 것.** 프레임 추종은 백엔드 `solve()`. `solve_robust`

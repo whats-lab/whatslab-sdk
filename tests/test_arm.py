@@ -15,22 +15,34 @@ def _nero_solver(backend: str = "dls"):
 
 def test_backend_cls_selection():
     pytest.importorskip("pinocchio")
-    from whatslab.solvers.arm import ArmIK, DiffArmIK, backend_cls
+    from whatslab.solvers import ArmIK, DiffArmIK, backend_cls
     assert backend_cls("dls") is ArmIK
     assert backend_cls("diff") is DiffArmIK
     with pytest.raises(ValueError):
         backend_cls("nope")
 
 
+def test_solvers_import_does_not_force_extras():
+    import subprocess
+    import sys
+    code = ("import sys, whatslab.solvers; "
+            "print('pin' if 'pinocchio' in sys.modules else '-', "
+            "'dex' if 'dex_retargeting' in sys.modules else '-')")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert out == "- -", f"whatslab.solvers import 가 extra 를 끌어온다: {out}"
+
+
 def test_arm_ik_lazy_requires_pinocchio():
-    import whatslab.solvers.arm as arm
+    import whatslab.solvers as solvers
 
     if importlib.util.find_spec("pinocchio") is None:
         with pytest.raises(ModuleNotFoundError):
-            _ = arm.ArmIK
+            _ = solvers.ArmIK
         pytest.skip("pinocchio 미설치 — solve 검증 생략")
     else:
-        assert arm.ArmIK is not None
+        assert solvers.ArmIK is not None
+        assert solvers.backend_cls("dls") is solvers.ArmIK
 
 
 def test_dls_end_to_end_bundled_urdf():
@@ -53,7 +65,7 @@ def test_dls_end_to_end_bundled_urdf():
 
 def test_arm_ik_no_casadi_dependency():
     pytest.importorskip("pinocchio")
-    import whatslab.solvers.arm.arm_ik as m
+    import whatslab.solvers.arm_ik as m
     src = open(m.__file__, encoding="utf-8").read()
     assert "import casadi" not in src
     assert "from pinocchio import casadi" not in src

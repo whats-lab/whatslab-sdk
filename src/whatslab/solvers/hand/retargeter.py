@@ -6,20 +6,18 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+HUBER_DELTA = 0.025
+NORM_DELTA = 0.01
+IK_MAX_EVAL = 100
+VECTOR_WEIGHT = 1.0
+POSITION_WEIGHT = 4.0
+
 try:
     from dex_retargeting.retargeting_config import RetargetingConfig
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "dex_retargeting 필요: pip install 'whatslab-sdk[hand]'"
     ) from e
-
-from whatslab.solvers.core.constants import (
-    HUBER_DELTA,
-    IK_MAX_EVAL,
-    NORM_DELTA,
-    POSITION_WEIGHT,
-    VECTOR_WEIGHT,
-)
 
 from .hand_configs import CONFIG_REGISTRY, HandConfig
 from .spherical_fk import HandSphericalFK
