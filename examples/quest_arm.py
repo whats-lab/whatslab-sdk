@@ -15,6 +15,55 @@ def _build_model(args, robot):
     return GloveModel(robot)
 
 
+class _Recorder:
+
+    def __init__(self, robot, model, side):
+        self.robot, self.model, self.side = robot, model, side
+        self.rows = []
+
+    def tick(self, now, q_map, arm_names):
+        raw = self.model.raw_target.get(self.side)
+        T = self.model.target.get(self.side)
+        if raw is None or T is None:
+            return
+        have = all(n in q_map for n in arm_names)
+        q = np.array([q_map[n] for n in arm_names], dtype=float) if have else None
+        T_b = self.robot.to_base(T)
+        pe = oe = np.nan
+        ee = np.full((4, 4), np.nan)
+        if q is not None:
+            pe, oe = self.robot.solver.pose_error(q, T_b)
+            ee = self.robot.solver.fk(q)
+        c = self.model.calib.get(self.side)
+        self.rows.append(dict(
+            t=now,
+            raw_pos=np.asarray(raw.pos, dtype=float),
+            raw_quat=np.asarray(raw.quat, dtype=float),
+            target=np.asarray(T, dtype=float),
+            target_base=np.asarray(T_b, dtype=float),
+            q=q if q is not None else np.full(len(arm_names), np.nan),
+            ee_base=ee, pe=pe, oe=oe,
+            W=(c._W if c is not None and c._W is not None else np.full((3, 3), np.nan)),
+            enabled=float(getattr(c, "enabled", np.nan)) if c is not None else np.nan,
+        ))
+
+    def save(self, path):
+        if not self.rows:
+            print(f"[dump] 기록된 프레임 없음 — {path} 미생성")
+            return
+        out = {k: np.array([r[k] for r in self.rows]) for k in self.rows[0]}
+        out["arm_joint_names"] = np.array(self.robot.arm_joint_names)
+        rm = self.robot.rig.solver.reach_max
+        out["reach_max"] = np.array([rm if rm else np.nan])
+        out["input_reach"] = np.array([self.robot.rig.calibration.input_reach
+                                       or np.nan])
+        np.savez_compressed(path, **out)
+        pe = out["pe"][np.isfinite(out["pe"])] * 1e3
+        extra = (f"   pos 오차 mean {pe.mean():.1f} p95 {np.percentile(pe, 95):.1f} "
+                 f"max {pe.max():.1f} mm" if pe.size else "")
+        print(f"[dump] {len(self.rows)} 프레임 → {path}{extra}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rig", default="rigs/nero_orca_right.yaml", help="rig config 경로")
@@ -33,6 +82,8 @@ def main():
                     help="실물 전송 패널을 viser 에 띄운다 (--viz 필요, 기본 미연결)")
     ap.add_argument("--can", default="can0", help="nero CAN 채널")
     ap.add_argument("--speed", type=int, default=20, help="nero 속도 퍼센트 (텔레옵은 낮게)")
+    ap.add_argument("--dump-targets", metavar="PATH",
+                    help="프레임별 원시입력/목표/해/오차를 npz 로 기록 — 오프라인 진단용")
     args = ap.parse_args()
 
     robot = RobotModel(args.rig)
@@ -84,6 +135,7 @@ def main():
     if args.diag:
         from robot_io import Diag
         diag = Diag(robot, model, args.side)
+    rec = _Recorder(robot, model, args.side) if args.dump_targets else None
     try:
         while True:
             now = time.monotonic()
@@ -94,6 +146,8 @@ def main():
                 q_arm_v = (np.array([right_q[n] for n in arm_names], dtype=float)
                            if all(n in right_q for n in arm_names) else None)
                 diag.tick(raw, q_arm_v, now)
+            if rec is not None:
+                rec.tick(now, right_q, arm_names)
             if bridge is not None:
                 bridge.send(right_q)
             has_arm_q = all(n in right_q for n in arm_names)
@@ -123,6 +177,8 @@ def main():
                   f"{period*1e3:.1f}ms 를 넘었다")
     finally:
         model.stop()
+        if rec is not None:
+            rec.save(args.dump_targets)
 
 
 if __name__ == "__main__":
