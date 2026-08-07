@@ -20,7 +20,7 @@ attach:
   - 0.0
   - 0.0
   - 3.1416
-lock_joints: []
+lock_joints: ["joint7"]
 solver:
   backend: diff
   w_pos: 20.0

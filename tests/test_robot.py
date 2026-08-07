@@ -39,8 +39,10 @@ def test_model_canonical_sandwich():
     rig.calibration.enabled = False
     m = RobotModel(rig)
     assert m.has_arm and m.has_hand
-    assert m.arm_joint_names[:7] == [f"joint{i}" for i in range(1, 8)]
-    assert len(m.arm_joint_names) == 8
+    locked = set(rig.lock_joints)
+    expect = [f"joint{i}" for i in range(1, 8) if f"joint{i}" not in locked]
+    assert m.arm_joint_names[:len(expect)] == expect
+    assert len(m.arm_joint_names) == len(expect) + 1
 
     q0 = np.full(len(m.arm_joint_names), 0.3)
     T_c = m.ee_pose(q0)
