@@ -20,12 +20,11 @@ attach:
   - 0.0
   - 0.0
   - 3.1416
-lock_joints:
-- joint7
+lock_joints: []
 solver:
   backend: diff
   w_pos: 20.0
-  w_ori: 10.0
+  w_ori: 5.0
   max_joint_velocity: 5.0
   reach_max: 0.9204
   max_iter: 50

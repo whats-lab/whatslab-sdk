@@ -39,7 +39,8 @@ def test_model_canonical_sandwich():
     rig.calibration.enabled = False
     m = RobotModel(rig)
     assert m.has_arm and m.has_hand
-    assert len(m.arm_joint_names) == 7
+    assert m.arm_joint_names[:7] == [f"joint{i}" for i in range(1, 8)]
+    assert len(m.arm_joint_names) == 8
 
     q0 = np.full(len(m.arm_joint_names), 0.3)
     T_c = m.ee_pose(q0)
@@ -67,6 +68,7 @@ def test_model_arm_only_and_hand_only():
     rig_a.lock_joints = []
     m = RobotModel(rig_a)
     assert m.has_arm and not m.has_hand
+    assert m.arm_joint_names[:7] == [f"joint{i}" for i in range(1, 8)]
     assert len(m.arm_joint_names) == 7
     q0 = np.zeros(len(m.arm_joint_names))
     assert m.ee_pose(q0).shape == (4, 4)
