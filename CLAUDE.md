@@ -39,7 +39,7 @@ skip 이다. 린터 설정은 pyproject 에 없다(강제 린트 없음).
 $PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml [--arm controller|wrist] [--viz]
 $PY examples/verify_rig.py --rig rigs/nero_orca_right.yaml [--write]   # reach_max 샘플링/기록
 $PY tools/align_frames.py robot|attach|ee ...   # viser 정렬 튜너 (아래 3단계 워크플로우)
-$PY tools/bench_arm_ik.py --traj fk|wave|reach|slow [--floor] [--set solver.backend=dls]
+$PY tools/bench_arm_ik.py --traj fk|wave|reach|slow|walk|overshoot [--seeds N] [--floor]
                                                 # 팔 IK 고정 기준선 (정확도/연속성/비용)
 $PY tools/export_combined_urdf.py --rig … --out …     # rig → 단일 URDF (sim 에셋)
 $PY tools/export_combined_usd.py  --rig … --out …     # dex_vla(Isaac) env 에서만
