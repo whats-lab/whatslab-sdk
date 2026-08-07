@@ -6,13 +6,16 @@ import time
 import numpy as np
 
 from whatslab.teleop import GloveModel, QuestModel
-from whatslab.robot import RobotModel
 
 
 def _build_model(args, robot):
+    if args.sides == "both":
+        arg = robot
+    else:
+        arg = [robot if s == args.sides else None for s in ("left", "right")]
     if args.arm == "wrist":
-        return QuestModel(robot)
-    return GloveModel(robot)
+        return QuestModel(arg)
+    return GloveModel(arg)
 
 
 class _Recorder:
@@ -67,7 +70,12 @@ class _Recorder:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rig", default="rigs/nero_orca_right.yaml", help="rig config 경로")
-    ap.add_argument("--side", default="right", choices=["left", "right"])
+    ap.add_argument("--side", default="right", choices=["left", "right"],
+                    help="계측/전송 대상 side")
+    ap.add_argument("--sides", default=None, choices=["left", "right", "both"],
+                    help="IK 를 돌릴 side (기본: --side 하나만). 한 팔 rig 에 "
+                         "반대쪽 컨트롤러를 물리면 도달 불가 목표에 전역탐색을 "
+                         "태우고 프레임 예산을 넘긴다")
     ap.add_argument("--arm", default="controller", choices=["controller", "wrist"],
                     help="팔 소스: controller=Quest 컨트롤러(+글러브 손), wrist=Quest 핸드트래킹")
     ap.add_argument("--hand-config", default="orca_hand", help="손 리타게팅 config (hand 포함 rig)")
@@ -86,10 +94,14 @@ def main():
                     help="프레임별 원시입력/목표/해/오차를 npz 로 기록 — 오프라인 진단용")
     args = ap.parse_args()
 
-    robot = RobotModel(args.rig)
-    model = _build_model(args, robot)
+    args.sides = args.sides or args.side
+    if args.sides not in ("both", args.side):
+        ap.error(f"--side {args.side} 가 --sides {args.sides} 에 없습니다")
 
-    print(f"[setup] arm_joints={robot.arm_joint_names}")
+    model = _build_model(args, args.rig)
+    robot = model.robots[args.side]
+
+    print(f"[setup] sides={sorted(model.robots)} arm_joints={robot.arm_joint_names}")
 
     if not args.no_safety:
         from robot_io import attach_safety
