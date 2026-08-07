@@ -6,7 +6,7 @@ import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
-from whatslab.solvers.arm.builders import backend_cls
+from whatslab.solvers.builders import backend_cls
 
 from .config import RigConfig, load_rig
 
