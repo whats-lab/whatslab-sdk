@@ -76,6 +76,8 @@ def main():
     print("[calib] 기준 자세로 Enter → yaw 캘리브 | 'r'+Enter → reach 캘리브. Ctrl-C 종료.")
 
     period, last = 1.0 / args.rate, 0.0
+    next_t = time.monotonic()
+    lag = 0
     arm_names = list(robot.arm_joint_names)
     arm_set = set(arm_names)
     diag = None
@@ -88,7 +90,7 @@ def main():
             q = model.get_q()
             right_q = q.get(args.side) or {}
             if diag is not None:
-                raw = model._get_raw_target().get(args.side)
+                raw = model.raw_target.get(args.side)
                 q_arm_v = (np.array([right_q[n] for n in arm_names], dtype=float)
                            if all(n in right_q for n in arm_names) else None)
                 diag.tick(raw, q_arm_v, now)
@@ -107,9 +109,18 @@ def main():
                 tgt = "on" if model.target.get(args.side) is not None else "--"
                 print(f"\r[q] arm={arm_q} hand={len(right_q) - len(arm_names)}j target={tgt}   ",
                       end="", flush=True)
-            time.sleep(period)
+            next_t += period
+            rest = next_t - time.monotonic()
+            if rest > 0:
+                time.sleep(rest)
+            else:
+                lag += 1
+                next_t = time.monotonic()
     except KeyboardInterrupt:
         print("\n[stop] 종료")
+        if lag:
+            print(f"[rate] {args.rate:g}Hz 를 못 맞춘 프레임 {lag}개 — 작업이 "
+                  f"{period*1e3:.1f}ms 를 넘었다")
     finally:
         model.stop()
 
