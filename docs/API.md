@@ -3,8 +3,9 @@
 공개 API 목록. import 루트는 `whatslab` (PEP 420 네임스페이스). 시그니처는 소스에서
 추출한 것이며 `self` 는 생략한다. 개념·사용 흐름은 [README](../README.md) 참고.
 
-의존 규칙: `receiver → core`, `model → core·robot`. `receiver` 는 `model` 을 import
-하지 않는다. 컴포넌트를 엮는 조립은 소비자 몫이다.
+의존 규칙: `core ← receiver`, `core·paths ← solvers`,
+`core·robot·solvers·receiver ← teleop`. `teleop` 만 위쪽이고 나머지는 서로를 모른다.
+컴포넌트를 엮는 조립은 소비자 몫이다.
 
 ---
 
@@ -59,8 +60,6 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | 심볼 | 설명 |
 |---|---|
 | `RobotModel(rig)` | `rig` 는 `RigConfig` 또는 rig yaml 경로(str/PathLike). 경로면 `load_rig` 로 읽는다. |
-| `RobotModel.from_yaml(path)` | `RobotModel(path)` 와 동일(구 API 유지). |
-| `RobotModel.solve(T_canonical)` | 정준 목표 4x4 → 팔 관절각. |
 | `RobotModel.ee_pose(q_arm)` | FK: 관절각 → EE 4x4. |
 | `RobotModel.to_base(T)` / `to_canonical(T)` | 정준↔베이스 프레임 변환. |
 | `RobotModel.clamp_reach(T_base)` | 베이스 목표를 `reach_max` 구로 클램프(안전망). 구현은 `robot.model.clamp_reach(T_base, reach_max)` 모듈 함수 한 곳. |
@@ -80,17 +79,18 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `k_posture` / `k_limit` | 널스페이스에서 자세를 `q_neutral`(= 관절범위 중앙)로 되돌리는 힘 / 한계 근처에서 밀어내는 힘. 기본 0.05 / 1.0. **0 으로 두면 여분 자유도가 코너에 박혀 안 나온다.** |
 | `backend: decoupled` + `orientation_joints: [...]` | **엄격 분리.** 위치는 나머지 관절이 손목중심(= `orientation_joints[0]` 의 원점) 프레임으로, 방위는 `orientation_joints` 가 EE 프레임으로 각각 푼다. 지정 없으면 마지막 3개. 손목이 3축 전부 넓은 가동범위를 가질 때만 유리하다 — 좁으면 팔의 방위 기여 경로가 끊겨 오히려 나빠진다. |
 
-`nero_orca_right` 실측(run2 3021프레임 + run 301프레임, 시작점 6개 평균):
+`nero_orca_right` 실측(실기 녹화 run6 8747프레임 + run5 4058프레임, 시작점 3개 평균):
 
-| 설정 | run2 pos/ori | run pos/ori |
+| 설정 | run6 pos/ori/포화 | run5 pos/ori/포화 |
 |---|---|---|
-| 균등 (기본) | 31.4mm / 6.9° | 15.6mm / 7.9° |
-| `joint_weights` joint1~4 = 2.5 | **13.8mm / 7.2°** | **6.3mm / 4.7°** |
-| `backend: decoupled` | 54.8mm / 39.2° | — |
+| `k_posture=0`, 중립=0 | 21.9mm / 13.3° / 13.6% | 16.9mm / 5.6° / 7.4% |
+| 현재 기본값 | **12.5mm / 4.8° / 4.9%** | **10.1mm / 1.0° / 1.4%** |
+| 전역탐색 하한 | 2.4mm / 4.4° | — |
 
-nero 는 joint5·6·7 축이 정확히 한 점에서 만나는 구형 손목이지만 joint6 가동범위가
-`[-41.8°, 54.4°]` 뿐이라, 엄격 분리는 66~72% 프레임에서 joint6 포화로 방위를 놓친다.
-그래서 기본 rig 는 가중치 쪽을 쓴다.
+nero 는 joint5·6·7 축이 0.0mm 로 정확히 교차하는 구형 손목이지만 joint6 가동범위가
+`[-41.8°, 54.4°]` 뿐이라, 엄격 분리(`decoupled`)는 66~72% 프레임에서 joint6 포화로
+방위를 놓친다(pos 는 89.3→51.4mm 로 좋아지지만 ori 가 18.3→38.1° 로 무너진다).
+그래서 기본 rig 는 가중치 + 자세 복귀력 쪽을 쓴다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
@@ -135,7 +135,7 @@ from whatslab.data import LeRobotRecorder
 | `JointLimit` | 관절 pos/vel 한계. |
 | `load_limits_from_urdf(urdf_xml)` | URDF → `{joint: JointLimit}`. |
 | `tighten(base, ...)` | 한계를 보수적으로 조임. |
-| `SafetyFilter` | clamp + rate-limit + hold/estop 상태기. `step(desired)`, `trip`, `reset`, `estopped`, `set_enabled`, `seed`, `holding`. |
+| `SafetyFilter` | clamp + rate-limit + hold/estop 상태기. `step(desired, dt=None)`, `trip`, `reset`, `estopped`, `enabled`, `set_enabled`, `seed`, `holding`, `clone`. **상태(`_last`)를 들고 있으므로 side 마다 하나씩 필요하다** — `clone()` 으로 복제한다. |
 
 ## whatslab.paths — 자산 경로 해석
 

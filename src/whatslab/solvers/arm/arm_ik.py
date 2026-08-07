@@ -17,17 +17,7 @@ def xyzrpy_to_mat(x: float, y: float, z: float, roll: float, pitch: float, yaw: 
     return mat
 
 
-def xyzquat_to_mat(x: float, y: float, z: float, qx: float, qy: float, qz: float, qw: float) -> np.ndarray:
-    mat = np.eye(4)
-    mat[:3, :3] = Rotation.from_quat([qx, qy, qz, qw]).as_matrix()
-    mat[:3, 3] = np.array([x, y, z])
-    return mat
-
-
 class _ArmSolverBase:
-
-    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        raise NotImplementedError
 
     def __init__(
         self,
@@ -86,7 +76,7 @@ class _ArmSolverBase:
         self.w_ori = float(w_ori)
         self.max_iter = int(max_iter)
         self.tol = float(tol)
-        
+
         w = np.array([w_pos] * 3 + [w_ori] * 3, dtype=float)
         self._task_w = w / max(w.max(), 1e-9)
         self._damp = 1e-2
@@ -152,12 +142,15 @@ class _ArmSolverBase:
         local_rot = Rotation.from_euler("xyz", list(ee_local_rpy)).as_matrix()
         reduced.frames[orig_ee_id].placement = (
             reduced.frames[orig_ee_id].placement * pin.SE3(local_rot, np.zeros(3)))
-        
+
         self.model = reduced
         self.data = reduced.createData()
         self.ee_id = reduced.getFrameId(ee_link)
         self._finish_setup(w_pos, w_ori, max_iter, tol)
         return self
+
+    def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
+        raise NotImplementedError
 
     @property
     def nq(self) -> int:
@@ -197,7 +190,7 @@ class _ArmSolverBase:
         e = pin.log6(iMd).vector
         Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id, pin.LOCAL)
         J = -pin.Jlog6(iMd.inverse()) @ Jf
-        
+
         return e, J
 
     def _limit_gradient(self, q: np.ndarray) -> np.ndarray:
@@ -346,11 +339,12 @@ class ArmIK(_ArmSolverBase):
 class DiffArmIK(_ArmSolverBase):
 
     iters_per_call = 100
-    dp_max = 1.0           
-    dtheta_max = 0.25       
-    dq_max_tick = 0.5        
+    dp_max = 1.0
+    dtheta_max = 0.25
+    dq_max_tick = 0.5
     k_posture = 0.05
-    sugihara_bias = 1e-4   
+    sugihara_bias = 1e-4
+
     def _finish_setup(self, *a, **k):
         super()._finish_setup(*a, **k)
         self._smooth = 0.2
@@ -396,8 +390,7 @@ class DiffArmIK(_ArmSolverBase):
                 if n > 0.5:
                     dq *= 0.5 / n
                 q = pin.integrate(self.model, q, dq)
-                
-            
+
             sol_q = self._finish_tick(q_start, q)
         except Exception as e:
             if not safe:
