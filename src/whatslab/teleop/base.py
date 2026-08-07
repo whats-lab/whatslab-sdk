@@ -144,8 +144,15 @@ class TeleopModel(ABC):
             dt = None if self._t_prev is None else now - self._t_prev
             self._t_prev = now
             q = {s: self.safety.step(v, dt) for s, v in q.items()}
+            self._sync_ik(q)
         self.q = q
         return q
+
+    def _sync_ik(self, q: Dict[str, Dict[str, float]]) -> None:
+        for s, ik in self.ik.items():
+            v = q.get(s) or {}
+            if all(n in v for n in ik.joint_names):
+                ik.sync_state([v[n] for n in ik.joint_names])
 
     def set_reach(self, input_reach: float) -> Dict[str, bool]:
         out: Dict[str, bool] = {}

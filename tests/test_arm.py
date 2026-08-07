@@ -352,3 +352,42 @@ def test_get_data_publishes_raw_target():
     assert m.raw_target["right"] is pose
     assert m.raw_target["left"] is None
     assert len(calls) == 1
+
+
+def test_two_arm_iks_on_one_robot_do_not_interfere():
+    """같은 RobotModel 로 만든 두 RobotArmIK 가 서로의 warm-start 를 침범하면 안 된다.
+
+    단일 rig 를 TeleopModel 에 주면 양쪽 side 가 같은 RobotModel(= 같은 solver)을
+    공유한다. 솔버가 history_data 를 들고 있으므로, 두 side 가 번갈아 solve 하면
+    서로를 밀어낸다(실측: 오른쪽만 2.6mm → 양쪽 347mm).
+    """
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
+
+    robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
+    s = robot.solver
+    assert robot.solver is robot.solver
+
+    rng = np.random.default_rng(0)
+    lo, hi = s._lo, s._hi
+    qa = lo + (hi - lo) * 0.40
+    qb = lo + (hi - lo) * 0.55
+    qc = lo + (hi - lo) * 0.60
+    n = 40
+    targets = [robot.to_canonical(s.fk(qa + (qb - qa) * (i / (n - 1)))) for i in range(n)]
+    other = [robot.to_canonical(s.fk(qc + (qa - qc) * (i / (n - 1)))) for i in range(n)]
+
+    ik_solo = RobotArmIK(robot)
+    solo = [np.asarray(ik_solo.solve(T), dtype=float) for T in targets]
+
+    ik_a, ik_b = RobotArmIK(robot), RobotArmIK(robot)
+    both = []
+    for Ta, Tb in zip(targets, other):
+        ik_b.solve(Tb)
+        both.append(np.asarray(ik_a.solve(Ta), dtype=float))
+
+    e_solo = np.array([s.pose_error(q, robot.to_base(T))[0] for q, T in zip(solo, targets)])
+    e_both = np.array([s.pose_error(q, robot.to_base(T))[0] for q, T in zip(both, targets)])
+    assert e_both.mean() < e_solo.mean() + 5e-3, (
+        f"다른 side 가 solver 상태를 오염시킨다: 단독 {e_solo.mean()*1e3:.1f}mm "
+        f"vs 양쪽 {e_both.mean()*1e3:.1f}mm")

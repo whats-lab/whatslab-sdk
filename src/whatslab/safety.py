@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 _INF = float("inf")
+_DT_MAX = 0.05
 
 
 @dataclass(frozen=True)
@@ -50,7 +51,8 @@ class SafetyFilter:
                  dt_max: Optional[float] = None):
         self._lim = dict(limits)
         self._dt = float(dt)
-        self._dt_max = float(dt_max) if dt_max is not None else 4.0 * float(dt)
+        self._dt_max = (float(dt_max) if dt_max is not None
+                        else min(4.0 * float(dt), _DT_MAX))
         self._last: Dict[str, float] = dict(initial or {})
         self._estopped = False
         self._enabled = True

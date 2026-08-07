@@ -30,5 +30,5 @@ solver:
   max_iter: 50
   iters_per_call: 20
 calibration:
-  enabled: true
+  enabled: false
   input_reach: 0.8305
