@@ -22,27 +22,14 @@ def test_backend_cls_selection():
         backend_cls("nope")
 
 
-def test_solvers_import_does_not_force_extras():
-    import subprocess
-    import sys
-    code = ("import sys, whatslab.solvers; "
-            "print('pin' if 'pinocchio' in sys.modules else '-', "
-            "'dex' if 'dex_retargeting' in sys.modules else '-')")
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True,
-                         text=True, check=True).stdout.strip()
-    assert out == "- -", f"whatslab.solvers import 가 extra 를 끌어온다: {out}"
-
-
-def test_arm_ik_lazy_requires_pinocchio():
-    import whatslab.solvers as solvers
-
+def test_arm_ik_requires_pinocchio():
     if importlib.util.find_spec("pinocchio") is None:
         with pytest.raises(ModuleNotFoundError):
-            _ = solvers.ArmIK
+            import whatslab.solvers  # noqa: F401
         pytest.skip("pinocchio 미설치 — solve 검증 생략")
-    else:
-        assert solvers.ArmIK is not None
-        assert solvers.backend_cls("dls") is solvers.ArmIK
+    import whatslab.solvers as solvers
+    assert solvers.ArmIK is not None
+    assert solvers.backend_cls("dls") is solvers.ArmIK
 
 
 def test_dls_end_to_end_bundled_urdf():
@@ -65,7 +52,7 @@ def test_dls_end_to_end_bundled_urdf():
 
 def test_arm_ik_no_casadi_dependency():
     pytest.importorskip("pinocchio")
-    import whatslab.solvers.arm_ik as m
+    import whatslab.solvers.arm.arm_ik as m
     src = open(m.__file__, encoding="utf-8").read()
     assert "import casadi" not in src
     assert "from pinocchio import casadi" not in src
@@ -94,7 +81,7 @@ def test_diff_backend_tracks_and_is_continuous():
 def test_robot_arm_ik_no_teleport_on_teleop_targets():
     pytest.importorskip("pinocchio")
     from scipy.spatial.transform import Rotation
-    from whatslab.teleop.ik import RobotArmIK
+    from whatslab.robot import RobotArmIK
     from whatslab.robot import RobotModel, load_rig
 
     ik = RobotArmIK(RobotModel(load_rig("rigs/nero_orca_right.yaml")))
@@ -115,7 +102,7 @@ def test_robot_arm_ik_no_teleport_on_teleop_targets():
 
 
 def _orca_rig_ik():
-    from whatslab.teleop.ik import RobotArmIK
+    from whatslab.robot import RobotArmIK
     from whatslab.robot import RobotModel, load_rig
     robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
     return robot, RobotArmIK(robot)
@@ -252,7 +239,7 @@ def test_calib_enabled_applies_scale_and_yaw():
 
 def test_calib_enabled_flag_reaches_teleop_path():
     pytest.importorskip("pinocchio")
-    from whatslab.teleop.quest import QuestModel
+    from whatslab.teleop.models.quest import QuestModel
     from whatslab.robot import RobotModel, load_rig
 
     pose = _cal_pose([0.45, -0.10, 0.05])

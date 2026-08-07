@@ -8,9 +8,8 @@ import numpy as np
 
 from whatslab.core.interfaces import HandController
 from whatslab.core.types import Pose
-from whatslab.robot import RobotModel
+from whatslab.robot import RobotArmIK, RobotModel, save_calibration
 from .calibration import ArmCalibration
-from .ik import RobotArmIK
 
 
 class TeleopModel(ABC):
@@ -180,7 +179,6 @@ class TeleopModel(ABC):
             if calib is not None and r_max[s] > 0.0:
                 calib.set_reach(r_max[s])
                 if persist:
-                    from whatslab.robot import save_calibration
                     robot = self.robots.get(s)
                     if robot is not None:
                         save_calibration(robot.rig, r_max[s])

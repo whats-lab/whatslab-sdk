@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from whatslab.core.types import Pose
 from whatslab.receiver.quest.hand import QuestHandReceiver
 
-from .base import TeleopModel
+from ..base import TeleopModel
 
 
 class QuestModel(TeleopModel):

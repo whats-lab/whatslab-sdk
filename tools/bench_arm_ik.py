@@ -169,8 +169,7 @@ def main():
     ap.add_argument("--floor", action="store_true", help="최악 프레임 도달 하한까지 판정")
     args = ap.parse_args()
 
-    from whatslab.teleop.ik import RobotArmIK
-    from whatslab.robot import RobotModel, load_rig
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
     rig = load_rig(args.rig)
     for kv in args.set:

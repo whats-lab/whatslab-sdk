@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .model import clamp_reach
+
 
 class RobotArmIK:
 
@@ -25,7 +27,6 @@ class RobotArmIK:
 
     def solve(self, T_canonical: np.ndarray) -> np.ndarray:
         r = self._robot
-        from whatslab.robot.model import clamp_reach
         T_b = clamp_reach(r.to_base(np.asarray(T_canonical, dtype=float)),
                           r.rig.solver.reach_max)
         solver = r.solver
