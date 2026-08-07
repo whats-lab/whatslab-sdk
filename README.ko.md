@@ -90,7 +90,9 @@ while True:
 ```
 
 프리셋: `QuestModel`(핸드트래킹) · `GloveModel`(컨트롤러 + 글러브) · `HandModel`(손 단독).
-직접 만든 하드웨어 조합은 `TeleopModel` 을 상속해 `get_data()` 만 재정의하면 됩니다.
+직접 만든 하드웨어 조합은 `TeleopModel` 을 상속해 추상 훅 `_get_raw_target()`
+**하나만** 구현하면 됩니다 — 어느 소스를 팔 EE 목표로 쓸지만 정하면 캘리브·IK·
+리타게팅·안전필터 배선은 이미 되어 있습니다.
 
 ## 예제 & 도구
 
@@ -112,7 +114,11 @@ python tools/bench_arm_ik.py --traj fk                                   # 팔 I
 
 ## 문서
 
+- [**사용 가이드**](docs/GUIDE.md) — 새 로봇 올리기, 캘리브레이션, 팔 IK 튜닝과
+  변경 판정법, 진단, 실물 전송
 - [**API 레퍼런스**](docs/API.md) — 서브패키지별 공개 심볼과 시그니처
+- [**변경 이력**](CHANGELOG.md) — **0.2.0 에 호환 없는 변경이 있습니다**
+  (`model.ik[s]` → `model.sides[s].ik`, `RobotModel.solve` 제거)
 
 ## 감사의 말
 
