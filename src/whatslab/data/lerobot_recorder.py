@@ -63,7 +63,6 @@ class LeRobotRecorder:
             )
         n = len(self._buf)
 
-        # ---- vector/action feature columns (per-frame stacks for parquet + stats) ----
         stacks: dict[str, np.ndarray] = {}
         for feat in self._vec_keys:
             stacks[feat] = np.stack([self._vec_value(f, feat) for f in self._buf]).astype(np.float32)
@@ -74,7 +73,6 @@ class LeRobotRecorder:
         index = np.arange(self._global, self._global + n, dtype=np.int64)
         task_index = np.array([self._task_index(f["task"]) for f in self._buf], dtype=np.int64)
 
-        # ---- parquet (video features excluded — only present as .mp4) ----
         arrays = {}
         for feat in self._vec_keys:
             width = stacks[feat].shape[1]
@@ -87,7 +85,6 @@ class LeRobotRecorder:
         table = pa.table(arrays)
         pq.write_table(table, self.root / f"data/chunk-000/episode_{self._ep:06d}.parquet")
 
-        # ---- video: per-camera mp4 ----
         image_stacks: dict[str, np.ndarray] = {}
         for k in self._img_keys:
             cam = k.split(".")[-1]
@@ -102,11 +99,9 @@ class LeRobotRecorder:
                 macro_block_size=1,
             )
 
-        # ---- meta/episodes.jsonl entry ----
         tasks_in_ep = sorted({f["task"] for f in self._buf})
         self._ep_lines.append({"episode_index": self._ep, "tasks": tasks_in_ep, "length": n})
 
-        # ---- meta/episodes_stats.jsonl entry ----
         stats = {}
         for feat in self._vec_keys:
             stats[feat] = S._reduce_stats(stacks[feat].astype(np.float64))

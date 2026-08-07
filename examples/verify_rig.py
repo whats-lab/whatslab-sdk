@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
-"""rig config 검증 + reach_max 실측 — 정렬(align_frames.py)을 숫자로 검증한다.
-
-    python ~/whatslab-sdk/examples/verify_rig.py --rig rigs/nero_orca_right.yaml
-    python ~/whatslab-sdk/examples/verify_rig.py --rig rigs/nero_orca_right.yaml --write   # reach_max 기록
-    python ~/whatslab-sdk/examples/verify_rig.py --target 0.4 0.0 0.3   # 정준좌표 목표 추가
-
-검증/측정 항목:
-  0) reach_max 측정 : 관절 샘플 FK 로 target_ee 최대 반경 → reach_max 권장(--write)
-  1) 왕복 일관성    : random q → ee_pose(정준) → solve → 오차 (config 내부 정합)
-  2) --target       : 사용자 지정 정준좌표 목표
-  · IK 대상 조인트(지지 체인)를 헤더에 출력. reach/워크스페이스는 reach_max 로 일원화.
-"""
 import argparse
 
 import numpy as np
 
-from whatslab.robot import RobotModel, load_rig, save_reach_max
+from whatslab.robot import RobotArmIK, RobotModel, load_rig, save_reach_max
 
-PASS_POS_MM = 5.0        # 위치 오차 합격선 [mm]
-SETTLE_TICKS = 150       # diff 백엔드 정착 틱 수
+PASS_POS_MM = 5.0
+SETTLE_TICKS = 150
 
 
 def _solve_settled(model, T_c):
-    """고정 목표를 정착까지 반복 solve → (q, pos_err[m], ori_err[rad])."""
+    ik = RobotArmIK(model)
     for _ in range(SETTLE_TICKS):
-        q = model.solve(T_c)
+        q = ik.solve(T_c)
     T = model.ee_pose(q)
     pos_err = float(np.linalg.norm(T[:3, 3] - T_c[:3, 3]))
     R = T[:3, :3].T @ T_c[:3, :3]
@@ -68,13 +56,8 @@ def main():
     hi = np.where(np.isfinite(model.solver.model.upperPositionLimit),
                   model.solver.model.upperPositionLimit, np.pi)
 
-    # verify 는 사전 정의된 reach_max 를 따르지 않고 실측한다.
-    # (IK 검증도 reach 클램프 없이 순수 정합을 본다)
     rig.solver.reach_max = None
 
-    # ── 0) reach_max 측정 (target_ee 최대 반경, 베이스 기준) ──
-    # 관절공간을 무작위 샘플해 target_ee 위치의 최대 반경을 잰다. FK 만 사용.
-    # 도달영역은 박스가 아니라 껍질이라 바운딩박스는 무의미 → 반경만 측정한다.
     print("\n0) reach_max 측정 (target_ee 최대 반경)")
     rng0 = np.random.default_rng(args.seed)
     Q = lo + (hi - lo) * rng0.random((args.samples, model.solver.nq))
@@ -88,7 +71,6 @@ def main():
     else:
         print("  (--write 로 rig(solver)에 기록)")
 
-    # ── 1) 왕복 일관성 (calibration 끄고 순수 정합. reach 는 위에서 이미 해제) ──
     print("\n1) 왕복 일관성 (random q → ee_pose → solve)")
     cal_enabled = rig.calibration.enabled
     rig.calibration.enabled = False
@@ -102,7 +84,6 @@ def main():
 
     rig.calibration.enabled = cal_enabled
 
-    # ── 2) 사용자 지정 목표 (정준좌표) ──
     if args.target:
         print("\n2) 사용자 지정 목표 (정준좌표)")
         for t in args.target:

@@ -10,7 +10,6 @@ class AbilityHandConfig(HandConfig):
     _URDF_FILENAME = "ability_hand_{hand_type}.urdf"
     _RVIZ_FILENAME = {"left": "ability_hand.rviz", "right": "ability_hand.rviz"}
     _WRIST_LINK = {"left": "base", "right": "base"}
-    # q2 계열은 q1의 mimic — 제어 가능한 joint만 명시
     _TARGET_JOINT_NAMES = ["thumb_q1", "thumb_q2", "index_q1", "middle_q1", "ring_q1", "pinky_q1"]
  
     _COORD_TRANSFORM = np.array([
@@ -20,9 +19,8 @@ class AbilityHandConfig(HandConfig):
     ])
     _SCALE_FACTOR = [0.65, 1.03, 1.06, 1.06, 1.05]
     
-    # 좌/우 링크명이 동일 → 체인 공용
     _chains = [
-        FingerChain(  # Thumb
+        FingerChain(
             links=[
                 "{wrist}",
                 "thumb_base",
@@ -32,7 +30,7 @@ class AbilityHandConfig(HandConfig):
             ],
             human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip"],
         ),
-        FingerChain(  # Index
+        FingerChain(
             links=[
                 "{wrist}",
                 "index_L1",
@@ -41,7 +39,7 @@ class AbilityHandConfig(HandConfig):
             ],
             human=["wrist", "index_mcp", "index_pip", "index_dip"],
         ),
-        FingerChain(  # Middle
+        FingerChain(
             links=[
                 "{wrist}",
                 "middle_L1",
@@ -50,7 +48,7 @@ class AbilityHandConfig(HandConfig):
             ],
             human=["wrist", "middle_mcp", "middle_pip", "middle_dip"],
         ),
-        FingerChain(  # Ring
+        FingerChain(
             links=[
                 "{wrist}",
                 "ring_L1",
@@ -59,7 +57,7 @@ class AbilityHandConfig(HandConfig):
             ],
             human=["wrist", "ring_mcp", "ring_pip", "ring_dip"],
         ),
-        FingerChain(  # Pinky
+        FingerChain(
             links=[
                 "{wrist}",
                 "pinky_L1",
@@ -70,4 +68,3 @@ class AbilityHandConfig(HandConfig):
         ),
     ]
     _FINGERS: ClassVar[Dict[str, List[FingerChain]]] = {"left": _chains, "right": _chains}
-

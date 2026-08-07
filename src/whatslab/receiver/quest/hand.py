@@ -21,7 +21,7 @@ class QuestHandReceiver(QuestReceiverBase):
         for side in ("left", "right"):
             s = self._state[side]
             s["wrist_pos"] = np.zeros(3)
-            s["finger_quats"] = neutral_finger_quats()  # [0]=wrist 회전, [1:17]=관절
+            s["finger_quats"] = neutral_finger_quats()
             s["tracked"] = False
             s["timestamp"] = 0.0
             self._srv.add_handler(f"/hand/{side}/pos", self._on_hand_pos, side)
@@ -29,7 +29,6 @@ class QuestHandReceiver(QuestReceiverBase):
             self._srv.add_handler(f"/hand/{side}/joints/pos", self._on_joints_pos, side)
             self._srv.add_handler(f"/hand/{side}/joints/rot", self._on_joints_rot, side)
 
-    # ----------------------------------------------------------- OSC handlers
     def _on_hand_pos(self, address, *args):
         side, v = self._split(args)
         with self._lock:
@@ -38,10 +37,9 @@ class QuestHandReceiver(QuestReceiverBase):
     def _on_hand_rot(self, address, *args):
         side, v = self._split(args)
         with self._lock:
-            self._state[side]["finger_quats"][0] = norm_quat(v[:4])  # root = finger_quats[0]
+            self._state[side]["finger_quats"][0] = norm_quat(v[:4])
 
     def _on_joints_pos(self, address, *args):
-        # 위치는 현재 리타게팅에 미사용 (회전만 사용). meta.py 와 동일.
         pass
 
     def _on_joints_rot(self, address, *args):
@@ -59,7 +57,6 @@ class QuestHandReceiver(QuestReceiverBase):
         if self._on_update is not None:
             self._on_update(side)
 
-    # -------------------------------------------------------------------- get
     def get(self, side: str) -> InputSample:
         with self._lock:
             s = self._state[side]
@@ -70,8 +67,6 @@ class QuestHandReceiver(QuestReceiverBase):
         hmd_quat, hmd_valid = self.get_hmd()
         age = time.monotonic() - ts
         tracked = tracked and not (self._stale_timeout > 0 and age > self._stale_timeout)
-        # 손목 pose(위치+root 회전)만 Unity → 정준 변환. 손가락 관절 회전(finger[1:])은
-        # 리타게팅용 상대값이라 변환하지 않는다.
         wrist_pos, finger[0] = self.to_canonical(wrist_pos, finger[0])
         hand = HandPose.from_sensor_array(finger, wrist_pos=wrist_pos,
                                           tracked=tracked, timestamp=ts)
