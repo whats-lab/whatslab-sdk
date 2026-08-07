@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pytest
 
@@ -142,3 +143,34 @@ def test_teleop_model_accepts_rig_path():
     assert m.robot is not None
     assert m.robot.rig.name == "nero_orca_right"
     assert m.robots["left"] is m.robots["right"]
+
+
+def test_save_calibration_is_atomic_and_keeps_enabled(tmp_path):
+    import shutil
+
+    import yaml
+
+    from whatslab.paths import configs_root
+    from whatslab.robot import load_rig, save_calibration, save_reach_max
+
+    src = os.path.join(configs_root(), "rigs", "nero_orca_right.yaml")
+    dst = tmp_path / "rig.yaml"
+    d = yaml.safe_load(open(src))
+    d["calibration"]["enabled"] = False
+    d["robots"] = {k: os.path.join(configs_root(), v)
+                   for k, v in d["robots"].items()}
+    dst.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False))
+    shutil.copy(src, tmp_path / "orig.yaml")
+
+    rig = load_rig(str(dst))
+    assert rig.calibration.enabled is False
+    save_calibration(rig, 0.77)
+
+    back = yaml.safe_load(dst.read_text())
+    assert back["calibration"]["input_reach"] == 0.77
+    assert back["calibration"]["enabled"] is False
+    assert back["solver"]["backend"] == d["solver"]["backend"]
+
+    save_reach_max(rig, 0.88)
+    assert yaml.safe_load(dst.read_text())["solver"]["reach_max"] == 0.88
+    assert not list(tmp_path.glob("*.tmp.*")), "임시 파일이 남았다"

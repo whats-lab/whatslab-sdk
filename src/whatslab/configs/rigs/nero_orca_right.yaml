@@ -30,7 +30,6 @@ solver:
   reach_max: 0.9204
   max_iter: 50
   iters_per_call: 100         
-  sugihara_bias: 1.0e-4
 calibration:
-  enabled: false
+  enabled: true
   input_reach: 0.8305

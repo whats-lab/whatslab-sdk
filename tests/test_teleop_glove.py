@@ -355,3 +355,14 @@ def test_glove_robot_hand_model_bypass_end_to_end():
     assert q == {"index_mcp_z": pytest.approx(0.1), "index_mcp_y": pytest.approx(-0.2),
                  "index_pip": pytest.approx(0.3), "thumb_ip": pytest.approx(1.5)}
     assert m.robot.solve_calls == 0
+
+
+def test_teleop_model_still_accepts_duck_typed_robot():
+    class _Passthrough(TeleopModel):
+        def _get_raw_target(self):
+            return {s: None for s in self.SIDES}
+
+    duck = _FakeRobot()
+    m = _Passthrough(duck)
+    assert m.robots["right"] is duck
+    assert m.robots["left"] is duck

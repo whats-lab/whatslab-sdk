@@ -215,15 +215,23 @@ def load_rig(path: str) -> RigConfig:
     return rig
 
 
+def _dump_atomic(path: str, d: dict) -> None:
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def save_calibration(rig: RigConfig, input_reach: float) -> None:
     assert rig.path, "rig 가 파일에서 로드되지 않음"
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
     cal = d.setdefault("calibration", {})
-    cal["enabled"] = True
+    cal.setdefault("enabled", True)
     cal["input_reach"] = round(float(input_reach), 4)
-    with open(rig.path, "w") as f:
-        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+    _dump_atomic(rig.path, d)
     rig.calibration = CalibrationCfg.from_dict(cal)
 
 
@@ -232,6 +240,5 @@ def save_reach_max(rig: RigConfig, reach_max: float) -> None:
     with open(rig.path) as f:
         d = yaml.safe_load(f) or {}
     d.setdefault("solver", {})["reach_max"] = round(float(reach_max), 4)
-    with open(rig.path, "w") as f:
-        yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+    _dump_atomic(rig.path, d)
     rig.solver.reach_max = float(reach_max)
