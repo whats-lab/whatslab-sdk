@@ -43,6 +43,7 @@ class HandConfig(ABC):
     _TARGET_JOINT_NAMES:   ClassVar[Union[List[str], Dict[str, List[str]]]] = []
     _KP_SHAPE_WEIGHT:      ClassVar[float]                             = 1.0
     _KP_COLD_SHAPE:        ClassVar[bool]                              = False
+    _KP_THUMB_OFFSET:      ClassVar[float]                             = 0.0
 
     def __init__(self, urdf_root=None):
         root = urdf_root or _default_models_root()
