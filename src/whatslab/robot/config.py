@@ -141,6 +141,7 @@ class CalibrationCfg:
 class HandSolverCfg:
 
     backend: str = "dex"
+    scale_mode: Optional[str] = None
     w_tip: Optional[float] = None
     w_shape: Optional[float] = None
     k_limit: Optional[float] = None
@@ -152,12 +153,16 @@ class HandSolverCfg:
         backend = str(d.get("backend", "dex"))
         if backend not in ("dex", "kp"):
             raise ValueError(f"hand_solver.backend 는 dex|kp: {backend!r}")
+        scale_mode = d.get("scale_mode")
+        if scale_mode is not None and scale_mode not in ("uniform", "per_finger"):
+            raise ValueError(
+                f"hand_solver.scale_mode 는 uniform|per_finger: {scale_mode!r}")
 
         def _f(k):
             v = d.get(k)
             return None if v is None else float(v)
         return HandSolverCfg(
-            backend=backend,
+            backend=backend, scale_mode=scale_mode,
             w_tip=_f("w_tip"), w_shape=_f("w_shape"), k_limit=_f("k_limit"),
             iters_per_call=(None if d.get("iters_per_call") is None
                             else int(d["iters_per_call"])))
@@ -166,7 +171,7 @@ class HandSolverCfg:
         out = {"backend": self.backend}
         if self.backend != "kp":
             return out
-        for k in ("w_tip", "w_shape", "k_limit", "iters_per_call"):
+        for k in ("scale_mode", "w_tip", "w_shape", "k_limit", "iters_per_call"):
             v = getattr(self, k)
             if v is not None:
                 out[k] = v
