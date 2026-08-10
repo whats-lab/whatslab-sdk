@@ -145,6 +145,7 @@ class HandSolverCfg:
     w_tip: Optional[float] = None
     w_shape: Optional[float] = None
     k_limit: Optional[float] = None
+    k_smooth: Optional[float] = None
     iters_per_call: Optional[int] = None
 
     @staticmethod
@@ -160,6 +161,7 @@ class HandSolverCfg:
         return HandSolverCfg(
             backend=backend, thumb_offset=_f("thumb_offset"),
             w_tip=_f("w_tip"), w_shape=_f("w_shape"), k_limit=_f("k_limit"),
+            k_smooth=_f("k_smooth"),
             iters_per_call=(None if d.get("iters_per_call") is None
                             else int(d["iters_per_call"])))
 
@@ -167,7 +169,8 @@ class HandSolverCfg:
         out = {"backend": self.backend}
         if self.backend != "kp":
             return out
-        for k in ("thumb_offset", "w_tip", "w_shape", "k_limit", "iters_per_call"):
+        for k in ("thumb_offset", "w_tip", "w_shape", "k_limit", "k_smooth",
+                  "iters_per_call"):
             v = getattr(self, k)
             if v is not None:
                 out[k] = v
