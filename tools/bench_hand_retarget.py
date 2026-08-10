@@ -13,7 +13,7 @@ from whatslab.solvers.hand.human_fk import FINGERS, HumanHandFK, palm_frame
 SPREAD_PAIRS = (("index", "middle"), ("middle", "ring"), ("ring", "pinky"))
 
 
-def load_poses(dump_path, profile_dir, steps):
+def load_poses(dump_path, profile_dir, steps, kinds=("pinch",)):
     d = json.load(open(dump_path))
     side = d["hand_side"].lower()
     prof = json.load(open("%s/%s/%s.json" % (profile_dir, side, d["profile"])))
@@ -32,9 +32,22 @@ def load_poses(dump_path, profile_dir, steps):
         return out
 
     trajs = {}
-    for f, th in zip(d["pinch_finger_names"], d["pinch_thetas"]):
-        th = np.asarray(th, dtype=float)
-        trajs[f] = [expand(th * (k + 1) / steps) for k in range(steps)]
+    if "pinch" in kinds:
+        for f, th in zip(d["pinch_finger_names"], d["pinch_thetas"]):
+            th = np.asarray(th, dtype=float)
+            trajs[f] = [expand(th * (k + 1) / steps) for k in range(steps)]
+    lo = np.asarray(d["theta_lo"], dtype=float)
+    hi = np.asarray(d["theta_hi"], dtype=float)
+    for kind in ("flex", "abd"):
+        if kind not in kinds:
+            continue
+        sel = [i for i, n in enumerate(names) if n.endswith("_" + kind)]
+        if not sel:
+            raise ValueError("프로파일 theta 에 _%s 가 없다: %s" % (kind, names))
+        a, b = np.zeros(len(names)), np.zeros(len(names))
+        for i in sel:
+            a[i], b[i] = (0.0, hi[i]) if kind == "flex" else (lo[i], hi[i])
+        trajs[kind] = [expand(a + (b - a) * (k + 1) / steps) for k in range(steps)]
     return side, trajs
 
 
@@ -110,12 +123,13 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
                         continue
                     acc["lmc"].append(float(u @ v / (np.linalg.norm(u) * nv)))
             prev_h, prev_r = cur_h, cur_r
-            if i == len(traj) - 1:
+            if f in FINGERS and i == len(traj) - 1:
                 acc["pinch"].append(abs(con[f]))
             if i == 0:
                 acc["open"].append(np.mean([abs(v) for v in con.values()]))
     lmc = np.asarray(acc["lmc"])
-    return (np.mean(acc["shape"]), np.mean(acc["spread"]), np.mean(acc["pinch"]),
+    pinch = np.mean(acc["pinch"]) if acc["pinch"] else float("nan")
+    return (np.mean(acc["shape"]), np.mean(acc["spread"]), pinch,
             np.mean(acc["open"]), 100.0 * np.mean(lmc > 0.0), 100.0 * lmc.mean(),
             np.percentile(acc["dq"], 95), np.mean(acc["ms"]))
 
@@ -176,10 +190,14 @@ def main():
     ap.add_argument("--configs", nargs="+", default=["orca_hand", "robotis_hx5_d20"])
     ap.add_argument("--backends", nargs="+", default=["kp", "dex"])
     ap.add_argument("--steps", type=int, default=20)
+    ap.add_argument("--traj", nargs="+", default=["pinch"],
+                    choices=["pinch", "flex", "abd"],
+                    help="pinch=실측 핀치 램프 / flex=굽힘 전용 / abd=벌림 전용")
     args = ap.parse_args()
 
-    side, trajs = load_poses(args.dump, args.profiles, args.steps)
-    print("side=%s  핀치 %d개 x %d프레임" % (side, len(trajs), args.steps))
+    side, trajs = load_poses(args.dump, args.profiles, args.steps, tuple(args.traj))
+    print("side=%s  궤적 %s (%d개) x %d프레임" % (
+        side, ",".join(args.traj), len(trajs), args.steps))
     print("%-26s %8s %8s %10s %10s %7s %6s %8s %7s" % (
         "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "LMC%", "cos", "|dq|p95",
         "ms"))
