@@ -11,7 +11,6 @@ from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK, palm_frame as _palm_frame, rot_between as _rot_between
 
 PAIRS = tuple(("thumb", f) for f in ("index", "middle", "ring", "pinky"))
-
 HUBER_DELTA = 0.02
 DQ_MAX_STEP = 0.4
 LIMIT_MARGIN = 0.10
@@ -27,6 +26,7 @@ class KPHandRetargeter:
                  urdf_root=None, keypoints: Optional[Dict[str, List[str]]] = None,
                  w_tip: float = 6.0, w_shape: Optional[float] = None,
                  thumb_offset: Optional[float] = None, k_limit: float = 0.3,
+                 k_smooth: float = 0.25,
                  iters_per_call: int = 8, cold_iters: int = 60):
         if config_name not in CONFIG_REGISTRY:
             raise ValueError(
@@ -69,6 +69,7 @@ class KPHandRetargeter:
         self.w_tip = float(w_tip)
         self.w_shape = float(config._KP_SHAPE_WEIGHT if w_shape is None else w_shape)
         self.k_limit = float(k_limit)
+        self.k_smooth = float(k_smooth)
         self._iters = int(iters_per_call)
         self._cold_iters = int(cold_iters)
         self._cold_shape = bool(config._KP_COLD_SHAPE)
@@ -109,7 +110,9 @@ class KPHandRetargeter:
 
         self._q = pin.neutral(self.model)
         self._cold = True
+        self._cold_prev: Optional[np.ndarray] = None
         self._last_targets: Optional[Dict[str, np.ndarray]] = None
+
 
     def _limit_push(self, q: np.ndarray) -> Optional[np.ndarray]:
         g = np.zeros(len(self._allc))
@@ -238,8 +241,12 @@ class KPHandRetargeter:
 
 
     def _solve(self, T: Dict[str, np.ndarray], q: np.ndarray, iters: int,
-               w_tip: float, w_shape: float) -> np.ndarray:
+               w_tip: float, w_shape: float,
+               q_prev: Optional[np.ndarray] = None) -> np.ndarray:
         n = len(self._allc)
+        prev_g = None
+        if q_prev is not None and self.k_smooth > 0.0:
+            prev_g = np.array([q_prev[self._vidx[ci]] for ci in self._allc])
         for _ in range(iters):
             self._fk_robot(q)
             J, P = {}, {}
@@ -268,6 +275,10 @@ class KPHandRetargeter:
                     w = _huber_w(w_tip, float(np.linalg.norm(r)))
                     rows.append(w * J[(f, last)])
                     res.append(w * r)
+            if prev_g is not None:
+                cur_g = np.array([q[self._vidx[ci]] for ci in self._allc])
+                rows.append(self.k_smooth * np.eye(n))
+                res.append(self.k_smooth * (prev_g - cur_g))
             if self.k_limit > 0.0:
                 g = self._limit_push(q)
                 if g is not None:
@@ -337,11 +348,14 @@ class KPHandRetargeter:
                 self._q = self._solve(T, self._q, self._cold_iters,
                                       w_tip=0.5, w_shape=1.0)
             self._cold = False
-        self._q = self._solve(T, self._q, self._iters,
-                              w_tip=self.w_tip, w_shape=self.w_shape)
+        q_prev = None if self._cold_prev is None else self._cold_prev.copy()
+        self._q = self._solve(T, self._q, self._iters, w_tip=self.w_tip,
+                              w_shape=self.w_shape, q_prev=q_prev)
+        self._cold_prev = self._q.copy()
         return np.array([self._q[iq] for _, iq in self._out])
 
     def reset(self) -> None:
         self._q = pin.neutral(self.model)
         self._cold = True
+        self._cold_prev = None
         self._last_targets = None

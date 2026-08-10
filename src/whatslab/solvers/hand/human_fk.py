@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Dict, List, Mapping, Optional, Sequence
 
@@ -8,6 +9,8 @@ import pinocchio as pin
 
 from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
 from whatslab.paths import models_root
+
+logger = logging.getLogger(__name__)
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 BONE_LINKS: Dict[str, Sequence[str]] = {
@@ -91,6 +94,7 @@ class HumanHandFK:
         self._fids = {name: self.model.getFrameId(link, pin.FrameType.BODY)
                       for name, link in self.links.items()}
         self._palm_fid = self.model.getFrameId(self.palm_link, pin.FrameType.BODY)
+        self._warned_unknown = False
 
     def _has(self, name: str) -> bool:
         return self.model.existFrame(name, pin.FrameType.BODY)
@@ -98,10 +102,24 @@ class HumanHandFK:
     def q_from_named(self, angles: Mapping[str, float]) -> np.ndarray:
         q = pin.neutral(self.model)
         pfx = self.side + "_"
+        unknown = []
         for name, val in angles.items():
             iq = self._idx_q.get(name, self._idx_q.get(pfx + name))
-            if iq is not None:
-                q[iq] = float(val)
+            if iq is None:
+                unknown.append(name)
+                continue
+            q[iq] = float(val)
+        if angles and len(unknown) == len(angles):
+            raise ValueError(
+                f"{self.urdf_path}: 받은 관절각 {len(angles)}개가 URDF 관절과 하나도"
+                f" 맞지 않는다 — side 나 프로파일이 어긋났다. 받은 예 {unknown[:3]},"
+                f" URDF 예 {self.joint_names[:3]}")
+        if unknown and not self._warned_unknown:
+            self._warned_unknown = True
+            logger.warning(
+                "%s: 받은 관절각 중 %d/%d 개가 URDF 에 없어 무시했다 — %s",
+                os.path.basename(self.urdf_path), len(unknown), len(angles),
+                unknown[:5])
         return q
 
     def _fk(self, angles) -> None:
