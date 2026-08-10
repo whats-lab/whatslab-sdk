@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
+from conftest import require_sensor_urdf
 from pythonosc.osc_message_builder import OscMessageBuilder
 
 from whatslab.core.types import HandCommand, InputSample
@@ -367,6 +369,7 @@ def test_teleop_model_still_accepts_duck_typed_robot():
 
 
 def test_every_exported_preset_is_instantiable():
+    require_sensor_urdf("orca_hand")
     pytest.importorskip("pinocchio")
     pytest.importorskip("dex_retargeting")
     import whatslab.teleop as T

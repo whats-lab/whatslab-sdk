@@ -1,12 +1,15 @@
 import os
 from abc import ABC
 from dataclasses import dataclass
-from typing import ClassVar, Dict, List, Union
+from typing import ClassVar, Dict, List, Optional, Union
 
 import numpy as np
+import pinocchio as pin
 
 from whatslab.core.types import JOINT_INDEX
 from whatslab.paths import models_root as _models_root
+
+FINGER_ORDER = ('thumb', 'index', 'middle', 'ring', 'pinky')
 
 
 def _resolve_human(human: List) -> List[int]:
@@ -34,23 +37,20 @@ class FingerChain:
 class HandConfig(ABC):
 
     _MODEL_SUBDIR:         ClassVar[str]                               = ''
-    _FINGERS:              ClassVar[Dict[str, List[FingerChain]]]      = {'left': [], 'right': []}
-    _WRIST_LINK:           ClassVar[Dict[str, str]]                    = {'left': 'world', 'right': 'world'}
+    _HUMAN_CHAIN:          ClassVar[Dict[str, List[str]]]              = {}
     _COORD_TRANSFORM:      ClassVar[np.ndarray]                        = np.eye(3, dtype=np.float32)
     _SCALE_FACTOR:         ClassVar[Union[float, List[float]]]         = 1.0
     _URDF_FILENAME:        ClassVar[str]                               = 'urdf/{hand_type}.urdf'
-    _SIDE_MAP:             ClassVar[Dict[str, str]]                    = {'left': 'left', 'right': 'right'}
     _FIXED_JOINTS:         ClassVar[Dict[str, str]]                    = {}
-    _RVIZ_FILENAME:        ClassVar[Dict[str, str]]                    = {}
     _TARGET_JOINT_NAMES:   ClassVar[Union[List[str], Dict[str, List[str]]]] = []
     _KP_SHAPE_WEIGHT:      ClassVar[float]                             = 1.0
     _KP_COLD_SHAPE:        ClassVar[bool]                              = False
-    _LINK_FALLBACK:        ClassVar[Dict[str, str]]                    = {}
 
     def __init__(self, urdf_root=None):
         root = urdf_root or _default_models_root()
         self._models_root = root
         self._urdf_dir = os.path.join(root, self._MODEL_SUBDIR)
+        self._cache: Dict[str, tuple] = {}
 
     def _get_urdf_path(self, hand_type: str) -> str:
         unified = os.path.join(self._urdf_dir, 'urdf', f'{hand_type}.urdf')
@@ -60,33 +60,57 @@ class HandConfig(ABC):
                 return path
         return unified
 
-    def _urdf_links(self, hand_type: str) -> set:
+    def _derive(self, hand_type: str) -> tuple:
+        if hand_type in self._cache:
+            return self._cache[hand_type]
         path = self._get_urdf_path(hand_type)
         if not os.path.exists(path):
-            return set()
-        import xml.etree.ElementTree as ET
-        return {l.get('name') for l in ET.parse(path).getroot().iter('link')}
+            raise FileNotFoundError(f"{type(self).__name__}: URDF 없음 {path}")
+        m = pin.buildModelFromUrdf(path)
+
+        def body(joint: int) -> Optional[str]:
+            for fr in m.frames:
+                if (fr.type == pin.FrameType.BODY and int(fr.parent) == joint
+                        and '_sensor_' not in fr.name):
+                    return fr.name
+            return None
+
+        tips, chains = {}, {}
+        for f in FINGER_ORDER:
+            if f not in self._HUMAN_CHAIN:
+                continue
+            tip = f'{hand_type}_sensor_{f}_distal'
+            if not m.existFrame(tip, pin.FrameType.BODY):
+                raise ValueError(
+                    f"{type(self).__name__}/{hand_type}: 센서 프레임 {tip} 이 URDF 에"
+                    f" 없다 — 손가락 사슬은 센서 프레임에서 유도한다 ({path})")
+            jid = int(m.frames[m.getFrameId(tip, pin.FrameType.BODY)].parent)
+            tips[f] = tip
+            chains[f] = [int(j) for j in m.supports[jid] if j > 0]
+        if not chains:
+            raise ValueError(f"{type(self).__name__}: _HUMAN_CHAIN 이 비어 있다")
+
+        shared = set.intersection(*[set(v) for v in chains.values()])
+        palm = body(max(shared) if shared else 0)
+        if palm is None:
+            raise ValueError(f"{type(self).__name__}/{hand_type}: 팜 링크를 못 찾았다")
+
+        fingers = []
+        for f in chains:
+            links = [n for n in (body(j) for j in chains[f] if j not in shared)
+                     if n is not None]
+            robot = [palm] + links + [tips[f]]
+            human = list(self._HUMAN_CHAIN[f])
+            if len(human) != len(robot):
+                raise ValueError(
+                    f"{type(self).__name__}/{hand_type}/{f}: _HUMAN_CHAIN 길이"
+                    f" {len(human)} != URDF 사슬 {len(robot)} — 사슬 {robot}")
+            fingers.append(FingerChain(robot, _resolve_human(human)))
+        self._cache[hand_type] = (fingers, palm)
+        return self._cache[hand_type]
 
     def _get_fingers(self, hand_type: str) -> List[FingerChain]:
-        fmt = {'side': self._SIDE_MAP[hand_type], 'wrist': self._WRIST_LINK[hand_type],
-               'hand': hand_type}
-        present = self._urdf_links(hand_type)
-
-        def resolve(name: str) -> str:
-            first = name.format(**fmt)
-            if not present or first in present:
-                return first
-            alt = self._LINK_FALLBACK.get(name)
-            if alt is not None:
-                alt = alt.format(**fmt)
-                if alt in present:
-                    return alt
-            return first
-
-        return [
-            FingerChain([resolve(l) for l in f.links], _resolve_human(f.human))
-            for f in self._FINGERS[hand_type]
-        ]
+        return self._derive(hand_type)[0]
 
     def get_two_stage_config(self, hand_type: str):
         urdf_path = self._get_urdf_path(hand_type)
@@ -125,7 +149,7 @@ class HandConfig(ABC):
         return self._SCALE_FACTOR
 
     def get_wrist_link_name(self, hand_type: str) -> str:
-        return self._WRIST_LINK[hand_type]
+        return self._derive(hand_type)[1]
 
     def get_fixed_joint_names(self, hand_type: str) -> List[str]:
         joint = self._FIXED_JOINTS.get(hand_type, '')

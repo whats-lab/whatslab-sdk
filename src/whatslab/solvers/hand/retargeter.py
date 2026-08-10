@@ -45,6 +45,7 @@ class HandRetargeter:
                    if models_root else None)
         self.fk        = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
         self.human_joint_names = self.fk.joint_names
+        self.urdf_path = config._get_urdf_path(self.hand_type)
 
         self._coord_transform = config.get_coord_transform(self.hand_type)
 
@@ -92,6 +93,14 @@ class HandRetargeter:
                            config.get_wrist_link_name(self.hand_type), e)
             self._wrist_offset = np.zeros(3, dtype=np.float64)
 
+
+    def human_to_robot(self) -> np.ndarray:
+        p = self.fk.positions({n: 0.0 for n in self.fk.joint_names})
+        A = np.asarray(self._coord_transform, dtype=float)
+        T = np.eye(4)
+        T[:3, :3] = A
+        T[:3, 3] = self._wrist_offset - A @ p[0]
+        return T
 
     def compute(self, joint_angles) -> np.ndarray:
         positions          = self.fk.positions(joint_angles)
