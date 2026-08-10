@@ -19,6 +19,7 @@ class RobotisHX5Config(HandConfig):
         [[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=np.float32
     )
     _SCALE_FACTOR = [1.2, 1.25, 1.25, 1.3, 1.4]
+    _KP_SHAPE_WEIGHT = 0.5
 
     _chains = [
         FingerChain(

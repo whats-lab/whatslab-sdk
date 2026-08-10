@@ -5,14 +5,19 @@ from typing import List
 import numpy as np
 
 from whatslab.core.types import HandCommand, InputSample
+from .kp_retargeter import KPHandRetargeter
 from .retargeter import HandRetargeter
+
+BACKENDS = {"dex": HandRetargeter, "kp": KPHandRetargeter}
 
 
 class HandRetargetController:
 
     def __init__(self, hand_type: str, config_name: str = "base_hand",
-                 urdf_root=None, **kwargs):
-        self._engine = HandRetargeter(hand_type, config_name, urdf_root=urdf_root, **kwargs)
+                 urdf_root=None, backend: str = "dex", **kwargs):
+        if backend not in BACKENDS:
+            raise ValueError(f"Unknown backend '{backend}'. Available: {list(BACKENDS)}")
+        self._engine = BACKENDS[backend](hand_type, config_name, urdf_root=urdf_root, **kwargs)
         self._last = np.zeros(len(self._engine.joint_names))
 
     @property
@@ -20,7 +25,7 @@ class HandRetargetController:
         return self._engine.joint_names
 
     @property
-    def engine(self) -> HandRetargeter:
+    def engine(self):
         return self._engine
 
     def compute(self, sample: InputSample) -> HandCommand:

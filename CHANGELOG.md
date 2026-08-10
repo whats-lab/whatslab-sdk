@@ -3,6 +3,27 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
+## [Unreleased]
+
+### 추가
+
+- **`KPHandRetargeter`** (`solvers/hand/kp_retargeter.py`) — 손 리타게팅의 `kp`
+  백엔드. `HandRetargetController(..., backend="kp")` 로 선택한다(기본값은 기존
+  `dex`). dex-retargeting·nlopt·torch 없이 pinocchio + numpy 만 쓴다.
+  - 정렬: 해부학적 팜 프레임(MCP 4점) + 손길이 비율 균일 스케일 + 중립 자세 1회
+    구간별 방향 보정 — 전부 URDF 에서 자동 유도, 튜닝 상수 0. 5 손가락 체인을
+    자동 추출하지 못하는 손은 `keypoints` 를 명시한다.
+  - 목적함수(가중 DLS + IRLS Huber, warm start 틱당 8반복, ~2ms/손): 팜상대
+    지문 위치 + 미터벡터 형상 + 엄지쌍 상대벡터 **램프 스냅**(DexPilot 의
+    projection 을 연속 보간으로 — 사람 핀치 30mm 이하에서 목표를 접촉으로 강제)
+    + 손가락간 최소분리 30mm.
+  - 합성 동작 검증(시작점 3개 × 핀치 2 + 쥐기 2, orca/robotis): 핀치 접촉
+    29~44mm → 6~12mm(달성 가능 하한 도달, orca 검지만 ~6mm 갭), 지문 대가
+    +1~3mm, 자유 동작 영향 0. **실기 글러브 검증은 아직 없다.**
+  - 손별 파라미터는 `HandConfig` ClassVar: `_KP_SHAPE_WEIGHT`(orca 2.0,
+    robotis 0.5, 기본 1.0), `_KP_COLD_SHAPE`(orca 만 true — 콜드 스타트에서
+    형상 전용 solve 로 분기 선택).
+
 ## [0.2.0] — 2026-08-07
 
 층 이름을 실제 내용에 맞추고, side 간 상태 공유로 생긴 텔레옵 정확도 문제를
