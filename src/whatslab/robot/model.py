@@ -106,7 +106,9 @@ class RobotModel:
         )
 
     def make_hand_controller(self, config_name: str, side: str):
-        return HandRetargetController(side, config_name)
+        cfg = getattr(self.rig, "hand_solver", None)
+        kwargs = cfg.kwargs() if cfg is not None else {}
+        return HandRetargetController(side, config_name, **kwargs)
 
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:
         return self._M_inv @ np.asarray(T_canonical, dtype=float)

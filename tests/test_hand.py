@@ -53,8 +53,8 @@ def test_hand_retarget_end_to_end():
     r = HandRetargeter("right", "allegro_hand")
     assert len(r.joint_names) == 16
     assert r.tip_human_indices
-    q = np.tile([0, 0, 0, 1.0], (17, 1))
-    qpos = r.compute(q)
+    assert len(r.human_joint_names) > 0
+    qpos = r.compute({n: 0.0 for n in r.human_joint_names})
     assert qpos.shape == (16,)
     assert np.all(np.isfinite(qpos))
     assert np.allclose(r._wrist_offset, [0, 0, -0.065], atol=1e-6)
@@ -69,7 +69,7 @@ def test_kp_retargeter_end_to_end():
     r = KPHandRetargeter("right", "orca_hand")
     assert r.scale > 0
     assert set(r.keypoints) == {"thumb", "index", "middle", "ring", "pinky"}
-    neutral = np.tile([0, 0, 0, 1.0], (17, 1))
+    neutral = {n: 0.0 for n in r.human_joint_names}
     q = r.compute(neutral)
     assert q.shape == (len(r.joint_names),)
     assert np.all(np.isfinite(q))
@@ -84,14 +84,10 @@ def test_kp_retargeter_end_to_end():
 def test_kp_retargeter_tracks_tips():
     pytest.importorskip("dex_retargeting")
     pytest.importorskip("pinocchio")
-    from whatslab.core.types import SENSED_JOINTS
     from whatslab.solvers.hand import KPHandRetargeter
 
     r = KPHandRetargeter("right", "robotis_hx5_d20")
-    curled = np.tile([0, 0, 0, 1.0], (1 + len(SENSED_JOINTS), 1))
-    for i, name in enumerate(SENSED_JOINTS):
-        th = 0.6 if "index" in name else 0.15
-        curled[1 + i] = [0, np.sin(th / 2), 0, np.cos(th / 2)]
+    curled = {n: (0.6 if "index" in n else 0.15) for n in r.human_joint_names}
     for _ in range(20):
         r.compute(curled)
     T = r._targets(r._human_points(curled))
@@ -108,7 +104,7 @@ def test_kp_retargeter_snap_rows():
     from whatslab.solvers.hand.kp_retargeter import SNAP_CONTACT
 
     r = KPHandRetargeter("right", "robotis_hx5_d20")
-    T = r._targets(r._human_points(np.tile([0, 0, 0, 1.0], (17, 1))))
+    T = r._targets(r._human_points({n: 0.0 for n in r.human_joint_names}))
     far, _ = r._pair_rows(T, snap=True)
     for vt, w in far.values():
         assert w == r.w_pair
@@ -128,7 +124,8 @@ def test_kp_controller_backend():
 
     ctrl = HandRetargetController("right", "orca_hand", backend="kp")
     assert isinstance(ctrl.engine, KPHandRetargeter)
-    hand = HandPose.from_sensor_array(np.tile([0, 0, 0, 1.0], (17, 1)), tracked=True)
+    angles = {n: 0.0 for n in ctrl.engine.human_joint_names}
+    hand = HandPose(joint_angles=angles, tracked=True)
     cmd = ctrl.compute(InputSample(hand=hand, tracked=True))
     assert cmd.joint_names == ctrl.joint_names
     assert np.all(np.isfinite(cmd.joint_angles))
@@ -143,7 +140,8 @@ def test_hand_controller_from_input_sample():
     from whatslab.solvers.hand import HandRetargetController
 
     ctrl = HandRetargetController("right", "allegro_hand")
-    hand = HandPose.from_sensor_array(np.tile([0, 0, 0, 1.0], (17, 1)), tracked=True)
+    angles = {n: 0.0 for n in ctrl.engine.human_joint_names}
+    hand = HandPose(joint_angles=angles, tracked=True)
     cmd = ctrl.compute(InputSample(hand=hand, tracked=True))
     assert cmd.joint_names == ctrl.joint_names
     assert cmd.joint_angles.shape == (16,)

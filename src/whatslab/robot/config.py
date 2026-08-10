@@ -138,6 +138,45 @@ class CalibrationCfg:
 
 
 @dataclass
+@dataclass
+class HandSolverCfg:
+
+    backend: str = "dex"
+    w_tip: Optional[float] = None
+    w_shape: Optional[float] = None
+    w_pair: Optional[float] = None
+    w_snap: Optional[float] = None
+    iters_per_call: Optional[int] = None
+
+    @staticmethod
+    def from_dict(d) -> "HandSolverCfg":
+        d = d or {}
+        backend = str(d.get("backend", "dex"))
+        if backend not in ("dex", "kp"):
+            raise ValueError(f"hand_solver.backend 는 dex|kp: {backend!r}")
+
+        def _f(k):
+            v = d.get(k)
+            return None if v is None else float(v)
+        return HandSolverCfg(
+            backend=backend,
+            w_tip=_f("w_tip"), w_shape=_f("w_shape"),
+            w_pair=_f("w_pair"), w_snap=_f("w_snap"),
+            iters_per_call=(None if d.get("iters_per_call") is None
+                            else int(d["iters_per_call"])))
+
+    def kwargs(self) -> dict:
+        out = {"backend": self.backend}
+        if self.backend != "kp":
+            return out
+        for k in ("w_tip", "w_shape", "w_pair", "w_snap", "iters_per_call"):
+            v = getattr(self, k)
+            if v is not None:
+                out[k] = v
+        return out
+
+
+@dataclass
 class RigConfig:
     name: str
     arm: Optional[RobotSpec]
@@ -148,6 +187,7 @@ class RigConfig:
     target_ee: Optional[str]
     solver: SolverCfg
     calibration: CalibrationCfg
+    hand_solver: "HandSolverCfg" = field(default_factory=lambda: HandSolverCfg())
     path: Optional[str] = None
 
     def resolve_target_ee(self) -> str:
@@ -222,6 +262,7 @@ def load_rig(path: str) -> RigConfig:
         target_ee=d.get("target_ee"),
         solver=SolverCfg.from_dict(d.get("solver")),
         calibration=CalibrationCfg.from_dict(d.get("calibration")),
+        hand_solver=HandSolverCfg.from_dict(d.get("hand_solver")),
         path=p,
     )
     if arm is None and rig.calibration.complete:

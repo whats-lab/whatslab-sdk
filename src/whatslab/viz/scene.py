@@ -210,6 +210,74 @@ class RobotHandViz:
             self._bones.points = np.asarray(segs)
 
 
+class KPHandViz:
+
+    _TARGET_RGB = (90, 210, 250)
+    _ACHIEVED_RGB = (250, 170, 70)
+
+    def __init__(self, engine, port: int = 8080, root_path: str = "/kp_hand",
+                 mesh: bool = True):
+        self.engine = engine
+        self.port = port
+        self.root_path = root_path
+        self._mesh = mesh
+        self._scene = None
+        self._tgt = None
+        self._ach = None
+        self._err = None
+        self._fingers = list(engine.keypoints)
+        self._n = sum(len(v) for v in engine.keypoints.values())
+
+    def start(self) -> None:
+        srv = get_server(self.port)
+        if self._mesh:
+            urdf = getattr(self.engine, "urdf_path", None)
+            if urdf:
+                self._scene = URDFScene(srv, urdf, models_root(), self.root_path)
+        def _balls(name, rgb, radius):
+            ball = trimesh.creation.icosphere(radius=radius)
+            ball.visual.face_colors = [*rgb, 255]
+            return [srv.scene.add_mesh_trimesh(f"{self.root_path}/{name}{i}",
+                                               ball.copy())
+                    for i in range(self._n)]
+        self._tgt = _balls("t", self._TARGET_RGB, 0.006)
+        self._ach = _balls("a", self._ACHIEVED_RGB, 0.004)
+        self._err = srv.scene.add_line_segments(
+            f"{self.root_path}/err", points=np.zeros((self._n, 2, 3)),
+            colors=(230, 80, 80), line_width=2.0)
+        self._n_bone = self._n - len(self._fingers)
+        self._bone = srv.scene.add_line_segments(
+            f"{self.root_path}/tgt_bones",
+            points=np.zeros((max(self._n_bone, 1), 2, 3)),
+            colors=self._TARGET_RGB, line_width=4.0)
+
+    def update(self, timestamp: Optional[float] = None) -> None:
+        if self._tgt is None:
+            self.start()
+        _ = timestamp
+        eng = self.engine
+        if self._scene is not None:
+            self._scene.fk(self._scene.q_from_named(
+                dict(zip(eng.joint_names, eng.current_q()))))
+        T = eng.last_targets()
+        A = eng.achieved_points()
+        segs, bones, i = [], [], 0
+        for f in self._fingers:
+            pts = A[f] if T is None else T[f]
+            for k in range(len(eng.keypoints[f])):
+                a = A[f][k]
+                t = pts[k]
+                self._ach[i].position = tuple(float(v) for v in a)
+                self._tgt[i].position = tuple(float(v) for v in t)
+                segs.append([t.copy(), a.copy()])
+                if k > 0:
+                    bones.append([pts[k - 1].copy(), t.copy()])
+                i += 1
+        self._err.points = np.asarray(segs)
+        if bones:
+            self._bone.points = np.asarray(bones)
+
+
 def _bone_pairs() -> List[Tuple[int, int]]:
     return [(JOINT_INDEX[s.parent], i) for i, s in enumerate(HUMAN_HAND)
             if s.parent is not None]

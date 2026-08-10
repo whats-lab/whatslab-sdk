@@ -53,7 +53,8 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 |---|---|---|
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세. `connected(side)`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
-| `GloveHumanHandReceiver` | `InputSample(hand=HandPose)` | AirGlove 손가락 회전. `send_haptic(side, values)`. |
+| `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **사람 손** URDF 관절각(`/{side}/joint_angles/get`) + 손목. 손 리타게팅의 입력. |
+| `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만 — 손 리타게팅은 관절각을 쓴다. |
 | `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
@@ -95,19 +96,27 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 from whatslab.solvers.hand import HandRetargetController
 ```
 
+입력은 **사람 손 URDF 관절각** 하나다 — `HandPose.joint_angles`(이름→rad). 글러브가
+`/{side}/joint_angles/get` 으로 보내는 값이고, 사람 FK 는 두 엔진이 `HumanHandFK` 를
+공유한다(평범한 pinocchio FK).
+
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargetController(hand_type, config_name, backend="dex")` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. 추적이 끊기면 직전 명령 유지. `backend`: `"dex"`(기존) / `"kp"`(아래). |
+| `HandRetargetController(hand_type, config_name, backend="dex")` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. `backend`: `"dex"` / `"kp"`. |
+| `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK. `points(angles)` = 손가락별 키포인트 4개 + `palm`, `positions(angles)` = `JOINT_INDEX` 배치의 (23,3). `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
 | `HandRetargeter` | `dex` 백엔드 엔진 — dex-retargeting 2단계(vector + position) IK, nlopt/torch 필요. |
-| `KPHandRetargeter(hand_type, config_name, keypoints=None, ...)` | `kp` 백엔드 엔진 — 팜상대 키포인트 결합 목적함수(가중 DLS + IRLS Huber), pin+numpy 만 사용. 팜 프레임 정렬 + 손길이 비율 스케일 + 중립 1회 구간별 방향 보정은 URDF 에서 자동 유도(5 손가락 체인 필요, 아니면 `keypoints` 명시). 목적함수 = 팜상대 지문 위치 + 미터벡터 형상(`w_shape`, config `_KP_SHAPE_WEIGHT`) + 엄지쌍 상대벡터 램프 스냅(30mm 이하에서 목표→0, 가중 `w_pair`→`w_snap`) + 손가락간 최소분리 30mm. warm start 유상태 — side 마다 인스턴스 하나. `reset()` 으로 콜드 스타트 재개(orca 는 형상 전용 콜드 solve, `_KP_COLD_SHAPE`). |
+| `KPHandRetargeter(hand_type, config_name, keypoints=None, ...)` | `kp` 백엔드 엔진 — 팜상대 키포인트 결합 목적함수(가중 DLS + IRLS Huber), pin+numpy 만 사용. 팜 프레임 정렬 + 손길이 비율 스케일 + 중립 1회 구간별 방향 보정은 URDF 에서 자동 유도(키포인트는 `{side}_sensor_*` 우선, 없으면 사슬 추출, 아니면 `keypoints` 명시). 목적함수 = 팜상대 지문 위치 + 미터벡터 형상(`w_shape`, config `_KP_SHAPE_WEIGHT`) + 엄지쌍 상대벡터 램프 스냅(30mm 이하에서 목표→0, 가중 `w_pair`→`w_snap`) + 손가락간 최소분리 30mm. warm start 유상태 — side 마다 인스턴스 하나. `reset()` 으로 콜드 스타트 재개(orca 는 형상 전용 콜드 solve, `_KP_COLD_SHAPE`). |
 | `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
+
+rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp) + kp 가중치
+(`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
 | 심볼 | 설명 |
 |---|---|
 | `types.Pose` | 위치 + quaternion(xyzw). |
-| `types.HandPose` | 손목 6D + 관절명→회전(사람 손). `to_sensor_array()` 경계에서만 배열화. |
+| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용). |
 | `types.InputSample` | 리시버 출력 컨테이너(controller/hand/q/hmd). |
 | `types.HandCommand` | 리타게팅 출력(로봇 손 관절각). |
 | `types.JointSpec` | 관절 이름/한계 스펙. |

@@ -15,6 +15,13 @@ class OrcaHandConfig(HandConfig):
     _SCALE_FACTOR = [0.95, 1.03, 1.06, 1.06, 1.05]
     _KP_SHAPE_WEIGHT = 2.0
     _KP_COLD_SHAPE = True
+    _LINK_FALLBACK = {
+        "T-TIP_OFFSET": "{hand}_sensor_thumb_distal",
+        "I-TIP_OFFSET": "{hand}_sensor_index_distal",
+        "M-TIP_OFFSET": "{hand}_sensor_middle_distal",
+        "MR-TIP_OFFSET": "{hand}_sensor_ring_distal",
+        "P-TIP_OFFSET": "{hand}_sensor_pinky_distal",
+    }
     _FIXED_JOINTS = {
         "right": "R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e",
         "left": "L-Carpals_719fff8c_to_TopTower-Model_4a80d30e",

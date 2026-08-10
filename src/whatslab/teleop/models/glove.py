@@ -7,7 +7,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.types import Pose
-from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
+from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
+from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 from whatslab.receiver.quest.controller import QuestControllerReceiver
 
 from ..base import TeleopModel
@@ -16,16 +17,23 @@ logger = logging.getLogger(__name__)
 
 _OPPOSITE = {"left": "right", "right": "left"}
 
+HAND_SOURCES = {
+    "angles": GloveHumanAnglesReceiver,
+    "robot": GloveRobotHandReceiver,
+}
+
 
 class GloveModel(TeleopModel):
 
-    def __init__(self, robot):
-        self.hand_source = GloveHumanHandReceiver()
+    def __init__(self, robot, hand_source: str = "angles"):
+        if hand_source not in HAND_SOURCES:
+            raise ValueError(
+                f"hand_source 는 {list(HAND_SOURCES)} 중 하나 — 받은 값 {hand_source!r}")
+        self.hand_source = HAND_SOURCES[hand_source]()
         self.arm_source = QuestControllerReceiver()
         super().__init__(robot)
 
     def _get_raw_target(self) -> Dict[str, Optional[Pose]]:
-        
         out: Dict[str, Optional[Pose]] = {}
         for s in self.SIDES:
             hand = self.hand_source.get(s).hand

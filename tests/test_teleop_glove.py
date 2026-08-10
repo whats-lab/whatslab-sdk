@@ -105,9 +105,8 @@ def test_hand_and_arm_combine_into_single_q():
     _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
 
-    raw = np.zeros(72, dtype=np.float32)
-    raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
+    _send(hand_disp, "/right/joint_angles/get", "17",
+          "right_index_mcp_flex", 0.3, "right_index_pip", 0.2)
 
     assert m.robot.solve_calls == 0
 
@@ -123,8 +122,8 @@ def test_new_controller_pose_reflected_in_q():
     m = _make_model()
     arm_disp = m.arm_source._srv.dispatcher
     hand_disp = m.hand_source._srv.dispatcher
-    raw = np.zeros(72, dtype=np.float32); raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
+    _send(hand_disp, "/right/joint_angles/get", "17",
+          "right_index_mcp_flex", 0.3, "right_index_pip", 0.2)
 
     _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
@@ -141,8 +140,8 @@ def test_crosshand_output_on_glove_side():
 
     _send(arm_disp, "/controller/left/pos", 1.0, 2.0, 3.0)
     _send(arm_disp, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
-    raw = np.zeros(72, dtype=np.float32); raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
+    _send(hand_disp, "/right/joint_angles/get", "17",
+          "right_index_mcp_flex", 0.3, "right_index_pip", 0.2)
 
     q = m.get_q()
     assert q["right"]["arm1"] == pytest.approx(3.02)
@@ -154,9 +153,8 @@ def test_arm_omitted_when_controller_untracked_hand_still_retargets():
     m = _make_model()
     hand_disp = m.hand_source._srv.dispatcher
 
-    raw = np.zeros(72, dtype=np.float32)
-    raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
+    _send(hand_disp, "/right/joint_angles/get", "17",
+          "right_index_mcp_flex", 0.3, "right_index_pip", 0.2)
 
     q = m.get_q()["right"]
     assert "arm1" not in q and "arm2" not in q
@@ -191,8 +189,8 @@ def test_calibrate_yaw_captures_arm_target_side():
     _send(arm_disp, "/hmd/rot", *Rotation.from_euler("z", 0.3).as_quat().tolist())
     _send(arm_disp, "/controller/left/pos", 0.0, 0.0, 0.0)
     _send(arm_disp, "/controller/left/rot", *Rotation.from_euler("z", 0.1).as_quat().tolist())
-    raw = np.zeros(72, dtype=np.float32); raw[3::4] = 1.0
-    _send(hand_disp, "/right/quat/get", "1", *raw.tolist())
+    _send(hand_disp, "/right/joint_angles/get", "17",
+          "right_index_mcp_flex", 0.3, "right_index_pip", 0.2)
 
     out = m.calibrate_yaw()
     assert out["right"] is True and out["left"] is False

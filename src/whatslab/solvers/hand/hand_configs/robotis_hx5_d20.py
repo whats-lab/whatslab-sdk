@@ -14,7 +14,7 @@ class RobotisHX5Config(HandConfig):
         "right": "robotis_hx5_d20_right.rviz",
     }
     _SIDE_MAP = {"left": "l", "right": "r"}
-    _WRIST_LINK = {"left": "robotis_hx5_d20_left", "right": "hx5_d20_right_base"}
+    _WRIST_LINK = {"left": "hx5_d20_left_base", "right": "hx5_d20_right_base"}
     _COORD_TRANSFORM: ClassVar[np.ndarray] = np.array(
         [[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=np.float32
     )

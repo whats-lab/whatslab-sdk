@@ -1,5 +1,6 @@
 from .scene import (
     HandSkeletonViz,
+    KPHandViz,
     RobotArmViz,
     RobotHandViz,
     URDFScene,
@@ -7,4 +8,4 @@ from .scene import (
 )
 
 __all__ = ["URDFScene", "get_server", "HandSkeletonViz", "RobotHandViz",
-           "RobotArmViz"]
+           "RobotArmViz", "KPHandViz"]
