@@ -27,9 +27,8 @@
 - **Quest 핸드트래킹 리타게팅은 지원하지 않는다.** 컨트롤러 → 팔 IK 경로는 그대로다.
 - **URDF 참조를 관절명에서 링크명으로 바꿨다.** Visualizer 규칙이 "링크 = 뼈 이름,
   관절 = 운동 이름"이고 관절명은 개명된 이력이 있다(`thumb_cmc0`→`thumb_cmc_flex`).
-  손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → `{side}_{finger}_tip`
-  순으로 찾고, 로봇 손 config 도 `_LINK_FALLBACK` 으로 같은 순서를 탄다. 덕분에
-  센서 프레임이 있는 URDF 와 없는 URDF 가 둘 다 동작한다.
+  사람 손 손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) →
+  `{side}_{finger}_tip` 순으로 찾는다.
 
 ### 수정 — dex 가 스켈레톤을 못 따라가던 문제 (프레임 불일치)
 
