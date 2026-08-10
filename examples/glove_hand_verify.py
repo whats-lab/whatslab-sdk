@@ -16,8 +16,6 @@ def main():
     ap.add_argument("--config", default="orca_hand", help="로봇 손 리타게팅 config")
     ap.add_argument("--side", default="right", choices=["left", "right"])
     ap.add_argument("--backend", default="kp", choices=["dex", "kp"])
-    ap.add_argument("--human", default="angles", choices=["quat", "angles"],
-                    help="angles = /joint_angles 로 받은 q 를 URDF FK (kp 전용)")
     ap.add_argument("--urdf-root", default=os.environ.get("WHATSLAB_MODELS_ROOT"))
     ap.add_argument("--rate", type=float, default=60.0)
     ap.add_argument("--dump", default=None, help="프레임 기록 npz 경로")
@@ -27,10 +25,10 @@ def main():
     ap.add_argument("--viz-port", type=int, default=8080)
     args = ap.parse_args()
 
-    print(f"[setup] {args.config} {args.side} backend={args.backend} human={args.human}")
+    print(f"[setup] {args.config} {args.side} backend={args.backend}")
     print(f"[setup] models={args.urdf_root or '(패키지 내장)'}")
     m = HandModel(hand_config=args.config, side=args.side, urdf_root=args.urdf_root,
-                  backend=args.backend, human=args.human)
+                  backend=args.backend)
     ctrl = m.sides[args.side].retarget
     eng = ctrl.engine
     kp = args.backend == "kp"
