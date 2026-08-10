@@ -20,7 +20,7 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 from .hand_configs import CONFIG_REGISTRY, HandConfig
-from .spherical_fk import HandSphericalFK
+from .human_fk import HumanHandFK
 
 
 class HandRetargeter:
@@ -43,7 +43,8 @@ class HandRetargeter:
         models_root = getattr(config, '_models_root', None)
         fk_urdf = (os.path.join(models_root, 'base_hand', 'urdf', f'{self.hand_type}.urdf')
                    if models_root else None)
-        self.fk        = HandSphericalFK(self.hand_type, urdf_path=fk_urdf)
+        self.fk        = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
+        self.human_joint_names = self.fk.joint_names
 
         self._coord_transform = config.get_coord_transform(self.hand_type)
 
@@ -92,8 +93,8 @@ class HandRetargeter:
             self._wrist_offset = np.zeros(3, dtype=np.float64)
 
 
-    def compute(self, sensor_quats_17: np.ndarray) -> np.ndarray:
-        positions          = self.fk.compute_positions(sensor_quats_17)
+    def compute(self, joint_angles) -> np.ndarray:
+        positions          = self.fk.positions(joint_angles)
         positions_centered = positions - positions[0]
         positions_robot    = (self._coord_transform @ positions_centered.T).T
 

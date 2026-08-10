@@ -31,6 +31,9 @@ class HandRetargetController:
     def compute(self, sample: InputSample) -> HandCommand:
         if sample.hand is None or not sample.hand.tracked:
             return HandCommand(joint_names=self.joint_names, joint_angles=self._last.copy())
-        qpos = self._engine.compute(sample.hand.to_sensor_array())
+        if not sample.hand.joint_angles:
+            return HandCommand(joint_names=self.joint_names,
+                               joint_angles=self._last.copy())
+        qpos = self._engine.compute(sample.hand.joint_angles)
         self._last = qpos
         return HandCommand(joint_names=self.joint_names, joint_angles=qpos)

@@ -45,6 +45,7 @@ class HandConfig(ABC):
     _TARGET_JOINT_NAMES:   ClassVar[Union[List[str], Dict[str, List[str]]]] = []
     _KP_SHAPE_WEIGHT:      ClassVar[float]                             = 1.0
     _KP_COLD_SHAPE:        ClassVar[bool]                              = False
+    _LINK_FALLBACK:        ClassVar[Dict[str, str]]                    = {}
 
     def __init__(self, urdf_root=None):
         root = urdf_root or _default_models_root()
@@ -59,10 +60,31 @@ class HandConfig(ABC):
                 return path
         return unified
 
+    def _urdf_links(self, hand_type: str) -> set:
+        path = self._get_urdf_path(hand_type)
+        if not os.path.exists(path):
+            return set()
+        import xml.etree.ElementTree as ET
+        return {l.get('name') for l in ET.parse(path).getroot().iter('link')}
+
     def _get_fingers(self, hand_type: str) -> List[FingerChain]:
-        fmt = {'side': self._SIDE_MAP[hand_type], 'wrist': self._WRIST_LINK[hand_type]}
+        fmt = {'side': self._SIDE_MAP[hand_type], 'wrist': self._WRIST_LINK[hand_type],
+               'hand': hand_type}
+        present = self._urdf_links(hand_type)
+
+        def resolve(name: str) -> str:
+            first = name.format(**fmt)
+            if not present or first in present:
+                return first
+            alt = self._LINK_FALLBACK.get(name)
+            if alt is not None:
+                alt = alt.format(**fmt)
+                if alt in present:
+                    return alt
+            return first
+
         return [
-            FingerChain([l.format(**fmt) for l in f.links], _resolve_human(f.human))
+            FingerChain([resolve(l) for l in f.links], _resolve_human(f.human))
             for f in self._FINGERS[hand_type]
         ]
 

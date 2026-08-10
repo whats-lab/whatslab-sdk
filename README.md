@@ -41,9 +41,10 @@ downstream code never re-maps axes.
 - strict dependency direction (`receiver → core`, `model → core·robot`)
 
 **whatslab is retargeting-first:**
-- hand: dex-retargeting two-stage (vector + position) IK with deterministic termination —
-  or `backend="kp"`, a combined keypoint objective (palm-relative fingertips + shape +
-  DexPilot-style pinch snap, pin+numpy only)
+- hand: human-hand URDF joint angles from the glove → pinocchio FK → retargeting IK.
+  `backend="dex"` (dex-retargeting two-stage vector+position) or `backend="kp"`
+  (combined keypoint objective: palm-relative fingertips + shape + DexPilot-style
+  pinch snap, pin+numpy only)
 - arm: pinocchio analytic Jacobian + damped least squares
 - output is `{side: {joint_name: rad}}`, ready to publish
 
