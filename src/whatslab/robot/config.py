@@ -138,14 +138,12 @@ class CalibrationCfg:
 
 
 @dataclass
-@dataclass
 class HandSolverCfg:
 
     backend: str = "dex"
     w_tip: Optional[float] = None
     w_shape: Optional[float] = None
-    w_pair: Optional[float] = None
-    w_snap: Optional[float] = None
+    k_limit: Optional[float] = None
     iters_per_call: Optional[int] = None
 
     @staticmethod
@@ -160,8 +158,7 @@ class HandSolverCfg:
             return None if v is None else float(v)
         return HandSolverCfg(
             backend=backend,
-            w_tip=_f("w_tip"), w_shape=_f("w_shape"),
-            w_pair=_f("w_pair"), w_snap=_f("w_snap"),
+            w_tip=_f("w_tip"), w_shape=_f("w_shape"), k_limit=_f("k_limit"),
             iters_per_call=(None if d.get("iters_per_call") is None
                             else int(d["iters_per_call"])))
 
@@ -169,7 +166,7 @@ class HandSolverCfg:
         out = {"backend": self.backend}
         if self.backend != "kp":
             return out
-        for k in ("w_tip", "w_shape", "w_pair", "w_snap", "iters_per_call"):
+        for k in ("w_tip", "w_shape", "k_limit", "iters_per_call"):
             v = getattr(self, k)
             if v is not None:
                 out[k] = v
