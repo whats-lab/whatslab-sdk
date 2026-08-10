@@ -16,6 +16,10 @@ GLOVE_CLIENT_PORT = 4042
 GLOVE_TARGET_IP = "127.0.0.1"
 HEARTBEAT_INTERVAL_SEC = 1.0
 
+OSC_ADDR_HAPT = {"left": "/left/hapt/set", "right": "/right/hapt/set"}
+OSC_MSG_TYPE_HAPT = {"left": "9", "right": "10"}
+AGA_FINGER_COUNT = 5
+
 
 class GloveReceiverBase:
 
@@ -58,6 +62,19 @@ class GloveReceiverBase:
     def connected(self, side: str) -> bool:
         with self._lock:
             return self._connected[side]
+
+    def send_haptic(self, side: str, values: list) -> bool:
+        if self._udp_client is None or not self.connected(side):
+            return False
+        packet: list = [OSC_MSG_TYPE_HAPT[side]]
+        for i, v in enumerate(values[:AGA_FINGER_COUNT]):
+            packet.extend([i, int(v)])
+        try:
+            self._udp_client.send_message(OSC_ADDR_HAPT[side], packet)
+            return True
+        except Exception as e:
+            _log.warning("햅틱 전송 실패 (%s): %s", OSC_ADDR_HAPT[side], e)
+            return False
 
     def _on_device_status(self, address, *args):
         if len(args) < 3:

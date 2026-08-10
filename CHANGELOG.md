@@ -5,6 +5,53 @@
 
 ## [Unreleased]
 
+### 호환 없는 변경 — 사람 손 FK 를 pinocchio FK 하나로 통일
+
+글러브(Spine)가 사람 손도 로봇 손과 똑같이 `/{side}/joint_angles/get` 으로 URDF
+관절각을 보낸다. 차이는 **로봇은 받은 값을 그대로 쓰고**(`InputSample.joint_q`
+패스스루), **사람은 그 q 를 URDF 로 FK 해서 IK 를 돈다**는 것뿐이다.
+
+- **`solvers/hand/spherical_fk.py` 제거** (`HandSphericalFK`·`build_model`·
+  `HandRerunViz`). quat 17슬롯을 볼조인트 모델에 밀어넣던 경로였고, q 가 오는
+  지금은 URDF 를 그대로 FK 하면 된다. 딸려 있던 `_correct_quat`·`sensor_to_jid`·
+  `PINKY_CMC_OFFSET`·`AGA_SKIP_JOINT` 보정도 사라졌다.
+- **`HumanHandFK`**(`solvers/hand/human_fk.py`)가 사람 FK 의 단일 구현이고
+  **dex·kp 두 엔진이 공유**한다. `points(angles)` / `positions(angles)`.
+- **두 엔진의 `compute()` 입력이 관절각 dict 로 바뀌었다**(전에는 (17,4) quat 배열).
+  `HandRetargetController.compute()` 는 `sample.hand.joint_angles` 를 쓴다.
+- **`HandPose.joint_angles`** 추가(이름→rad). `joint_rot`(quat)은 전송 계층에 남는다.
+- **`GloveHumanAnglesReceiver`** 추가 — `/{side}/joint_angles/get` + `/{side}/wrist/get`.
+  `HandModel`·`GloveModel` 의 기본 손 소스다. `GloveModel(robot, hand_source=…)` =
+  `angles`(사람) / `robot`(패스스루).
+- **`send_haptic` 이 `GloveReceiverBase` 로 올라갔다** — 어느 리시버를 쓰든 햅틱이 된다.
+- **Quest 핸드트래킹 리타게팅은 지원하지 않는다.** 컨트롤러 → 팔 IK 경로는 그대로다.
+- **URDF 참조를 관절명에서 링크명으로 바꿨다.** Visualizer 규칙이 "링크 = 뼈 이름,
+  관절 = 운동 이름"이고 관절명은 개명된 이력이 있다(`thumb_cmc0`→`thumb_cmc_flex`).
+  손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → `{side}_{finger}_tip`
+  순으로 찾고, 로봇 손 config 도 `_LINK_FALLBACK` 으로 같은 순서를 탄다. 덕분에
+  센서 프레임이 있는 URDF 와 없는 URDF 가 둘 다 동작한다.
+
+### 수정 — 팜 프레임 y 축이 특이했다 (사람↔로봇 매핑 90° 회전)
+
+`_palm_frame` 의 y 축을 `중지너클 − 너클평균`(너클 아치 볼록량)으로 잡았는데 그게
+4~7mm 뿐이고 대부분 너클선 성분이라, 직교화하면 거의 남지 않았다. 사람 손에서는
+방향까지 뒤집혀 y 가 손가락 방향이 아니라 **손바닥 법선**이 됐다.
+
+- y 축을 `너클평균 − 팜기준점`으로 바꿨다. 팜기준점은 `{side}_sensor_dorsum` →
+  손가락 공통 조상 → 베이스 링크 순. 조건수 3.9 → 46~130mm 이고, 세 손 모두 팜
+  프레임에서 중지가 +y 를 향한다(사람 0.93 / orca 0.99 / robotis 0.93).
+- 실측 핀치(글러브 캘리브 덤프) 기준 orca 검지 지문오차 **51.1 → 22.4mm**,
+  robotis 약지 **109.2mm(발산) → 35.8mm**.
+- `robotis_hx5_d20` 의 `_WRIST_LINK["left"]` 가 존재하지 않는 링크명
+  (`robotis_hx5_d20_left`)이어서 왼손 dex 리타게팅이 아예 안 되던 버그도 고쳤다
+  (`hx5_d20_left_base`).
+
+남은 오차는 두 손의 원인이 다르다(지문전용 다중시드 하한과 비교): **orca 는 솔버
+문제**(하한 4.1mm 인데 22.4mm — 목적함수 가중치가 지렛대), **robotis 는 rig 문제**
+(하한 21.2mm 로 현행이 이미 하한 — 목표가 도달 불가). 각 손가락을 자기 너클에
+고정해 전방 체이닝하는 안(`anchor_base=True`)은 공통 기준으로 재보면 orca 38.5 →
+43.3mm 로 악화라 기본값을 껐다.
+
 ### 추가
 
 - **`KPHandRetargeter`** (`solvers/hand/kp_retargeter.py`) — 손 리타게팅의 `kp`

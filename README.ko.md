@@ -41,8 +41,9 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 - 명확한 단방향 의존 구조 (`receiver → core`, `model → core·robot`)
 
 **리타게팅 중심**
-- 손: dex-retargeting 2단계(vector + position) IK, 결정적 종료 — 또는 `backend="kp"`
-  키포인트 결합 목적함수(팜상대 지문 + 형상 + DexPilot 스타일 핀치 스냅, pin+numpy 만)
+- 손: 글러브가 보낸 사람 손 URDF 관절각 → pinocchio FK → 리타게팅 IK.
+  `backend="dex"`(dex-retargeting 2단계 vector+position) 또는 `backend="kp"`
+  (키포인트 결합 목적함수 = 팜상대 지문 + 형상 + DexPilot 스타일 핀치 스냅, pin+numpy 만)
 - 팔: pinocchio 해석 야코비안 + 감쇠 최소자승(DLS)
 - 출력은 그대로 발행 가능한 `{side: {joint_name: rad}}` 형태
 

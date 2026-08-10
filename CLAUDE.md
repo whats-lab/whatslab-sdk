@@ -183,11 +183,28 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
   하므로 **rig yaml 의 주석은 캘리브 저장 시 사라진다** — rig 값의 근거는 주석이
   아니라 이 파일이나 `docs/API.md` 에 쓴다(robots yaml 은 안 쓰이므로 무관).
 
-**손 리타게팅** — `HandPose`(사람 골격, 관절명→회전)가 정본이고 `to_sensor_array()` 로의
-배열화는 `solvers/hand/controller.py` 경계에서만 일어난다. 엔진은
-`solvers/hand/retargeter.py`(dex-retargeting 2단계 vector+position IK, `maxeval` 종료라
-결정적). 로봇 손 추가는 `solvers/hand/hand_configs/` 에 config 를 등록하는 방식.
+**손 리타게팅** — 입력은 **사람 손 URDF 관절각**(`HandPose.joint_angles`, 이름→rad)
+하나뿐이다. 글러브(Spine)가 `/{side}/joint_angles/get` 으로 (이름, rad) 쌍을 보내고
+`GloveHumanAnglesReceiver` 가 받는다. 사람 FK 는 `solvers/hand/human_fk.py`
+`HumanHandFK` **한 곳**이고 평범한 pinocchio FK 다 — 두 엔진(dex/kp)이 같은 FK 를
+공유한다. 로봇 손 추가는 `solvers/hand/hand_configs/` 에 config 를 등록하는 방식.
 추적이 끊기면 직전 명령을 유지한다(급변 방지).
+- **구면관절 FK(`spherical_fk.py`)는 제거했다.** 글러브가 quat 을 보낼 때
+  17슬롯 배열을 볼조인트 모델에 밀어넣던 경로였다(`_correct_quat`·`sensor_to_jid`·
+  `PINKY_CMC_OFFSET`·`AGA_SKIP_JOINT`). q 가 오는 지금은 URDF 를 그대로 FK 하면
+  되므로 되살리지 말 것. 대가로 **Quest 핸드트래킹 리타게팅은 지원하지 않는다**
+  (Quest 컨트롤러 → 팔 IK 경로는 그대로다).
+- **URDF 는 관절명이 아니라 링크명으로 참조한다.** Visualizer 규칙이
+  "링크 = 뼈 이름, 관절 = 운동 이름"이고 관절명은 개명된 적이 있다
+  (`thumb_cmc0`→`thumb_cmc_flex`, `{f}_mcp_z`→`{f}_mcp_flex`). 링크는 불변이다.
+  손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → 없으면
+  `{side}_{finger}_tip` 순으로 찾는다. 로봇 손 config 도 `_LINK_FALLBACK` 으로
+  같은 순서를 탄다.
+- **팜 프레임의 y 축은 `너클평균 − 팜기준점`이다.** 전에 `중지너클 − 너클평균`
+  (너클 아치 볼록량)을 썼는데 4~7mm 뿐이라 직교화하면 거의 특이하고, 사람 손에서는
+  방향이 손바닥 법선으로 뒤집혀 사람↔로봇 매핑이 90° 돌아갔다(실측 지문오차
+  51mm). 팜기준점은 `{side}_sensor_dorsum` → 손가락 공통 조상 → 베이스 링크 순으로
+  찾는다. 조건수 3.9 → 46~130mm.
 
 **자산 경로** (`paths.py`) — `models_root()`: `WHATSLAB_MODELS_ROOT` > `dexhand_description`
 패키지 share. `configs_root()`: `WHATSLAB_CONFIGS_ROOT` > 동봉 `whatslab/configs`.
@@ -203,10 +220,9 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **lazy import 금지.** 함수 안에서 import 하지 않는다 — 전부 모듈 최상단이다.
   결과로 `import whatslab.teleop` 이 pinocchio·dex_retargeting·torch·nlopt·python-osc
   를 전부 끌어온다(약 0.9초). extra 를 나눠 설치하는 소비자는 `[all]` 을 써야 한다.
-  예외는 둘뿐이고 각각 하드한 이유가 있다:
-  `paths.models_root()` 의 `dexhand_description`(= `WHATSLAB_MODELS_ROOT` 로
-  덮어쓰면 패키지 없이 동작해야 한다), `solvers/hand/spherical_fk.py` 의 `rerun`
-  (선언된 의존이 아니다 — 최상단으로 올리면 모듈 자체가 못 뜬다).
+  예외는 둘이다. `paths.models_root()` 의 `dexhand_description`(= `WHATSLAB_MODELS_ROOT`
+  로 덮어쓰면 패키지 없이 동작해야 한다), `hand_configs/_base.py` 의
+  `xml.etree`(URDF 링크 존재 확인용, 표준 라이브러리라 무게가 없다).
 - 기본 OSC 포트: Quest 9000(`receiver/quest_base.py`), 글러브 수신 4040 / 송신 4042
   (`receiver/glove_base.py`). 포트별 서버는 `osc_transport._registry` 싱글턴을 공유하므로,
   테스트는 `tests/conftest.py` 의 autouse 픽스처가 매번 레지스트리를 비운다.
