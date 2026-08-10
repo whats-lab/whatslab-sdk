@@ -169,45 +169,51 @@ class RobotArmViz:
         self._ee.wxyz = _wxyz(T_ee[:3, :3])
 
 
-class RobotHandViz:
+class _UrdfHandViz:
 
-    def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand"):
-        self._robot = retargeter._seq_stage1.optimizer.robot
-        self._port = port
-        self._root_path = root_path
-        self._joints = None
+    def __init__(self, urdf: str, joint_names, port: int = 8080,
+                 root_path: str = "/hand", root_pose=None):
+        self.urdf = urdf
+        self.joint_names = list(joint_names)
+        self.port = port
+        self.root_path = root_path
+        self.root_pose = root_pose
+        self._scene = None
 
     def start(self) -> None:
-        srv = get_server(self._port)
-        m = self._robot.model
-        ball = trimesh.creation.icosphere(radius=0.005)
-        ball.visual.face_colors = [250, 200, 90, 255]
-        self._joints = [srv.scene.add_mesh_trimesh(f"{self._root_path}/j{j}",
-                                                   ball.copy())
-                        for j in range(1, m.njoints)]
-        n = sum(1 for j in range(1, m.njoints) if int(m.parents[j]) >= 1)
-        self._bones = srv.scene.add_line_segments(
-            f"{self._root_path}/bones", points=np.zeros((max(n, 1), 2, 3)),
-            colors=(200, 160, 70), line_width=3.0)
+        self._scene = URDFScene(get_server(self.port), self.urdf, models_root(),
+                                self.root_path)
+        if self.root_pose is not None:
+            self._scene.set_root(np.asarray(self.root_pose, dtype=float))
 
     def update(self, q, timestamp: Optional[float] = None) -> None:
-        if self._joints is None:
+        if self._scene is None:
             self.start()
         _ = timestamp
-        m, d = self._robot.model, self._robot.data
-        qv = np.asarray(q, dtype=float)
-        if qv.shape[0] != m.nq:
-            qv = np.resize(qv, m.nq)
-        pin.forwardKinematics(m, d, qv)
-        segs = []
-        for j in range(1, m.njoints):
-            p = d.oMi[j].translation
-            self._joints[j - 1].position = tuple(p)
-            par = int(m.parents[j])
-            if par >= 1:
-                segs.append([d.oMi[par].translation.copy(), p.copy()])
-        if segs:
-            self._bones.points = np.asarray(segs)
+        named = dict(zip(self.joint_names, np.asarray(q, dtype=float).ravel()))
+        self._scene.fk(self._scene.q_from_named(named))
+
+    @property
+    def mesh_mode(self) -> bool:
+        return bool(self._scene is not None and self._scene.mesh_mode)
+
+
+class RobotHandViz(_UrdfHandViz):
+
+    def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand",
+                 root_pose=None):
+        urdf = getattr(retargeter, "urdf_path", None)
+        if urdf is None:
+            raise ValueError(
+                f"{type(retargeter).__name__} 에 urdf_path 가 없다 — 메쉬를 못 띄운다")
+        super().__init__(urdf, retargeter.joint_names, port, root_path, root_pose)
+
+
+class HumanHandViz(_UrdfHandViz):
+
+    def __init__(self, fk, port: int = 8080, root_path: str = "/human_hand",
+                 root_pose=None):
+        super().__init__(fk.urdf_path, fk.joint_names, port, root_path, root_pose)
 
 
 class KPHandViz:
