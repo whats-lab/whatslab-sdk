@@ -26,7 +26,7 @@ class KPHandRetargeter:
     def __init__(self, hand_type: str, config_name: str = "base_hand",
                  urdf_root=None, keypoints: Optional[Dict[str, List[str]]] = None,
                  w_tip: float = 6.0, w_shape: Optional[float] = None,
-                 k_limit: float = 0.3,
+                 scale_mode: str = "uniform", k_limit: float = 0.3,
                  iters_per_call: int = 8, cold_iters: int = 60):
         if config_name not in CONFIG_REGISTRY:
             raise ValueError(
@@ -85,6 +85,11 @@ class KPHandRetargeter:
         r_len = float(np.linalg.norm(
             self._r_frame.T @ (self._pos(self._fids["middle"][-1]) - self._r_origin)))
         self.scale = r_len / h_len
+        if scale_mode not in ("uniform", "per_finger"):
+            raise ValueError(
+                f"scale_mode 는 uniform|per_finger — 받은 값 {scale_mode!r}")
+        self.scale_mode = scale_mode
+        self.finger_scale = {f: self.scale for f in FINGERS}
 
         tgt0 = self._targets(hp0)
         self._off, self._seg_len = {}, {}
@@ -94,6 +99,12 @@ class KPHandRetargeter:
                             for k in range(len(rc) - 1)]
             self._seg_len[f] = [float(np.linalg.norm(rc[k + 1] - rc[k]))
                                 for k in range(len(rc) - 1)]
+        if self.scale_mode == "per_finger":
+            for f in FINGERS:
+                h = sum(float(np.linalg.norm(tgt0[f][k + 1] - tgt0[f][k]))
+                        for k in range(len(tgt0[f]) - 1))
+                if h > 1e-9:
+                    self.finger_scale[f] = self.scale * (sum(self._seg_len[f]) / h)
 
         fixed = set(config.get_fixed_joint_names(self.hand_type))
         self._out = [(self.model.names[j], self.model.joints[j].idx_q)
@@ -223,8 +234,7 @@ class KPHandRetargeter:
 
     def _targets(self, hp: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         o, R = _palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
-
-        return {f: np.array([self._r_frame @ (self.scale * (R.T @ (p - o)))
+        return {f: np.array([self._r_frame @ (self.finger_scale[f] * (R.T @ (p - o)))
                              + self._r_origin for p in hp[f]])
                 for f in FINGERS}
 
