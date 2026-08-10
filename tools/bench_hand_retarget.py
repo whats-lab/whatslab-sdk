@@ -38,10 +38,20 @@ def load_poses(dump_path, profile_dir, steps):
     return side, trajs
 
 
+LMC_MIN_MM = 0.5
+
+
 class Fair:
 
     def __init__(self, side):
         self.fk = HumanHandFK(side)
+        hp0 = self.fk.neutral_points()
+        self._h0 = palm_frame({f: hp0[f][0] for f in FINGERS}, hp0["palm"])
+
+    def local_tips(self, angles):
+        hp = self.fk.points(angles)
+        o, R = self._h0
+        return {f: R.T @ (hp[f][-1] - o) for f in FINGERS}
 
     def score(self, angles, tips, bones, r_R, r_len):
         hp = self.fk.points(angles)
@@ -70,11 +80,11 @@ class Fair:
 
 def measure(engine, tips_of, bones_of, frame_of, side, trajs):
     fair = Fair(side)
-    _, r_R, r_len = frame_of()
-    acc = {k: [] for k in ("shape", "spread", "dq", "ms", "pinch", "open")}
+    r_o, r_R, r_len = frame_of()
+    acc = {k: [] for k in ("shape", "spread", "dq", "ms", "pinch", "open", "lmc")}
     for f, traj in trajs.items():
         engine.reset()
-        prev = None
+        prev = prev_h = prev_r = None
         for i, ang in enumerate(traj):
             t0 = time.perf_counter()
             q = engine.compute(ang)
@@ -82,15 +92,32 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
             if prev is not None:
                 acc["dq"].append(float(np.abs(q - prev).max()))
             prev = q
-            sh, con, spr = fair.score(ang, tips_of(), bones_of(), r_R, r_len)
+            tips = tips_of()
+            sh, con, spr = fair.score(ang, tips, bones_of(), r_R, r_len)
             acc["shape"].append(sh)
             acc["spread"].append(spr)
+            cur_h = fair.local_tips(ang)
+            cur_r = {g: r_R.T @ (tips[g] - r_o) for g in FINGERS}
+            if prev_h is not None:
+                for g in FINGERS:
+                    u = cur_h[g] - prev_h[g]
+                    if float(np.linalg.norm(u)) * 1e3 < LMC_MIN_MM:
+                        continue
+                    v = cur_r[g] - prev_r[g]
+                    nv = float(np.linalg.norm(v))
+                    if nv < 1e-9:
+                        acc["lmc"].append(-1.0)
+                        continue
+                    acc["lmc"].append(float(u @ v / (np.linalg.norm(u) * nv)))
+            prev_h, prev_r = cur_h, cur_r
             if i == len(traj) - 1:
                 acc["pinch"].append(abs(con[f]))
             if i == 0:
                 acc["open"].append(np.mean([abs(v) for v in con.values()]))
+    lmc = np.asarray(acc["lmc"])
     return (np.mean(acc["shape"]), np.mean(acc["spread"]), np.mean(acc["pinch"]),
-            np.mean(acc["open"]), np.percentile(acc["dq"], 95), np.mean(acc["ms"]))
+            np.mean(acc["open"]), 100.0 * np.mean(lmc > 0.0), 100.0 * lmc.mean(),
+            np.percentile(acc["dq"], 95), np.mean(acc["ms"]))
 
 
 def kp_probe(kp):
@@ -153,8 +180,9 @@ def main():
 
     side, trajs = load_poses(args.dump, args.profiles, args.steps)
     print("side=%s  핀치 %d개 x %d프레임" % (side, len(trajs), args.steps))
-    print("%-26s %8s %8s %10s %10s %8s %7s" % (
-        "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "|dq|p95", "ms"))
+    print("%-26s %8s %8s %10s %10s %7s %6s %8s %7s" % (
+        "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "LMC%", "cos", "|dq|p95",
+        "ms"))
     for cfg in args.configs:
         for be in args.backends:
             if be == "kp":
@@ -163,7 +191,7 @@ def main():
             else:
                 eng, t, b, fr = dex_probe(cfg, side)
                 r = measure(eng, t, b, fr, side, trajs)
-            print("%-26s %8.1f %8.1f %10.1f %10.1f %8.3f %7.2f" % (
+            print("%-26s %8.1f %8.1f %10.1f %10.1f %7.1f %6.1f %8.3f %7.2f" % (
                 "%s %s" % (cfg, be), *r))
 
 
