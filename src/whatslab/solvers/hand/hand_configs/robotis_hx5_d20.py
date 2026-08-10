@@ -9,7 +9,6 @@ class RobotisHX5Config(HandConfig):
     _URDF_FILENAME = "urdf/hx5_d20_{hand_type}.urdf"
     _SCALE_FACTOR = [1.2, 1.25, 1.25, 1.3, 1.4]
     _KP_SHAPE_WEIGHT = 0.5
-    _KP_THUMB_OFFSET = 1.0
 
     _HUMAN_CHAIN: ClassVar[Dict[str, List[str]]] = {
         "thumb": ["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],

@@ -8,7 +8,9 @@ import pinocchio as pin
 
 
 from .hand_configs import CONFIG_REGISTRY
-from .human_fk import FINGERS, HumanHandFK, palm_frame as _palm_frame, rot_between as _rot_between
+from .human_fk import FINGERS, HumanHandFK
+from .human_fk import palm_frame_from_fingers as _palm_frame
+from .human_fk import rot_between as _rot_between
 
 PAIRS = tuple(("thumb", f) for f in ("index", "middle", "ring", "pinky"))
 HUBER_DELTA = 0.02
@@ -76,13 +78,13 @@ class KPHandRetargeter:
 
         self._palm_fid = self._pick_palm_frame()
         hp0 = self._human_points(self._neutral_human())
-        ho, hR = _palm_frame({f: hp0[f][0] for f in FINGERS}, hp0["palm"])
-        h_len = float(np.linalg.norm(hR.T @ (hp0["middle"][-1] - ho)))
+        self._h_origin, self._h_frame = _palm_frame(hp0)
+        h_len = float(np.linalg.norm(
+            self._h_frame.T @ (hp0["middle"][-1] - self._h_origin)))
 
         self._fk_robot(pin.neutral(self.model))
         self._r_origin, self._r_frame = _palm_frame(
-            {f: self._pos(self._fids[f][0]) for f in FINGERS},
-            self._pos(self._palm_fid))
+            {f: np.array([self._pos(i) for i in self._fids[f]]) for f in FINGERS})
         r_len = float(np.linalg.norm(
             self._r_frame.T @ (self._pos(self._fids["middle"][-1]) - self._r_origin)))
         self.scale = r_len / h_len
@@ -231,7 +233,7 @@ class KPHandRetargeter:
         return self.fk.points(source)
 
     def _targets(self, hp: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        o, R = _palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
+        o, R = self._h_origin, self._h_frame
         out = {f: np.array([self._r_frame @ (self.scale * (R.T @ (p - o)))
                             + self._r_origin for p in hp[f]])
                for f in FINGERS}
@@ -298,8 +300,7 @@ class KPHandRetargeter:
         return q
 
     def human_to_robot(self) -> np.ndarray:
-        hp = self._human_points(self._neutral_human())
-        o, R = _palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
+        o, R = self._h_origin, self._h_frame
         A = self._r_frame @ R.T
         T = np.eye(4)
         T[:3, :3] = A

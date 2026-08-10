@@ -49,6 +49,21 @@ def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
     return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
 
 
+def palm_frame_from_fingers(pts: Dict[str, np.ndarray]):
+    o = np.mean([pts[f][0] for f in ("index", "middle", "ring", "pinky")], axis=0)
+    x = pts["index"][0] - pts["pinky"][0]
+    x = x / np.linalg.norm(x)
+    y = np.mean([pts[f][-1] - pts[f][0]
+                 for f in ("index", "middle", "ring", "pinky")], axis=0)
+    y = y - x * (y @ x)
+    ny = float(np.linalg.norm(y))
+    if ny < 1e-3:
+        raise ValueError(
+            f"팜 프레임 y 축이 특이하다(|y|={ny * 1e3:.2f}mm) — 중립에서 손가락이"
+            " 너클선과 나란하다")
+    return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
+
+
 def link_candidates(side: str, joint_name: str) -> Sequence[str]:
     pfx = side + "_"
     if joint_name.endswith("_tip"):
