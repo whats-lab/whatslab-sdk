@@ -31,8 +31,8 @@ class KPHandRetargeter:
                  urdf_root=None, keypoints: Optional[Dict[str, List[str]]] = None,
                  anchor_base: bool = False,
                  palm_scaled: Sequence[str] = ("thumb",),
-                 w_tip: float = 2.0, w_shape: Optional[float] = None,
-                 w_pair: float = 6.0, w_snap: float = 160.0, w_sep: float = 80.0,
+                 w_tip: float = 6.0, w_shape: Optional[float] = None,
+                 w_pair: float = 1.0, w_snap: float = 160.0, w_sep: float = 80.0,
                  iters_per_call: int = 8, cold_iters: int = 60):
         if config_name not in CONFIG_REGISTRY:
             raise ValueError(

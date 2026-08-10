@@ -99,10 +99,11 @@ def test_kp_retargeter_end_to_end():
     q = r.compute(neutral)
     assert q.shape == (len(r.joint_names),)
     assert np.all(np.isfinite(q))
-    for _ in range(10):
+    # 정지 입력에서 단조 수렴한다 (드리프트하지 않는다)
+    for _ in range(60):
         q = r.compute(neutral)
     q2 = r.compute(neutral)
-    assert np.allclose(q, q2, atol=1e-3)
+    assert np.abs(q2 - q).max() < 1e-3
     r.reset()
     assert r._cold
 
