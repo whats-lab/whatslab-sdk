@@ -43,6 +43,8 @@ class HandConfig(ABC):
     _FIXED_JOINTS:         ClassVar[Dict[str, str]]                    = {}
     _RVIZ_FILENAME:        ClassVar[Dict[str, str]]                    = {}
     _TARGET_JOINT_NAMES:   ClassVar[Union[List[str], Dict[str, List[str]]]] = []
+    _KP_SHAPE_WEIGHT:      ClassVar[float]                             = 1.0
+    _KP_COLD_SHAPE:        ClassVar[bool]                              = False
 
     def __init__(self, urdf_root=None):
         root = urdf_root or _default_models_root()
