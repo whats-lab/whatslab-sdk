@@ -29,10 +29,7 @@ def main():
     if args.viz:
         from whatslab.viz import HumanHandViz, RobotHandViz
         eng = ctrl.engine
-        T_human = np.eye(4)
-        T_human[1, 3] = -args.viz_gap
-        T_human = T_human @ eng.human_to_robot()
-        viz_human = HumanHandViz(eng.fk, root_pose=T_human)
+        viz_human = HumanHandViz(eng.fk, offset=(0.0, -args.viz_gap, 0.0))
         viz_human.start()
         viz_robot = RobotHandViz(eng)
         viz_robot.start()

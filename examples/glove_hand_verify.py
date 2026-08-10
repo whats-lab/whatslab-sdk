@@ -42,10 +42,8 @@ def main():
         from whatslab.viz import HumanHandViz, KPHandViz
         viz = KPHandViz(eng, port=args.viz_port)
         viz.start()
-        T_human = np.eye(4)
-        T_human[1, 3] = -args.viz_gap
-        T_human = T_human @ eng.human_to_robot()
-        viz_human = HumanHandViz(eng.fk, port=args.viz_port, root_pose=T_human)
+        viz_human = HumanHandViz(eng.fk, port=args.viz_port,
+                                 offset=(0.0, -args.viz_gap, 0.0))
         viz_human.start()
         print("[viz] 왼쪽=사람 손 메쉬 / 오른쪽=로봇 손 메쉬 + 하늘색 목표 키포인트,"
               " 주황 달성, 빨간선 오차")
