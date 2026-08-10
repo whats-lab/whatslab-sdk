@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 import pinocchio as pin
@@ -19,6 +19,7 @@ SNAP_CONTACT = 1e-4
 SEP_MIN = 0.03
 HUBER_DELTA = 0.02
 DQ_MAX_STEP = 0.4
+LIMIT_MARGIN = 0.10
 
 
 def _huber_w(w: float, r_norm: float) -> float:
@@ -29,10 +30,9 @@ class KPHandRetargeter:
 
     def __init__(self, hand_type: str, config_name: str = "base_hand",
                  urdf_root=None, keypoints: Optional[Dict[str, List[str]]] = None,
-                 anchor_base: bool = False,
-                 palm_scaled: Sequence[str] = ("thumb",),
                  w_tip: float = 6.0, w_shape: Optional[float] = None,
                  w_pair: float = 1.0, w_snap: float = 160.0, w_sep: float = 80.0,
+                 k_limit: float = 0.3,
                  iters_per_call: int = 8, cold_iters: int = 60):
         if config_name not in CONFIG_REGISTRY:
             raise ValueError(
@@ -69,12 +69,15 @@ class KPHandRetargeter:
                                   dtype=int) for f, v in cols.items()}
         self._allc = sorted({int(i) for c in self._cols.values() for i in c})
         self._gidx = {v: k for k, v in enumerate(self._allc)}
+        self._vidx = {self.model.joints[j].idx_v: self.model.joints[j].idx_q
+                      for j in range(1, self.model.njoints)}
 
         self.w_tip = float(w_tip)
         self.w_shape = float(config._KP_SHAPE_WEIGHT if w_shape is None else w_shape)
         self.w_pair = float(w_pair)
         self.w_snap = float(w_snap)
         self.w_sep = float(w_sep)
+        self.k_limit = float(k_limit)
         self._iters = int(iters_per_call)
         self._cold_iters = int(cold_iters)
         self._cold_shape = bool(config._KP_COLD_SHAPE)
@@ -92,9 +95,6 @@ class KPHandRetargeter:
             self._r_frame.T @ (self._pos(self._fids["middle"][-1]) - self._r_origin)))
         self.scale = r_len / h_len
 
-        self.anchor_base = False
-        self.palm_scaled = tuple(palm_scaled)
-        self._base = {f: self._pos(self._fids[f][0]) for f in FINGERS}
         tgt0 = self._targets(hp0)
         self._off, self._seg_len = {}, {}
         for f in FINGERS:
@@ -103,7 +103,6 @@ class KPHandRetargeter:
                             for k in range(len(rc) - 1)]
             self._seg_len[f] = [float(np.linalg.norm(rc[k + 1] - rc[k]))
                                 for k in range(len(rc) - 1)]
-        self.anchor_base = bool(anchor_base)
 
         fixed = set(config.get_fixed_joint_names(self.hand_type))
         self._out = [(self.model.names[j], self.model.joints[j].idx_q)
@@ -114,7 +113,23 @@ class KPHandRetargeter:
         self._q = pin.neutral(self.model)
         self._cold = True
         self._last_targets: Optional[Dict[str, np.ndarray]] = None
-        self._last_shape: Optional[Dict[str, np.ndarray]] = None
+
+    def _limit_push(self, q: np.ndarray) -> Optional[np.ndarray]:
+        g = np.zeros(len(self._allc))
+        hit = False
+        for ci, k in self._gidx.items():
+            iq = self._vidx[ci]
+            lo, hi = self._lo[iq], self._hi[iq]
+            if not np.isfinite(lo) or not np.isfinite(hi) or hi - lo < 1e-9:
+                continue
+            margin = min(LIMIT_MARGIN, 0.25 * (hi - lo))
+            if q[iq] < lo + margin:
+                g[k] = (lo + margin) - q[iq]
+                hit = True
+            elif q[iq] > hi - margin:
+                g[k] = (hi - margin) - q[iq]
+                hit = True
+        return g if hit else None
 
     def _pick_palm_frame(self) -> int:
         m = self.model
@@ -221,25 +236,6 @@ class KPHandRetargeter:
                              + self._r_origin for p in hp[f]])
                 for f in FINGERS}
 
-    def _shape_targets(self, hp: Dict[str, np.ndarray],
-                       T: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        if not self.anchor_base:
-            return T
-        _, R = _palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
-        out = {}
-        for f in FINGERS:
-            if f in self.palm_scaled:
-                out[f] = T[f]
-                continue
-            pts = [self._base[f]]
-            for k in range(len(self._seg_len[f])):
-                u = self._off[f][k] @ (self._r_frame
-                                       @ (R.T @ (hp[f][k + 1] - hp[f][k])))
-                nu = float(np.linalg.norm(u))
-                pts.append(pts[k] + (self._seg_len[f][k] / nu * u
-                                     if nu > 1e-9 else np.zeros(3)))
-            out[f] = np.array(pts)
-        return out
 
     def _pair_rows(self, T: Dict[str, np.ndarray], snap: bool):
         pair_tgt, engaged = {}, []
@@ -266,9 +262,7 @@ class KPHandRetargeter:
         return pair_tgt, sep
 
     def _solve(self, T: Dict[str, np.ndarray], q: np.ndarray, iters: int,
-               w_tip: float, w_shape: float, w_pair: float, snap: bool,
-               S: Optional[Dict[str, np.ndarray]] = None) -> np.ndarray:
-        S = T if S is None else S
+               w_tip: float, w_shape: float, w_pair: float, snap: bool) -> np.ndarray:
         pair_tgt, sep = self._pair_rows(T, snap) if w_pair > 0 else ({}, [])
         n = len(self._allc)
         for _ in range(iters):
@@ -294,7 +288,7 @@ class KPHandRetargeter:
                         w = _huber_w(w_shape, float(np.linalg.norm(r)))
                         rows.append(w * (J[(f, k + 1)] - J[(f, k)]))
                         res.append(w * r)
-                r = S[f][-1] - P[(f, last)]
+                r = T[f][-1] - P[(f, last)]
                 w = _huber_w(w_tip, float(np.linalg.norm(r)))
                 rows.append(w * J[(f, last)])
                 res.append(w * r)
@@ -309,6 +303,11 @@ class KPHandRetargeter:
                 r = vt - (P[(a, la)] - P[(b, lb)])
                 rows.append(self.w_sep * (J[(a, la)] - J[(b, lb)]))
                 res.append(self.w_sep * r)
+            if self.k_limit > 0.0:
+                g = self._limit_push(q)
+                if g is not None:
+                    rows.append(self.k_limit * np.eye(n))
+                    res.append(self.k_limit * g)
             A = np.vstack(rows)
             b = np.concatenate(res)
             lam2 = 0.02 * float(b @ b) + 1e-4
@@ -351,11 +350,11 @@ class KPHandRetargeter:
         return out
 
     def tip_error(self) -> float:
-        if self._last_shape is None:
+        if self._last_targets is None:
             return float("nan")
         self._fk_robot(self._q)
         return float(np.mean([
-            np.linalg.norm(self._pos(self._fids[f][-1]) - self._last_shape[f][-1])
+            np.linalg.norm(self._pos(self._fids[f][-1]) - self._last_targets[f][-1])
             for f in FINGERS]))
 
     def target_contact_pairs(self) -> Dict[str, float]:
@@ -366,23 +365,18 @@ class KPHandRetargeter:
                 for a, b in PAIRS}
 
     def compute(self, human_input) -> np.ndarray:
-        hp = self._human_points(human_input)
-        T = self._targets(hp)
-        S = self._shape_targets(hp, T)
+        T = self._targets(self._human_points(human_input))
         self._last_targets = T
-        self._last_shape = S
         if self._cold:
             if self._cold_shape:
                 self._q = self._solve(T, self._q, self._cold_iters, w_tip=0.5,
-                                      w_shape=1.0, w_pair=0.0, snap=False, S=S)
+                                      w_shape=1.0, w_pair=0.0, snap=False)
             self._cold = False
         self._q = self._solve(T, self._q, self._iters, w_tip=self.w_tip,
-                              w_shape=self.w_shape, w_pair=self.w_pair,
-                              snap=True, S=S)
+                              w_shape=self.w_shape, w_pair=self.w_pair, snap=True)
         return np.array([self._q[iq] for _, iq in self._out])
 
     def reset(self) -> None:
         self._q = pin.neutral(self.model)
         self._cold = True
         self._last_targets = None
-        self._last_shape = None
