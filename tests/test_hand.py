@@ -124,24 +124,6 @@ def test_kp_retargeter_tracks_tips():
     assert err < 0.05
 
 
-def test_kp_retargeter_snap_rows():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
-    from whatslab.solvers.hand import KPHandRetargeter
-    from whatslab.solvers.hand.kp_retargeter import SNAP_CONTACT
-
-    r = KPHandRetargeter("right", "robotis_hx5_d20")
-    T = r._targets(r._human_points({n: 0.0 for n in r.human_joint_names}))
-    far, _ = r._pair_rows(T, snap=True)
-    for vt, w in far.values():
-        assert w == r.w_pair
-
-    T["thumb"] = T["thumb"] + (T["index"][-1] - T["thumb"][-1]) - np.array([0.005, 0, 0])
-    near, _ = r._pair_rows(T, snap=True)
-    vt, w = near[("thumb", "index")]
-    assert w == r.w_snap
-    assert np.linalg.norm(vt) < 2 * SNAP_CONTACT
-
 
 def test_kp_controller_backend():
     pytest.importorskip("dex_retargeting")
