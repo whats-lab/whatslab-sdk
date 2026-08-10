@@ -1,16 +1,11 @@
 from typing import ClassVar, Dict, List
 
-import numpy as np
-
 from ._base import HandConfig
 
 
 class OrcaHandConfig(HandConfig):
 
     _MODEL_SUBDIR = "orca_hand"
-    _COORD_TRANSFORM: ClassVar[np.ndarray] = np.array(
-        [[0, 0, -1], [1, 0, 0], [0, -1, 0]], dtype=np.float32
-    )
     _SCALE_FACTOR = [0.95, 1.03, 1.06, 1.06, 1.05]
     _KP_SHAPE_WEIGHT = 2.0
     _KP_COLD_SHAPE = True

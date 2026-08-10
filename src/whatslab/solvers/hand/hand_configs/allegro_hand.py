@@ -1,16 +1,11 @@
 from typing import ClassVar, Dict, List
 
-import numpy as np
-
 from ._base import HandConfig
 
 
 class AllegroHandConfig(HandConfig):
 
     _MODEL_SUBDIR = "allegro_hand"
-    _COORD_TRANSFORM: ClassVar[np.ndarray] = np.array(
-        [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=np.float32
-    )
 
     _HUMAN_CHAIN: ClassVar[Dict[str, List[str]]] = {
         "thumb": ["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],

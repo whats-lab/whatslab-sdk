@@ -3,7 +3,6 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Optional, Union
 
-import numpy as np
 import pinocchio as pin
 
 from whatslab.core.types import JOINT_INDEX
@@ -38,7 +37,6 @@ class HandConfig(ABC):
 
     _MODEL_SUBDIR:         ClassVar[str]                               = ''
     _HUMAN_CHAIN:          ClassVar[Dict[str, List[str]]]              = {}
-    _COORD_TRANSFORM:      ClassVar[np.ndarray]                        = np.eye(3, dtype=np.float32)
     _SCALE_FACTOR:         ClassVar[Union[float, List[float]]]         = 1.0
     _URDF_FILENAME:        ClassVar[str]                               = 'urdf/{hand_type}.urdf'
     _FIXED_JOINTS:         ClassVar[Dict[str, str]]                    = {}
@@ -142,9 +140,6 @@ class HandConfig(ABC):
             stage2['target_joint_names'] = target_joints
         return stage1, stage2
 
-    def get_coord_transform(self, _hand_type: str) -> np.ndarray:
-        return self._COORD_TRANSFORM
-
     def get_scale_factor(self) -> Union[float, List[float]]:
         return self._SCALE_FACTOR
 
@@ -155,5 +150,3 @@ class HandConfig(ABC):
         joint = self._FIXED_JOINTS.get(hand_type, '')
         return [joint] if joint else []
 
-    def get_tf_coord_transform(self, hand_type: str) -> np.ndarray:
-        return self.get_coord_transform(hand_type)

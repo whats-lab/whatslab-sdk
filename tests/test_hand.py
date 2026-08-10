@@ -78,7 +78,13 @@ def test_hand_retarget_end_to_end():
     qpos = r.compute({n: 0.0 for n in r.human_joint_names})
     assert qpos.shape == (len(r.joint_names),)
     assert np.all(np.isfinite(qpos))
-    assert np.allclose(r.last_human_positions[0], 0.0)
+    # 팜 원점 기준으로 센터링하므로 너클 4개의 평균이 원점 근처다
+    from whatslab.core.types import JOINT_INDEX
+    knuckles = [JOINT_INDEX[f"{f}_mcp"] for f in ("index", "middle", "ring", "pinky")]
+    assert np.linalg.norm(r.last_human_positions[knuckles].mean(axis=0)) < 0.02
+    R = r._coord_transform
+    assert np.abs(R.T @ R - np.eye(3)).max() < 1e-9, "유도된 회전이 직교가 아니다"
+    assert np.linalg.det(R) > 0
 
 
 def test_kp_retargeter_end_to_end():

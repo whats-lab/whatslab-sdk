@@ -31,6 +31,24 @@
   순으로 찾고, 로봇 손 config 도 `_LINK_FALLBACK` 으로 같은 순서를 탄다. 덕분에
   센서 프레임이 있는 URDF 와 없는 URDF 가 둘 다 동작한다.
 
+### 수정 — dex 가 스켈레톤을 못 따라가던 문제 (프레임 불일치)
+
+`_COORD_TRANSFORM`(config 의 손으로 튜닝한 3x3)은 **옛 구면 FK 프레임**(뼈가 +x)에
+맞춰져 있었다. 새 `HumanHandFK` 는 URDF 프레임(손가락 +z, 너클 y)이라 회전이 어긋나
+사람 키포인트가 로봇 공간에서 돌아간 채 놓였다.
+
+- 이제 **팜 프레임에서 유도한다** — `_coord_transform = r_frame @ h_frame.T`,
+  센터링도 손목이 아니라 팜 원점 기준. kp 백엔드와 같은 정렬이다.
+- `_COORD_TRANSFORM` / `get_coord_transform` / `get_tf_coord_transform` 제거.
+- 실측 핀치(글러브 캘리브 덤프) 지문 추종:
+
+  | | 하드코딩 상수 | 유도(팜 프레임) |
+  |---|---|---|
+  | orca | 45.8~71.4mm | **14.5~23.3mm** |
+  | robotis | 106~131mm | **35.5~47.4mm** |
+
+  엄지-손가락 접촉도 orca 47~83 → 32~50mm, robotis 72~89 → 45~55mm.
+
 ### 수정 — 팜 프레임 y 축이 특이했다 (사람↔로봇 매핑 90° 회전)
 
 `_palm_frame` 의 y 축을 `중지너클 − 너클평균`(너클 아치 볼록량)으로 잡았는데 그게
@@ -52,7 +70,29 @@
 고정해 전방 체이닝하는 안(`anchor_base=True`)은 공통 기준으로 재보면 orca 38.5 →
 43.3mm 로 악화라 기본값을 껐다.
 
+### 호환 없는 변경 — 손 config 를 URDF 에서 유도
+
+`_FINGERS` 하드코딩 링크 테이블(7개 손, 521줄)을 지웠다. URDF 의
+`{side}_sensor_{finger}_distal` 에서 손가락 사슬·팁·팜 링크를 유도하고, config 에는
+URDF 로 알 수 없는 **사람-관절 짝짓기(`_HUMAN_CHAIN`)** 만 남는다 — 로봇 관절 수가
+사람과 다를 때 어느 사람 관절을 공유할지는 손별 판단이라 유도할 수 없다.
+
+- 제거: `_FINGERS`, `_COORD_TRANSFORM`, `_WRIST_LINK`, `_SIDE_MAP`, `_RVIZ_FILENAME`,
+  `_LINK_FALLBACK`. 팜 링크는 손가락 공통 조상에서 유도한다.
+- 짝짓기 길이가 URDF 사슬과 안 맞으면 **유도된 사슬을 그대로 보여주는** 에러를 낸다.
+- `robotis` 검지 사슬이 `link5 → link7` 로 `link6` 을 건너뛰던 것을 유도가 바로잡고,
+  `_WRIST_LINK["left"]` 가 없는 링크명이라 왼손 dex 가 아예 안 되던 버그도 사라졌다.
+- **센서 프레임이 없는 URDF 는 명확한 에러**를 낸다(테스트는 skip). 동봉
+  `dexhand-description` 이 센서 프레임을 실을 때까지 그 손들은 못 쓴다.
+
 ### 추가
+
+- **`whatslab.viz.HumanHandViz`** / `RobotHandViz` 를 URDF 메쉬 기반으로 교체.
+  `RobotHandViz` 가 dex 내부(`_seq_stage1`) 의존을 버려 두 백엔드 다 쓴다. 사람 손은
+  `engine.human_to_robot()` 로 로봇 프레임에 올려 그린다 — 이 변환 없이는 사람은
+  손가락이 +z, orca 는 +y 라 90° 어긋나 보인다.
+- **`examples/glove_hand_verify.py`** — 실기 글러브 검증(프레임별 접촉·지문오차·|dq|
+  기록, `--viz` 로 목표/달성 키포인트 오버레이).
 
 - **`KPHandRetargeter`** (`solvers/hand/kp_retargeter.py`) — 손 리타게팅의 `kp`
   백엔드. `HandRetargetController(..., backend="kp")` 로 선택한다(기본값은 기존
