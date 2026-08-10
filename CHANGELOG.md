@@ -90,6 +90,13 @@ URDF 로 알 수 없는 **사람-관절 짝짓기(`_HUMAN_CHAIN`)** 만 남는�
   `RobotHandViz` 가 dex 내부(`_seq_stage1`) 의존을 버려 두 백엔드 다 쓴다. 사람 손은
   `engine.human_to_robot()` 로 로봇 프레임에 올려 그린다 — 이 변환 없이는 사람은
   손가락이 +z, orca 는 +y 라 90° 어긋나 보인다.
+- **viz 가 손을 똑바로 세운다** (`viz.upright_root`, `RobotHandViz`/`HumanHandViz`/
+  `KPHandViz` 의 `upright=True` 기본). 전에는 URDF 베이스 프레임을 그대로 그려서
+  손이 기울어져 보였다 — 각 URDF 의 베이스 축이 제각각이다(사람·robotis 손가락 +z,
+  orca +y). 이제 **팜 프레임을 정준으로 올려서** 그린다(팜 y=손가락 방향 → world +z,
+  팜 x=너클선 → world +x). 확인: 중지끝 world z = +0.106(orca) / +0.100(robotis),
+  팜은 그 아래(−0.070 / −0.124). 두 손이 같은 자세로 서므로 나란히 비교된다.
+  `HumanHandViz(offset=…)` 로 사람 손을 옆으로 띄운다.
 - **`examples/glove_hand_verify.py`** — 실기 글러브 검증(프레임별 접촉·지문오차·|dq|
   기록, `--viz` 로 목표/달성 키포인트 오버레이).
 

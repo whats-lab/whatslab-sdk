@@ -10,6 +10,8 @@ import trimesh
 import viser
 
 from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
+from whatslab.solvers.hand.human_fk import FINGERS as _HFING
+from whatslab.solvers.hand.human_fk import palm_frame as _hpf
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
@@ -169,6 +171,23 @@ class RobotArmViz:
         self._ee.wxyz = _wxyz(T_ee[:3, :3])
 
 
+def _human_palm_frame(hp):
+    return _hpf({f: hp[f][0] for f in _HFING}, hp["palm"])
+
+
+_PALM_TO_WORLD = np.array([[1.0, 0.0, 0.0],
+                           [0.0, 0.0, -1.0],
+                           [0.0, 1.0, 0.0]])
+
+
+def upright_root(palm_origin, palm_frame_R) -> np.ndarray:
+    A = _PALM_TO_WORLD @ np.asarray(palm_frame_R, dtype=float).T
+    T = np.eye(4)
+    T[:3, :3] = A
+    T[:3, 3] = -A @ np.asarray(palm_origin, dtype=float)
+    return T
+
+
 class _UrdfHandViz:
 
     def __init__(self, urdf: str, joint_names, port: int = 8080,
@@ -201,18 +220,31 @@ class _UrdfHandViz:
 class RobotHandViz(_UrdfHandViz):
 
     def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand",
-                 root_pose=None):
+                 root_pose=None, upright: bool = True):
         urdf = getattr(retargeter, "urdf_path", None)
         if urdf is None:
             raise ValueError(
                 f"{type(retargeter).__name__} 에 urdf_path 가 없다 — 메쉬를 못 띄운다")
+        if root_pose is None and upright:
+            o = getattr(retargeter, "_r_origin", None)
+            R = getattr(retargeter, "_r_frame", None)
+            if o is not None and R is not None:
+                root_pose = upright_root(o, R)
         super().__init__(urdf, retargeter.joint_names, port, root_path, root_pose)
 
 
 class HumanHandViz(_UrdfHandViz):
 
     def __init__(self, fk, port: int = 8080, root_path: str = "/human_hand",
-                 root_pose=None):
+                 root_pose=None, upright: bool = True, offset=None):
+        if root_pose is None and upright:
+            hp = fk.neutral_points()
+            o, R = _human_palm_frame(hp)
+            root_pose = upright_root(o, R)
+        if offset is not None and root_pose is not None:
+            shift = np.eye(4)
+            shift[:3, 3] = np.asarray(offset, dtype=float)
+            root_pose = shift @ root_pose
         super().__init__(fk.urdf_path, fk.joint_names, port, root_path, root_pose)
 
 
@@ -222,11 +254,13 @@ class KPHandViz:
     _ACHIEVED_RGB = (250, 170, 70)
 
     def __init__(self, engine, port: int = 8080, root_path: str = "/kp_hand",
-                 mesh: bool = True):
+                 mesh: bool = True, upright: bool = True):
         self.engine = engine
         self.port = port
         self.root_path = root_path
         self._mesh = mesh
+        self._T = (upright_root(engine._r_origin, engine._r_frame) if upright
+                   else np.eye(4))
         self._scene = None
         self._tgt = None
         self._ach = None
@@ -240,6 +274,7 @@ class KPHandViz:
             urdf = getattr(self.engine, "urdf_path", None)
             if urdf:
                 self._scene = URDFScene(srv, urdf, models_root(), self.root_path)
+                self._scene.set_root(self._T)
         def _balls(name, rgb, radius):
             ball = trimesh.creation.icosphere(radius=radius)
             ball.visual.face_colors = [*rgb, 255]
@@ -267,17 +302,22 @@ class KPHandViz:
                 dict(zip(eng.joint_names, eng.current_q()))))
         T = eng.last_targets()
         A = eng.achieved_points()
+        R, off = self._T[:3, :3], self._T[:3, 3]
+
+        def w(p):
+            return R @ np.asarray(p, dtype=float) + off
+
         segs, bones, i = [], [], 0
         for f in self._fingers:
             pts = A[f] if T is None else T[f]
             for k in range(len(eng.keypoints[f])):
-                a = A[f][k]
-                t = pts[k]
+                a = w(A[f][k])
+                t = w(pts[k])
                 self._ach[i].position = tuple(float(v) for v in a)
                 self._tgt[i].position = tuple(float(v) for v in t)
                 segs.append([t.copy(), a.copy()])
                 if k > 0:
-                    bones.append([pts[k - 1].copy(), t.copy()])
+                    bones.append([w(pts[k - 1]), t.copy()])
                 i += 1
         self._err.points = np.asarray(segs)
         if bones:
