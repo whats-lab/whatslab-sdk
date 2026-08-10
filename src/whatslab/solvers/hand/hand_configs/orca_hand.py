@@ -13,6 +13,8 @@ class OrcaHandConfig(HandConfig):
         [[0, 0, -1], [1, 0, 0], [0, -1, 0]], dtype=np.float32
     )
     _SCALE_FACTOR = [0.95, 1.03, 1.06, 1.06, 1.05]
+    _KP_SHAPE_WEIGHT = 2.0
+    _KP_COLD_SHAPE = True
     _FIXED_JOINTS = {
         "right": "R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e",
         "left": "L-Carpals_719fff8c_to_TopTower-Model_4a80d30e",

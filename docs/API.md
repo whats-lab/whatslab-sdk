@@ -89,6 +89,19 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | 현재 기본값 | **12.5mm / 4.8° / 4.9%** | **10.1mm / 1.0° / 1.4%** |
 | 전역탐색 하한 | 2.4mm / 4.4° | — |
 
+## whatslab.solvers.hand — 손 리타게팅
+
+```python
+from whatslab.solvers.hand import HandRetargetController
+```
+
+| 심볼 | 설명 |
+|---|---|
+| `HandRetargetController(hand_type, config_name, backend="dex")` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. 추적이 끊기면 직전 명령 유지. `backend`: `"dex"`(기존) / `"kp"`(아래). |
+| `HandRetargeter` | `dex` 백엔드 엔진 — dex-retargeting 2단계(vector + position) IK, nlopt/torch 필요. |
+| `KPHandRetargeter(hand_type, config_name, keypoints=None, ...)` | `kp` 백엔드 엔진 — 팜상대 키포인트 결합 목적함수(가중 DLS + IRLS Huber), pin+numpy 만 사용. 팜 프레임 정렬 + 손길이 비율 스케일 + 중립 1회 구간별 방향 보정은 URDF 에서 자동 유도(5 손가락 체인 필요, 아니면 `keypoints` 명시). 목적함수 = 팜상대 지문 위치 + 미터벡터 형상(`w_shape`, config `_KP_SHAPE_WEIGHT`) + 엄지쌍 상대벡터 램프 스냅(30mm 이하에서 목표→0, 가중 `w_pair`→`w_snap`) + 손가락간 최소분리 30mm. warm start 유상태 — side 마다 인스턴스 하나. `reset()` 으로 콜드 스타트 재개(orca 는 형상 전용 콜드 solve, `_KP_COLD_SHAPE`). |
+| `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
+
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
 | 심볼 | 설명 |

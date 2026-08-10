@@ -61,6 +61,81 @@ def test_hand_retarget_end_to_end():
     assert np.allclose(r.last_human_positions[0], 0.0)
 
 
+def test_kp_retargeter_end_to_end():
+    pytest.importorskip("dex_retargeting")
+    pytest.importorskip("pinocchio")
+    from whatslab.solvers.hand import KPHandRetargeter
+
+    r = KPHandRetargeter("right", "orca_hand")
+    assert r.scale > 0
+    assert set(r.keypoints) == {"thumb", "index", "middle", "ring", "pinky"}
+    neutral = np.tile([0, 0, 0, 1.0], (17, 1))
+    q = r.compute(neutral)
+    assert q.shape == (len(r.joint_names),)
+    assert np.all(np.isfinite(q))
+    for _ in range(10):
+        q = r.compute(neutral)
+    q2 = r.compute(neutral)
+    assert np.allclose(q, q2, atol=1e-3)
+    r.reset()
+    assert r._cold
+
+
+def test_kp_retargeter_tracks_tips():
+    pytest.importorskip("dex_retargeting")
+    pytest.importorskip("pinocchio")
+    from whatslab.core.types import SENSED_JOINTS
+    from whatslab.solvers.hand import KPHandRetargeter
+
+    r = KPHandRetargeter("right", "robotis_hx5_d20")
+    curled = np.tile([0, 0, 0, 1.0], (1 + len(SENSED_JOINTS), 1))
+    for i, name in enumerate(SENSED_JOINTS):
+        th = 0.6 if "index" in name else 0.15
+        curled[1 + i] = [0, np.sin(th / 2), 0, np.cos(th / 2)]
+    for _ in range(20):
+        r.compute(curled)
+    T = r._targets(r._human_points(curled))
+    r._fk_robot(r._q)
+    err = np.mean([np.linalg.norm(r._pos(r._fids[f][-1]) - T[f][-1])
+                   for f in T])
+    assert err < 0.05
+
+
+def test_kp_retargeter_snap_rows():
+    pytest.importorskip("dex_retargeting")
+    pytest.importorskip("pinocchio")
+    from whatslab.solvers.hand import KPHandRetargeter
+    from whatslab.solvers.hand.kp_retargeter import SNAP_CONTACT
+
+    r = KPHandRetargeter("right", "robotis_hx5_d20")
+    T = r._targets(r._human_points(np.tile([0, 0, 0, 1.0], (17, 1))))
+    far, _ = r._pair_rows(T, snap=True)
+    for vt, w in far.values():
+        assert w == r.w_pair
+
+    T["thumb"] = T["thumb"] + (T["index"][-1] - T["thumb"][-1]) - np.array([0.005, 0, 0])
+    near, _ = r._pair_rows(T, snap=True)
+    vt, w = near[("thumb", "index")]
+    assert w == r.w_snap
+    assert np.linalg.norm(vt) < 2 * SNAP_CONTACT
+
+
+def test_kp_controller_backend():
+    pytest.importorskip("dex_retargeting")
+    pytest.importorskip("pinocchio")
+    from whatslab.core.types import HandPose, InputSample
+    from whatslab.solvers.hand import HandRetargetController, KPHandRetargeter
+
+    ctrl = HandRetargetController("right", "orca_hand", backend="kp")
+    assert isinstance(ctrl.engine, KPHandRetargeter)
+    hand = HandPose.from_sensor_array(np.tile([0, 0, 0, 1.0], (17, 1)), tracked=True)
+    cmd = ctrl.compute(InputSample(hand=hand, tracked=True))
+    assert cmd.joint_names == ctrl.joint_names
+    assert np.all(np.isfinite(cmd.joint_angles))
+    with pytest.raises(ValueError):
+        HandRetargetController("right", "orca_hand", backend="nope")
+
+
 def test_hand_controller_from_input_sample():
     pytest.importorskip("dex_retargeting")
     pytest.importorskip("pinocchio")
