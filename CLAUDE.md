@@ -26,12 +26,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 명령어
 
 ```bash
-$PY -m pytest -q -rs                            # 전체 (기준: 117 passed, skip 0)
+$PY -m pytest -q -rs                            # 전체 (센서 URDF: 117 passed/6 skip)
 $PY -m pytest tests/test_arm.py -q -rs          # 파일 단위
 $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 ```
 
-`-rs` 를 항상 붙인다. 무거운 deps 는 `pytest.importorskip`(pinocchio, dex_retargeting,
+`-rs` 를 항상 붙인다. **skip 6개는 URDF 자체가 없는 손**(allegro/schunk/tesollo/
+ability)이다. 동봉 `dexhand_description` 은 센서 프레임이 없어 손 config 유도가 막히고
+skip 이 14개로 는다 — 손 쪽을 만질 때는 `WHATSLAB_MODELS_ROOT` 로 센서 프레임이 있는
+models root 를 가리켜야 실제로 검증된다. 무거운 deps 는 `pytest.importorskip`(pinocchio, dex_retargeting,
 viser, trimesh, lerobot)으로 게이팅되어 있어, extras 가 빠진 env 에서는 "통과"가 실제로는
 skip 이다. 린터 설정은 pyproject 에 없다(강제 린트 없음).
 
@@ -197,9 +200,14 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **URDF 는 관절명이 아니라 링크명으로 참조한다.** Visualizer 규칙이
   "링크 = 뼈 이름, 관절 = 운동 이름"이고 관절명은 개명된 적이 있다
   (`thumb_cmc0`→`thumb_cmc_flex`, `{f}_mcp_z`→`{f}_mcp_flex`). 링크는 불변이다.
-  손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → 없으면
-  `{side}_{finger}_tip` 순으로 찾는다. 로봇 손 config 도 `_LINK_FALLBACK` 으로
-  같은 순서를 탄다.
+  사람 손 손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → 없으면
+  `{side}_{finger}_tip` 순으로 찾는다. **로봇 손 config 는 손가락 사슬·팁·팜 링크를
+  URDF 센서 프레임에서 유도한다** — `hand_configs/*.py` 에 남는 건 URDF 로 알 수 없는
+  사람-관절 짝짓기(`_HUMAN_CHAIN`) 뿐이다. 로봇 관절 수가 사람과 다를 때 어느 사람
+  관절을 공유할지는 손별 판단이라 유도할 수 없다. 길이가 안 맞으면 유도된 사슬을
+  그대로 찍어주는 에러가 난다. **사람→로봇 회전도 유도한다**(`r_frame @ h_frame.T`)
+  — 전에는 config 의 손 튜닝 3x3(`_COORD_TRANSFORM`)이었는데 옛 구면 FK 프레임에
+  맞춰져 있어 dex 가 스켈레톤을 못 따라갔다(실측 지문추종 46~71 → 15~23mm).
 - **팜 프레임의 y 축은 `너클평균 − 팜기준점`이다.** 전에 `중지너클 − 너클평균`
   (너클 아치 볼록량)을 썼는데 4~7mm 뿐이라 직교화하면 거의 특이하고, 사람 손에서는
   방향이 손바닥 법선으로 뒤집혀 사람↔로봇 매핑이 90° 돌아갔다(실측 지문오차
