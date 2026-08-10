@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pytest
 
+from conftest import require_sensor_urdf
+
 from whatslab.robot import RobotModel, RobotSpec, configs_root, load_rig
 
 
@@ -123,6 +125,7 @@ def test_robot_model_accepts_pathlike():
 
 
 def test_teleop_model_accepts_rig_path():
+    require_sensor_urdf("orca_hand")
     pytest.importorskip("pinocchio")
     from whatslab.teleop import QuestModel
 

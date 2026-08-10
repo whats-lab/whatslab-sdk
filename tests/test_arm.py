@@ -3,6 +3,8 @@ import importlib.util
 import numpy as np
 import pytest
 
+from conftest import require_sensor_urdf
+
 
 def _nero_solver(backend: str = "dls"):
     from whatslab.robot import RobotModel, load_rig
@@ -238,6 +240,7 @@ def test_calib_enabled_applies_scale_and_yaw():
 
 
 def test_calib_enabled_flag_reaches_teleop_path():
+    require_sensor_urdf("orca_hand")
     pytest.importorskip("pinocchio")
     from whatslab.teleop.models.quest import QuestModel
     from whatslab.robot import RobotModel, load_rig

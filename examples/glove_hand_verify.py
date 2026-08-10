@@ -23,6 +23,8 @@ def main():
     ap.add_argument("--viz", action="store_true",
                     help="viser: 로봇 손 메쉬 + 목표점(하늘)·달성점(주황)·오차선")
     ap.add_argument("--viz-port", type=int, default=8080)
+    ap.add_argument("--viz-gap", type=float, default=0.25,
+                    help="viz 에서 사람 손을 띄워놓을 간격 (m)")
     args = ap.parse_args()
 
     print(f"[setup] {args.config} {args.side} backend={args.backend}")
@@ -33,14 +35,20 @@ def main():
     eng = ctrl.engine
     kp = args.backend == "kp"
 
-    viz = None
+    viz = viz_human = None
     if args.viz:
         if not kp:
             ap.error("--viz 는 --backend kp 에서만 지원한다")
-        from whatslab.viz import KPHandViz
+        from whatslab.viz import HumanHandViz, KPHandViz
         viz = KPHandViz(eng, port=args.viz_port)
         viz.start()
-        print("[viz] 하늘색=목표 키포인트, 주황=로봇 달성, 빨간선=오차")
+        T_human = np.eye(4)
+        T_human[1, 3] = -args.viz_gap
+        T_human = T_human @ eng.human_to_robot()
+        viz_human = HumanHandViz(eng.fk, port=args.viz_port, root_pose=T_human)
+        viz_human.start()
+        print("[viz] 왼쪽=사람 손 메쉬 / 오른쪽=로봇 손 메쉬 + 하늘색 목표 키포인트,"
+              " 주황 달성, 빨간선 오차")
 
     m.start()
     print(f"[run] 글러브 OSC 수신 대기 (Ctrl-C 종료). 로봇 관절 {len(ctrl.joint_names)}개")
@@ -78,6 +86,9 @@ def main():
                         rec[f"h_{pk}"].append(hum.get(pk, np.nan))
                 if viz is not None:
                     viz.update(timestamp=t0)
+                    angles = m.get_data()[args.side]["fingers"].hand.joint_angles
+                    if angles:
+                        viz_human.update(eng.fk.q_from_named(angles), timestamp=t0)
 
             now = time.monotonic()
             if now - last_log > 0.3:

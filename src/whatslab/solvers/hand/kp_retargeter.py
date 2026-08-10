@@ -347,6 +347,15 @@ class KPHandRetargeter:
             q = np.clip(q + dq, self._lo, self._hi)
         return q
 
+    def human_to_robot(self) -> np.ndarray:
+        hp = self._human_points(self._neutral_human())
+        o, R = _palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
+        A = self._r_frame @ R.T
+        T = np.eye(4)
+        T[:3, :3] = A
+        T[:3, 3] = self._r_origin - A @ o
+        return T
+
     def current_q(self) -> np.ndarray:
         return np.array([self._q[iq] for _, iq in self._out])
 

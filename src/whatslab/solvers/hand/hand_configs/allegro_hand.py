@@ -2,65 +2,19 @@ from typing import ClassVar, Dict, List
 
 import numpy as np
 
-from ._base import FingerChain, HandConfig
+from ._base import HandConfig
 
 
 class AllegroHandConfig(HandConfig):
 
-    _MODEL_SUBDIR  = "allegro_hand"
-    _URDF_FILENAME = "allegro_hand_{hand_type}.urdf"
-    _RVIZ_FILENAME = {"left": "allegro_hand.rviz", "right": "allegro_hand.rviz"}
-    _WRIST_LINK    = {"left": "palm", "right": "palm"}
-
+    _MODEL_SUBDIR = "allegro_hand"
     _COORD_TRANSFORM: ClassVar[np.ndarray] = np.array(
-        [[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=np.float32
+        [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=np.float32
     )
-    _SCALE_FACTOR = [0.8, 0.8, 0.8, 0.8]
 
-    _chains = [
-        FingerChain(
-            links=[
-                "{wrist}",
-                "link_8.0",
-                "link_9.0",
-                "link_10.0",
-                "link_11.0",
-                "link_11.0_tip",
-            ],
-            human=["wrist", "index_mcp", "index_pip", "index_dip", "index_tip", "index_tip"],
-        ),
-        FingerChain(
-            links=[
-                "{wrist}",
-                "link_4.0",
-                "link_5.0",
-                "link_6.0",
-                "link_7.0",
-                "link_7.0_tip",
-            ],
-            human=["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip", "middle_tip"],
-        ),
-        FingerChain(
-            links=[
-                "{wrist}",
-                "link_0.0",
-                "link_1.0",
-                "link_2.0",
-                "link_3.0",
-                "link_3.0_tip",
-            ],
-            human=["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip", "ring_tip"],
-        ),
-        FingerChain(
-            links=[
-                "{wrist}",
-                "link_12.0",
-                "link_13.0",
-                "link_14.0",
-                "link_15.0",
-                "link_15.0_tip",
-            ],
-            human=["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
-        ),
-    ]
-    _FINGERS: ClassVar[Dict[str, List[FingerChain]]] = {"left": _chains, "right": _chains}
+    _HUMAN_CHAIN: ClassVar[Dict[str, List[str]]] = {
+        "thumb": ["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],
+        "index": ["wrist", "index_mcp", "index_pip", "index_dip", "index_tip", "index_tip"],
+        "middle": ["wrist", "middle_mcp", "middle_pip", "middle_dip", "middle_tip", "middle_tip"],
+        "ring": ["wrist", "ring_mcp", "ring_pip", "ring_dip", "ring_tip", "ring_tip"],
+    }
