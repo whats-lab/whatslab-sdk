@@ -8,7 +8,7 @@ import pinocchio as pin
 
 
 from .hand_configs import CONFIG_REGISTRY
-from .human_fk import FINGERS, HumanHandFK
+from .human_fk import FINGERS, HumanHandFK, palm_frame as _palm_frame, rot_between as _rot_between
 
 PAIRS = tuple(("thumb", f) for f in ("index", "middle", "ring", "pinky"))
 SEP_PAIRS = (("index", "middle"), ("middle", "ring"))
@@ -19,31 +19,6 @@ SNAP_CONTACT = 1e-4
 SEP_MIN = 0.03
 HUBER_DELTA = 0.02
 DQ_MAX_STEP = 0.4
-
-
-def _rot_between(u: np.ndarray, v: np.ndarray) -> np.ndarray:
-    u = u / max(np.linalg.norm(u), 1e-12)
-    v = v / max(np.linalg.norm(v), 1e-12)
-    c = np.cross(u, v)
-    d = float(u @ v)
-    if np.linalg.norm(c) < 1e-12:
-        return np.eye(3) if d > 0 else -np.eye(3)
-    K = np.array([[0, -c[2], c[1]], [c[2], 0, -c[0]], [-c[1], c[0], 0]])
-    return np.eye(3) + K + K @ K * ((1 - d) / (np.linalg.norm(c) ** 2))
-
-
-def _palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
-    o = np.mean([base_pts[f] for f in ("index", "middle", "ring", "pinky")], axis=0)
-    x = base_pts["index"] - base_pts["pinky"]
-    x = x / np.linalg.norm(x)
-    y = o - np.asarray(palm_pt, dtype=float)
-    y = y - x * (y @ x)
-    ny = float(np.linalg.norm(y))
-    if ny < 1e-3:
-        raise ValueError(
-            f"팜 프레임 y 축이 특이하다(|y|={ny * 1e3:.2f}mm) — 팜 기준점이 너클"
-            " 평면에 너무 가깝다")
-    return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
 
 
 def _huber_w(w: float, r_norm: float) -> float:

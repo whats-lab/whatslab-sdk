@@ -21,6 +21,31 @@ PALM_LINKS = ("sensor_dorsum", "wrist")
 _LINK_ALIAS = {"pinky0": "pinky_cmc"}
 
 
+def rot_between(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    u = u / max(np.linalg.norm(u), 1e-12)
+    v = v / max(np.linalg.norm(v), 1e-12)
+    c = np.cross(u, v)
+    d = float(u @ v)
+    if np.linalg.norm(c) < 1e-12:
+        return np.eye(3) if d > 0 else -np.eye(3)
+    K = np.array([[0, -c[2], c[1]], [c[2], 0, -c[0]], [-c[1], c[0], 0]])
+    return np.eye(3) + K + K @ K * ((1 - d) / (np.linalg.norm(c) ** 2))
+
+
+def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
+    o = np.mean([base_pts[f] for f in ("index", "middle", "ring", "pinky")], axis=0)
+    x = base_pts["index"] - base_pts["pinky"]
+    x = x / np.linalg.norm(x)
+    y = o - np.asarray(palm_pt, dtype=float)
+    y = y - x * (y @ x)
+    ny = float(np.linalg.norm(y))
+    if ny < 1e-3:
+        raise ValueError(
+            f"팜 프레임 y 축이 특이하다(|y|={ny * 1e3:.2f}mm) — 팜 기준점이 너클"
+            " 평면에 너무 가깝다")
+    return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
+
+
 def link_candidates(side: str, joint_name: str) -> Sequence[str]:
     pfx = side + "_"
     if joint_name.endswith("_tip"):

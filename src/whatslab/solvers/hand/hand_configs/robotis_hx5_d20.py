@@ -1,7 +1,5 @@
 from typing import ClassVar, Dict, List
 
-import numpy as np
-
 from ._base import HandConfig
 
 
@@ -9,9 +7,6 @@ class RobotisHX5Config(HandConfig):
 
     _MODEL_SUBDIR = "robotis_hx5_d20"
     _URDF_FILENAME = "urdf/hx5_d20_{hand_type}.urdf"
-    _COORD_TRANSFORM: ClassVar[np.ndarray] = np.array(
-        [[0, 1, 0], [0, 0, 1], [1, 0, 0]], dtype=np.float32
-    )
     _SCALE_FACTOR = [1.2, 1.25, 1.25, 1.3, 1.4]
     _KP_SHAPE_WEIGHT = 0.5
 

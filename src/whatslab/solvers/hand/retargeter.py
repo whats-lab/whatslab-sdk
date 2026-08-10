@@ -20,7 +20,7 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 from .hand_configs import CONFIG_REGISTRY, HandConfig
-from .human_fk import HumanHandFK
+from .human_fk import FINGERS, HumanHandFK, palm_frame
 
 
 class HandRetargeter:
@@ -46,8 +46,6 @@ class HandRetargeter:
         self.fk        = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
         self.human_joint_names = self.fk.joint_names
         self.urdf_path = config._get_urdf_path(self.hand_type)
-
-        self._coord_transform = config.get_coord_transform(self.hand_type)
 
         sf = config.get_scale_factor()
         if isinstance(sf, list):
@@ -84,27 +82,33 @@ class HandRetargeter:
                                if n not in fixed_names]
         self.joint_names    = [n for n in all_names if n not in fixed_names]
 
-        try:
-            widx = robot.get_link_index(config.get_wrist_link_name(self.hand_type))
-            robot.compute_forward_kinematics(robot.q0)
-            self._wrist_offset = robot.get_link_pose(widx)[:3, 3].astype(np.float64).copy()
-        except Exception as e:
-            logger.warning("손목 링크(%s) 오프셋 계산 실패 → 0 사용, 리타게팅이 어긋날 수 있음: %s",
-                           config.get_wrist_link_name(self.hand_type), e)
-            self._wrist_offset = np.zeros(3, dtype=np.float64)
+        fingers = config._get_fingers(self.hand_type)
+        robot.compute_forward_kinematics(robot.q0)
 
+        def link_pos(name):
+            return robot.get_link_pose(robot.get_link_index(name))[:3, 3].astype(
+                np.float64).copy()
+
+        knuckles = {f: link_pos(fc.links[1])
+                    for f, fc in zip(FINGERS, fingers)}
+        self._r_origin, self._r_frame = palm_frame(
+            knuckles, link_pos(config.get_wrist_link_name(self.hand_type)))
+        self._wrist_offset = self._r_origin
+
+        hp0 = self.fk.points({n: 0.0 for n in self.fk.joint_names})
+        self._h_origin, self._h_frame = palm_frame(
+            {f: hp0[f][0] for f in FINGERS}, hp0["palm"])
+        self._coord_transform = self._r_frame @ self._h_frame.T
 
     def human_to_robot(self) -> np.ndarray:
-        p = self.fk.positions({n: 0.0 for n in self.fk.joint_names})
-        A = np.asarray(self._coord_transform, dtype=float)
         T = np.eye(4)
-        T[:3, :3] = A
-        T[:3, 3] = self._wrist_offset - A @ p[0]
+        T[:3, :3] = self._coord_transform
+        T[:3, 3] = self._r_origin - self._coord_transform @ self._h_origin
         return T
 
     def compute(self, joint_angles) -> np.ndarray:
         positions          = self.fk.positions(joint_angles)
-        positions_centered = positions - positions[0]
+        positions_centered = positions - self._h_origin
         positions_robot    = (self._coord_transform @ positions_centered.T).T
 
         if self._scale_array is not None:
@@ -114,7 +118,7 @@ class HandRetargeter:
 
         self.last_human_positions = positions_robot
 
-        positions_ik = positions_robot + self._wrist_offset
+        positions_ik = positions_robot + self._r_origin
         robot_qpos = self._two_stage_retarget(positions_ik)
 
         return robot_qpos[self._keep_indices]
