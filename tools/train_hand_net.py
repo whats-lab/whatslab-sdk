@@ -13,7 +13,9 @@ import torch.nn.functional as F
 from whatslab.solvers.hand.net_losses import (U_MARGIN, AffineHandNet,
                                               bone_loss, coverage_loss,
                                               motion_loss_global, pinch_loss,
-                                              position_loss, unit_to_joint)
+                                              motion_loss_local, position_loss,
+                                              posture_loss, saturation_loss,
+                                              unit_to_joint)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -30,6 +32,9 @@ W_COVERAGE = 5.0
 W_BONE = 20.0
 W_PINCH = 1.0
 W_POS = 20.0
+W_MOTION_LOCAL = 0.0
+W_SAT = 0.0
+W_POSTURE = 0.0
 ABD_TAG = "abd"
 MOTION_LO = 0.001
 MOTION_HI = 0.011
@@ -186,6 +191,9 @@ def main():
     ap.add_argument("--w-bone", type=float, default=W_BONE)
     ap.add_argument("--w-pinch", type=float, default=W_PINCH)
     ap.add_argument("--w-pos", type=float, default=W_POS)
+    ap.add_argument("--w-motion-local", type=float, default=W_MOTION_LOCAL)
+    ap.add_argument("--w-sat", type=float, default=W_SAT)
+    ap.add_argument("--w-posture", type=float, default=W_POSTURE)
     ap.add_argument("--u-margin", type=float, default=U_MARGIN)
     ap.add_argument("--val-frac", type=float, default=VAL_FRAC)
     ap.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
@@ -272,31 +280,41 @@ def main():
         return fk(unit_to_joint(net(x), lo, hi, args.u_margin))
 
     def terms(x):
-        y = to_kv(x)
+        u = net(x)
+        y = fk(unit_to_joint(u, lo, hi, args.u_margin))
         zero = torch.zeros((), dtype=x.dtype, device=x.device)
         motion = zero
-        if args.w_motion > 0.0:
+        mlocal = zero
+        if args.w_motion > 0.0 or args.w_motion_local > 0.0:
             d = F.normalize(torch.randn_like(x), dim=-1)
             step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
                                           device=x.device) * (
                 MOTION_HI - MOTION_LO)
             dx = d * step
-            motion = motion_loss_global(dx, to_kv(x + dx) - y)
+            dy = to_kv(x + dx) - y
+            if args.w_motion > 0.0:
+                motion = motion_loss_global(dx, dy)
+            if args.w_motion_local > 0.0:
+                mlocal = motion_loss_local(x, y, dx, dy)
         sel = torch.randint(0, bank.shape[0],
                             (min(args.bank_batch, bank.shape[0]),))
         cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
         pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
         bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
         pos = position_loss(x, y) if args.w_pos > 0.0 else zero
+        sat = saturation_loss(u) if args.w_sat > 0.0 else zero
+        post = posture_loss(u) if args.w_posture > 0.0 else zero
         loss = (motion * args.w_motion + cover * args.w_coverage
                 + pinch * args.w_pinch + bone * args.w_bone
-                + pos * args.w_pos)
+                + pos * args.w_pos + mlocal * args.w_motion_local
+                + sat * args.w_sat + post * args.w_posture)
         return loss, torch.stack([motion.detach(), cover.detach(),
-                                  pinch.detach(), pos.detach(), bone.detach()])
+                                  pinch.detach(), pos.detach(), bone.detach(),
+                                  mlocal.detach(), sat.detach(), post.detach()])
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
-        acc = torch.zeros(5, dtype=dt, device=dev)
+        acc = torch.zeros(8, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             loss, t = terms(X[perm[s:s + args.batch]])
@@ -308,10 +326,11 @@ def main():
 
         vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
-              "  bone %.4e" % (epoch, *vals), flush=True)
+              "  bone %.4e  mloc %+.4f  sat %.3e  post %.3e"
+              % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             if Xval.shape[0] > 0:
-                vacc = torch.zeros(5, dtype=dt, device=dev)
+                vacc = torch.zeros(8, dtype=dt, device=dev)
                 vl, vn = 0.0, 0
                 for s in range(0, Xval.shape[0], args.batch):
                     xv = Xval[s:s + args.batch]
@@ -323,7 +342,7 @@ def main():
                     vn += xv.shape[0]
                 vv = (vacc / max(vn, 1)).cpu().numpy()
                 print("  검증 loss %.4e  motion %+.4f  cover %.4e  pinch %.4e"
-                      "  pos %.4e  bone %.4e"
+                      "  pos %.4e  bone %.4e  mloc %+.4f  sat %.3e  post %.3e"
                       % (vl / max(vn, 1), *vv), flush=True)
             with torch.no_grad():
                 u = net(X[:min(512, X.shape[0])])
