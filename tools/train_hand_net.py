@@ -17,6 +17,7 @@ from whatslab.solvers.hand.net_losses import (AffineHandNet, align_loss,
                                               flatness_loss, motion_loss_global,
                                               motion_loss_local, pinch_loss)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
+from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench_hand_retarget as B  # noqa: E402
@@ -98,6 +99,9 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--phase", type=int, default=1, choices=[1, 2])
+    ap.add_argument("--device", default="cpu")
+    ap.add_argument("--float32", action="store_true")
+    ap.add_argument("--fk", default="torch", choices=["torch", "pinocchio"])
     ap.add_argument("--w-motion", type=float, default=1.0)
     ap.add_argument("--w-coverage", type=float, default=80.0)
     ap.add_argument("--w-flatness", type=float, default=0.1)
@@ -111,8 +115,15 @@ def main():
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    dt = torch.float32 if args.float32 else torch.float64
+    dev = torch.device(args.device)
     r = NetHandRetargeter(args.side, args.config)
-    fk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
+    if args.fk == "torch":
+        fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
+    else:
+        if args.device != "cpu" or args.float32:
+            ap.error("--fk pinocchio 는 cpu/float64 만 된다")
+        fk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
     side, trajs = B.load_poses(args.dump, args.profiles, 20,
                                ("pinch", "flex", "abd"))
     if side != args.side:
@@ -124,20 +135,21 @@ def main():
         args.local_motion = True
 
     X, n_real = human_samples(r, trajs, args.random, args.seed)
-    X = torch.as_tensor(X, dtype=torch.float64)
-    bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=torch.float64)
-    lo = torch.as_tensor(r.lower, dtype=torch.float64)
-    hi = torch.as_tensor(r.upper, dtype=torch.float64)
+    X = torch.as_tensor(X, dtype=dt, device=dev)
+    bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
+    lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
+    hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
     pinch_thr = PINCH_MM * 1e-3 / r.hkv.l_ref
     print("사람 %d (실측 %d + 합성 %d)  로봇 bank %d  관절 %d  핀치임계 %.4f"
-          % (X.shape[0], n_real, args.random, bank.shape[0],
-             len(r.joint_names), pinch_thr), flush=True)
+          "  FK %s/%s/%s" % (X.shape[0], n_real, args.random, bank.shape[0],
+                             len(r.joint_names), pinch_thr, args.fk, args.device,
+                             "f32" if args.float32 else "f64"), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
-    net = r.net
+    net = r.net.to(dtype=dt, device=dev)
     if args.phase == 2 and not args.no_affine:
-        net = AffineHandNet(net, len(FINGERS)).double()
+        net = AffineHandNet(net, len(FINGERS)).to(dtype=dt, device=dev)
     net.train()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr)
 
@@ -146,8 +158,8 @@ def main():
         u_flat, u_fist = robot_anchors(r, args.bank, args.seed)
         ax_np, ay_np = anchor_pairs(r, anchor_lo, anchor_hi, expand,
                                     u_flat, u_fist, args.anchors)
-        ax = torch.as_tensor(ax_np, dtype=torch.float64)
-        ay = torch.as_tensor(ay_np, dtype=torch.float64)
+        ax = torch.as_tensor(ax_np, dtype=dt, device=dev)
+        ay = torch.as_tensor(ay_np, dtype=dt, device=dev)
         print("앵커 %d 쌍 (flat↔fist 보간, 양쪽 다 물리 파라미터에서 생성)"
               % ax.shape[0], flush=True)
     start = 0
@@ -171,7 +183,8 @@ def main():
 
             def perturb():
                 d = F.normalize(torch.randn_like(x), dim=-1)
-                step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype) * (
+                step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
+                                              device=x.device) * (
                     MOTION_HI - MOTION_LO)
                 dx = d * step
                 return dx, to_kv(x + dx) - y
@@ -193,8 +206,8 @@ def main():
 
             loss = (motion * args.w_motion + cover * args.w_coverage
                     + flat * args.w_flatness + pinch * args.w_pinch)
-            dist = torch.zeros((), dtype=x.dtype)
-            align = torch.zeros((), dtype=x.dtype)
+            dist = torch.zeros((), dtype=x.dtype, device=x.device)
+            align = torch.zeros((), dtype=x.dtype, device=x.device)
             if args.phase == 2:
                 dist = distance_loss(x, y)
                 loss = loss + dist * args.w_dist

@@ -9,7 +9,8 @@ import numpy as np
 from whatslab.solvers.hand import HandRetargeter, KPHandRetargeter
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.hand_configs import CONFIG_REGISTRY
-from whatslab.solvers.hand.human_fk import FINGERS, HumanHandFK, palm_frame
+from whatslab.solvers.hand.human_fk import (FINGERS, HumanHandFK, palm_frame,
+                                            palm_frame_from_fingers)
 
 SPREAD_PAIRS = (("index", "middle"), ("middle", "ring"), ("ring", "pinky"))
 
@@ -212,10 +213,9 @@ def kp_probe(kp):
 
     def frame():
         kp._fk_robot(pin.neutral(kp.model))
-        o, R = palm_frame({f: kp._pos(kp._fids[f][0]) for f in FINGERS},
-                          kp._pos(kp._palm_fid))
-        return o, R, float(np.linalg.norm(
-            R.T @ (kp._pos(kp._fids["middle"][-1]) - o)))
+        pts = {f: np.array([kp._pos(i) for i in kp._fids[f]]) for f in FINGERS}
+        o, R = palm_frame_from_fingers(pts)
+        return o, R, float(np.linalg.norm(R.T @ (pts["middle"][-1] - o)))
     return tips, bones, frame
 
 
@@ -240,9 +240,9 @@ def net_probe(r):
     def frame():
         pin.forwardKinematics(r.model, r.data, pin.neutral(r.model))
         pin.updateFramePlacements(r.model, r.data)
-        o, R = palm_frame({f: pos(r.kv.fids[f][0]) for f in FINGERS},
-                          pos(r.kv.dorsum))
-        return o, R, float(np.linalg.norm(R.T @ (pos(r.kv.fids["middle"][-1]) - o)))
+        pts = {f: np.array([pos(i) for i in r.kv.fids[f]]) for f in FINGERS}
+        o, R = palm_frame_from_fingers(pts)
+        return o, R, float(np.linalg.norm(R.T @ (pts["middle"][-1] - o)))
     return tips, bones, frame
 
 
@@ -257,9 +257,9 @@ def dex_probe(cfg, side):
 
     def frame():
         rob.compute_forward_kinematics(rob.q0)
-        o, R = palm_frame({f: lp(chain[f][1]) for f in FINGERS},
-                          lp(chain["index"][0]))
-        return o, R, float(np.linalg.norm(R.T @ (lp(chain["middle"][-1]) - o)))
+        pts = {f: np.array([lp(n) for n in chain[f][1:]]) for f in FINGERS}
+        o, R = palm_frame_from_fingers(pts)
+        return o, R, float(np.linalg.norm(R.T @ (pts["middle"][-1] - o)))
 
     class Wrap:
         def compute(self, ang):
