@@ -153,35 +153,79 @@ orca 는 중립이 이미 0.03mm 이고 축 3개만 남아 먼저 열릴 가능�
 **Phase 1·2 는 왼손 단일 side 라 1~4 가 열리지 않아도 진행할 수 있다.** 게이트는 좌우
 통합 모델의 전제다.
 
-## 4. Phase 1 — GeoRT + prox, pinocchio 정확 FK
+## 4. Phase 1 — GeoRT 5원칙 + prox, 정확 FK  **(구현 완료 / 측정 결과 기각선 아래)**
 
-구현 순서:
-1. `ref/planing.md` III 전처리로 keyvector 재정의 — 원점 dorsum, 축 손가락방향 유도,
-   prox = 사슬 50% 중앙, `v_dorsum→{distal,prox}` 6D, `L_ref` 상수(identity q=0),
-   데이터셋 통계 정규화 없음.
-2. **`torch.autograd.Function` 으로 pinocchio FK 랩** — `∂L/∂q = (∂L/∂x)^T · J`.
-   신경 FK 제거. 추론 경로에 FK 없음(forward 1회).
-3. F = 손가락별 MLP `(6, 128, 128, n_joints_i)`, tanh → `joint_roms` 선형 매핑.
-4. 손실은 GeoRT 5원칙 유지(motion / C-space coverage / flatness / pinch / collision).
-5. 학습 데이터: 합성(사람 URDF 랜덤) 사전학습 → 글러브 실시퀀스 파인튜닝 2단계.
+`tools/train_hand_net.py --phase 1`. 왼손 robotis, epoch 107/200 중간 측정:
 
-**판정**: 형상 오차. 목표치는 §0 새 기준선으로 다시 정한다(구 43.3° 는 무효).
-**부수 확인**: `|dq|p95`. 시간축이 없으므로 kp 0.072 를 넘기기 어렵다는 것이 사전 예측이고,
-대응은 ① EMA 입력 필터 → ② Lipschitz 페널티 → ③ 과거 사람 입력 윈도우(k=2~3) 순서다.
-자기 출력 되먹임은 드리프트 위험이라 쓰지 않는다.
+| 궤적 | | 형상° | 벌림mm | GMC | LMC | \|dq\|p95 |
+|---|---|---|---|---|---|---|
+| pinch | kp | 12.4 | 3.9 | 98.2 | 91.7 | 0.071 |
+| pinch | **net** | **69.6** | **30.9** | **43.1** | 30.9 | 0.157 |
+| flex | kp | 22.9 | 9.8 | 95.7 | 69.4 | 0.139 |
+| flex | **net** | **44.9** | **26.1** | **41.1** | 32.1 | 0.353 |
+| abd | kp | 13.5 | 4.4 | 99.4 | 58.7 | 0.038 |
+| abd | **net** | **93.2** | **38.5** | **−37.9** | 13.8 | 0.081 |
 
-## 5. Phase 2 — AnyDexRT 4손실 + anchor + residual affine
+(이 런의 `ms` 열은 학습이 CPU 를 같이 써서 무효. 학습 후 재측정한다.)
 
-- `L_P-Chamfer`(양방향→단방향) / `L_dist`(신규) / `L_motion`(글로벌→로컬 프레임) /
-  `L_align`(few-shot anchor).
-- F 에 손가락별 residual affine(`A=I`, `b=0` 초기화) 추가.
-- ablation: P5a affine 유/무, P5b 전처리 정규화 유/무.
-- anchor 는 캘리(flat/fist/pinch) 재활용. **외전 축 anchor 가 없다** — `ref/planing.md`
-  VIII-1 splay 자세 추가 가능 여부가 선행 미결정이고, 미해결 문제가 외전 흔들림이므로
-  이게 Phase 2 성패를 가른다.
-- 핀치 소프트 anchor 는 P5-1 수렴 후 warm-up 으로만 활성화(부트스트랩 순환 차단).
+**벌림축 GMC 가 −37.9 다 — 사람이 벌리면 로봇이 반대로 간다.** 튜닝 문제가 아니라
+구조적 실패다.
 
-**판정**: LMC 우선, GMC 병기, `|dq|p95`.
+**원인.** GeoRT 5원칙에는 **사람 자세를 특정 로봇 자세에 묶는 항이 없다.**
+motion(방향 일치)·coverage(도달영역 덮기)·flatness·pinch 뿐이고, 어느 것도 대응 관계를
+고정하지 않는다. 비지도 해의 비유일성이 그대로 나온다 — `ref/planing.md` X-5 의 예측과
+같다. 게다가 **motion 이 −0.21 에서 30 epoch 정체**했다(목표 −1.0):
+`coverage 6.8e-3 × 80 = 0.54` vs `motion 0.21` 로 coverage 가 여전히 지배한다.
+`w_coverage=80` 은 GeoRT 가 축별 [−1,1] 정규화에 맞춰 잡은 값인데 우리는 `L_ref`
+하나로만 정규화하므로 스케일이 다르다.
+
+**GMC 가 음수인 구간에서는 격차(LMC−GMC)를 읽지 말 것.** net 벌림축의 +51.7 은
+GMC 가 −37.9 라서 나온 값이고 좋은 신호가 아니다. 전역 정렬이 양수 영역에 들어온
+뒤에 격차를 본다.
+
+**다음 두 단계** (순서 고정):
+1. **가중치 스윕** — `--w-motion` 을 올리고 `--w-coverage` 를 내려 motion 이 실제로
+   수렴하는지. 한 번에 하나만 바꾼다.
+2. **Phase 2 `L_align`** — 대응을 고정하는 항은 이것뿐이다. 위 표가 앵커 기여를
+   측정할 비교 기준선이고, 계획서가 Phase 1 을 비지도로 두라고 한 이유가 이것이다.
+
+**P0-3 답**: FK forward+backward 12,000 samples/s (배치 256 에서 학습스텝당 85ms)
+→ 200 epoch 약 7분. `pytorch_kinematics` 병행 불필요. 전부 CPU 라 GPU 부하가 없어
+하드 리셋 위험도 없다. net 추론은 0.21ms (kp 1.89ms) — FK 없는 forward 1회.
+
+## 5. Phase 2 — AnyDexRT 4손실 + anchor + residual affine  **(구현 완료 / 학습 대기)**
+
+`tools/train_hand_net.py --phase 2` 가 자동으로 켠다:
+
+| 손실 | 구현 | Phase 1 대비 변경 |
+|---|---|---|
+| `L_P-Chamfer` | `coverage_loss(partial=True)` | 양방향 → **단방향**. 로봇 여분 영역 왜곡 회피 |
+| `L_dist` | `distance_loss` | **신규**. 손가락쌍 거리 보존 |
+| `L_motion` | `motion_loss_local` | 글로벌 → **로컬**. 두 섭동의 사잇각을 맞춘다 |
+| `L_align` | `align_loss` + 앵커 | **신규**. 비지도 → 약지도 전환의 핵심 |
+| affine | `AffineHandNet` / `ResidualAffine` | `A=0`,`b=0` 초기화라 항등에서 시작 |
+
+**검증된 성질 두 개** (`tests/test_hand_net_losses.py`):
+- `motion_loss_local` 은 6D 랜덤 회전에 대해 **정확히 0**, `motion_loss_global` 은 아니다.
+  AnyDexRT 의 "로컬이 캘리브레이션에 강건" 메커니즘이 실제로 성립한다.
+- `chamfer_partial` 은 로봇 여분 영역을 무시(0.0)하고 `chamfer_both` 는 39 이상 벌금.
+
+**앵커 = 캘리 재활용.** 사람 쪽은 theta `flat(0)` ↔ `fist(theta_hi 의 _flex 만)`,
+로봇 쪽은 관절 샘플에서 `dorsum→distal` 평균거리가 최대/최소인 구성을 flat/fist 로
+잡는다 — **손 구조와 무관하게 유도되므로 손마다 라벨링이 필요 없다.** 보간은 양쪽 다
+물리 파라미터(theta / q)에서 하고 그 다음 encode 한다. keyvector 공간에서 직접
+보간하면 물리적으로 불가능한 중간 자세가 섞인다.
+
+**ablation**: P5a affine 유/무(`--no-affine`), P5b 전처리 정규화 유/무,
+단방향 Chamfer 유/무(`--partial-chamfer`), 로컬 motion 유/무(`--local-motion`).
+전부 플래그로 분리돼 있어 한 번에 하나만 바꿀 수 있다.
+
+**미해결 위험 — 외전 축 앵커가 없다.** flat/fist 는 굴곡-신전 축만 덮는다. 그런데
+Phase 1 이 가장 크게 실패한 곳이 벌림축(GMC −37.9)이고 논문 앵커 두 유형 중 하나가
+"측면 회전"이다. `ref/planing.md` VIII-1 **splay 캘리 자세 추가 가능 여부가 Phase 2
+성패를 가른다.** 안 되면 벌림축은 `L_align` 이 못 잡고 `L_motion`/`L_dist` 에만 의존한다.
+
+**판정**: LMC 우선, GMC 병기, `|dq|p95`. 기준선은 §0.
 
 ## 6. Phase 3 — 셀슈바 백본 + 다중 임베디먼트
 
