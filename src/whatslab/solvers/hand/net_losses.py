@@ -39,6 +39,16 @@ def position_loss(x: torch.Tensor, y: torch.Tensor,
     return ((y - x) ** 2).sum(-1).mean()
 
 
+def motion_loss_global(dx: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
+    a = F.normalize(dx.reshape(-1, KV_DIM), dim=-1, eps=1e-5)
+    b = F.normalize(dy.reshape(-1, KV_DIM), dim=-1, eps=1e-5)
+    return -(a * b).sum(-1).mean()
+
+def bone_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    hx = F.normalize(x[..., TIP] - x[..., 3:], dim=-1, eps=1e-9)
+    hy = F.normalize(y[..., TIP] - y[..., 3:], dim=-1, eps=1e-9)
+    return (1.0 - (hx * hy).sum(-1)).mean()
+
 def motion_loss_local(dx_a: torch.Tensor, dy_a: torch.Tensor,
                       dx_b: torch.Tensor, dy_b: torch.Tensor) -> torch.Tensor:
     def cos(u, v):
