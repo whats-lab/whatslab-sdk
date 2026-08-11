@@ -57,7 +57,7 @@
 1. **오른손 `right_{index,middle,ring,pinky}_mcp_abd` 축.** `axis="0 0 1"` → `"0 0 -1"`. 축은 의사벡터라 미러 시 `a' = -M a`. 실측 미러오차 15°에서 index 43.9 / middle 49.6 / ring 43.0 / pinky 35.4mm, 25°에서 최대 81mm. 반전하면 5·15·25° 전부 0.00mm.
 2. **`sensor_dorsum` 통일** — 6개 URDF 에서 손목 중앙으로. 현재 robotis 좌우 50mm 불일치, orca 는 카팔 원점, human 은 wrist+(0.05, ∓0.01, 0.025).
 3. **로봇 손 좌우 미러** — orca 는 외전축(`*_to_Carpals`) 3/16 관절이 최악 8.53mm(그 관절 변위 22.2mm 중). robotis 는 **20/20 관절**이 어긋나고 최악 69.6mm(변위 28.8mm 중), 중립 사슬도 전 손가락 균일 9.79mm — 전면 재검토가 필요하다.
-4. 수정 후 `cd /home/whatslab09/whatslab-models && python regenerate.py`.
+4. **`regenerate.py` 를 실행하지 않는다** — models root 직접 수정을 덮어쓴다.
 
 ---
 
