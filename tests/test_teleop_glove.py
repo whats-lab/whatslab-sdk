@@ -88,10 +88,10 @@ def test_no_input_returns_empty_q():
 
 
 def test_start_stop_delegate_to_both_receivers():
-    from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
+    from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
     from whatslab.receiver.quest.controller import QuestControllerReceiver
     m = _make_model()
-    m.hand_source = GloveHumanHandReceiver(glove_port=4759)
+    m.hand_source = GloveHumanAnglesReceiver(glove_port=4759)
     m.arm_source = QuestControllerReceiver(quest_port=9759)
     assert set(m._receivers) == {m.hand_source, m.arm_source}
     m.start()
@@ -311,23 +311,16 @@ def test_glove_robot_hand_on_update_callback_fires():
     assert calls == ["right"]
 
 
-def test_glove_robot_hand_wrist_becomes_canonical_hand_pose():
-    from whatslab.receiver.glove.human_hand import wrist_to_canonical
-    from whatslab.receiver.glove.robot_hand import spine_lh_xyzw, unpack_wrist
-
+def test_glove_robot_hand_wrist_passes_through_unconverted():
     recv = GloveRobotHandReceiver(glove_port=4846)
-    raw_wxyz = np.array([0.5, 0.5, 0.5, 0.5])
-    w, x, y, z = raw_wxyz
-    wire = [y, x, z, -w]
+    wire = [0.5, 0.5, 0.5, -0.5]
     _send(recv._srv.dispatcher, "/right/wrist/get", "19", *(float(v) for v in wire))
 
     sample = recv.get("right")
     assert sample.hand is not None
     assert sample.hand.tracked is False
     assert sample.joint_q is None
-    expected = wrist_to_canonical(spine_lh_xyzw(unpack_wrist(wire)))
-    assert sample.hand.wrist.quat == pytest.approx(expected)
-    assert unpack_wrist(wire) == pytest.approx(raw_wxyz)
+    assert sample.hand.wrist.quat == pytest.approx(wire)
 
 
 def test_glove_robot_hand_wrist_rejects_degenerate_quat():
@@ -374,7 +367,7 @@ def test_every_exported_preset_is_instantiable():
     pytest.importorskip("dex_retargeting")
     import whatslab.teleop as T
 
-    from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
+    from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
     from whatslab.receiver.quest.controller import QuestControllerReceiver
     from whatslab.receiver.quest.hand import QuestHandReceiver
 
@@ -387,5 +380,5 @@ def test_every_exported_preset_is_instantiable():
         assert all(isinstance(v, dict) for v in q.values())
     assert made[2].sides["right"].retarget is not None
     assert made[0].hand_source is not None and made[1].hand_source is not None
-    for r in (GloveHumanHandReceiver, QuestControllerReceiver, QuestHandReceiver):
+    for r in (GloveHumanAnglesReceiver, QuestControllerReceiver, QuestHandReceiver):
         assert r is not None

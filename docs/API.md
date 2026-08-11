@@ -54,7 +54,6 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세. `connected(side)`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
 | `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **사람 손** URDF 관절각(`/{side}/joint_angles/get`) + 손목. 손 리타게팅의 입력. |
-| `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만 — 손 리타게팅은 관절각을 쓴다. |
 | `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
@@ -118,7 +117,7 @@ from whatslab.solvers.hand import HandRetargetController
 | `coverage_loss` / `distance_loss` / `extension_loss` / `motion_loss_global` / `motion_loss_local` / `flatness_loss` / `pinch_loss` / `soft_pinch_loss` / `chamfer_both` / `chamfer_partial` | 학습 손실. `motion_loss_local` 은 두 섭동의 사잇각을 맞춰 회전에 불변하고, `motion_loss_global` 은 변위 방향을 직접 맞춘다. `coverage_loss(partial=True)` 는 단방향 Chamfer 로 로봇 여분 영역 왜곡을 피한다. `distance_loss` 는 손끝 쌍거리(접선), `extension_loss` 는 `‖dorsum→tip‖`(반경)을 맞춘다 — 굽힘 진폭은 반경량이라 쌍거리로는 안 잡힌다. |
 | `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
 
-rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp) + kp 가중치
+rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp|net, net 은 `checkpoint` 필수) + kp 가중치
 (`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
 
 `net` 백엔드는 학습이 필요하다 — `tools/train_hand_net.py`(Phase 1: GeoRT 5원칙 /

@@ -141,6 +141,7 @@ class CalibrationCfg:
 class HandSolverCfg:
 
     backend: str = "dex"
+    checkpoint: Optional[str] = None
     thumb_offset: Optional[float] = None
     w_tip: Optional[float] = None
     w_shape: Optional[float] = None
@@ -152,14 +153,18 @@ class HandSolverCfg:
     def from_dict(d) -> "HandSolverCfg":
         d = d or {}
         backend = str(d.get("backend", "dex"))
-        if backend not in ("dex", "kp"):
-            raise ValueError(f"hand_solver.backend 는 dex|kp: {backend!r}")
+        if backend not in ("dex", "kp", "net"):
+            raise ValueError(f"hand_solver.backend 는 dex|kp|net: {backend!r}")
+        ckpt = d.get("checkpoint")
+        if backend == "net" and not ckpt:
+            raise ValueError("hand_solver.backend net 은 checkpoint 가 필요하다")
 
         def _f(k):
             v = d.get(k)
             return None if v is None else float(v)
         return HandSolverCfg(
-            backend=backend, thumb_offset=_f("thumb_offset"),
+            backend=backend, checkpoint=None if ckpt is None else str(ckpt),
+            thumb_offset=_f("thumb_offset"),
             w_tip=_f("w_tip"), w_shape=_f("w_shape"), k_limit=_f("k_limit"),
             k_smooth=_f("k_smooth"),
             iters_per_call=(None if d.get("iters_per_call") is None
@@ -167,6 +172,9 @@ class HandSolverCfg:
 
     def kwargs(self) -> dict:
         out = {"backend": self.backend}
+        if self.backend == "net":
+            out["checkpoint"] = self.checkpoint
+            return out
         if self.backend != "kp":
             return out
         for k in ("thumb_offset", "w_tip", "w_shape", "k_limit", "k_smooth",

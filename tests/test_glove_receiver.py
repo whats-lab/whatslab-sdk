@@ -3,8 +3,8 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 
 from whatslab.core.interfaces import Receiver
 from whatslab.core.types import InputSample
-from whatslab.receiver import GloveHumanHandReceiver
-from whatslab.receiver.glove.human_hand import parse_aga_raw, wrist_to_canonical
+from whatslab.receiver import GloveRobotHandReceiver
+from whatslab.receiver.glove import GloveHumanAnglesReceiver
 
 
 def _packet(address: str, *args) -> bytes:
@@ -18,78 +18,60 @@ def _send(disp, address, *args):
     disp.call_handlers_for_packet(_packet(address, *args), ("127.0.0.1", 0))
 
 
-def test_import_without_pyosc():
-    assert GloveHumanHandReceiver is not None
-
-
 def test_receivers_conform_protocol():
-    r = GloveHumanHandReceiver(glove_port=4140)
-    assert isinstance(r, Receiver), "GloveHumanHandReceiver 이 Receiver 프로토콜 불충족"
+    for cls, port in ((GloveRobotHandReceiver, 4140),
+                      (GloveHumanAnglesReceiver, 4147)):
+        r = cls(glove_port=port)
+        assert isinstance(r, Receiver), "%s 이 Receiver 프로토콜 불충족" % cls.__name__
 
 
-def test_get_returns_input_sample_neutral():
-    r = GloveHumanHandReceiver(glove_port=4141)
+def test_get_returns_input_sample_untracked_before_any_message():
+    r = GloveHumanAnglesReceiver(glove_port=4141)
     s = r.get("right")
     assert isinstance(s, InputSample)
     assert s.tracked is False
+    assert s.controller is None
     assert s.hand is not None
-    arr = s.hand.to_sensor_array()
-    assert arr.shape == (17, 4)
-    assert np.allclose(arr[:, 3], 1.0)
-    assert len(s.hand.joint_rot) == 16
+    assert s.hand.joint_angles == {}
+    assert s.hand.wrist is None
 
 
-def test_glove_no_controller():
-    g = GloveHumanHandReceiver(glove_port=4142).get("left")
-    assert g.controller is None and g.hand is not None
+def test_joint_angles_arrive_as_name_value_pairs():
+    recv = GloveHumanAnglesReceiver(glove_port=4148)
+    _send(recv._srv.dispatcher, "/right/joint_angles/get", "20",
+          "right_index_mcp_flex", 0.25, "right_thumb_ip_flex", -0.5)
+    s = recv.get("right")
+    assert s.tracked
+    assert s.hand.joint_angles == {"right_index_mcp_flex": 0.25,
+                                   "right_thumb_ip_flex": -0.5}
 
 
-def _make_raw(seed: int) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    return rng.uniform(-1.0, 1.0, size=72).astype(np.float32)
+def test_wrist_is_committed_without_frame_conversion():
+    recv = GloveHumanAnglesReceiver(glove_port=4149)
+    wire = [0.5, 0.5, 0.5, -0.5]
+    _send(recv._srv.dispatcher, "/right/wrist/get", "19",
+          *(float(v) for v in wire))
+    s = recv.get("right")
+    assert s.hand.wrist is not None
+    assert np.allclose(s.hand.wrist.quat, wire)
 
 
 def test_both_sides_independent():
-    recv = GloveHumanHandReceiver(glove_port=4143)
+    recv = GloveHumanAnglesReceiver(glove_port=4143)
     disp = recv._srv.dispatcher
-
-    left_raw = _make_raw(1)
-    right_raw = _make_raw(2)
-    _send(disp, "/left/quat/get", "1", *left_raw.tolist())
-    _send(disp, "/right/quat/get", "1", *right_raw.tolist())
-
-    left = recv.get("left")
-    right = recv.get("right")
-    assert not np.allclose(left.hand.to_sensor_array(), right.hand.to_sensor_array())
-
-
-def test_equivalent_to_old_parse_aga_raw():
-    recv = GloveHumanHandReceiver(glove_port=4144)
-    disp = recv._srv.dispatcher
-
-    raw = _make_raw(42)
-    _send(disp, "/right/quat/get", "1", *raw.tolist())
-
-    sample = recv.get("right")
-    assert sample.tracked
-
-    expected_quats = parse_aga_raw(raw)
-
-    got = sample.hand.to_sensor_array()
-    assert np.allclose(got[1:], expected_quats[1:])
-    assert np.allclose(sample.hand.wrist.quat, wrist_to_canonical(expected_quats[0]))
-    assert not np.allclose(sample.hand.wrist.quat, expected_quats[0])
-    assert np.allclose(sample.hand.wrist.pos, np.zeros(3))
+    _send(disp, "/left/joint_angles/get", "20", "left_index_mcp_flex", 0.1)
+    _send(disp, "/right/joint_angles/get", "20", "right_index_mcp_flex", 0.9)
+    assert recv.get("left").hand.joint_angles != recv.get("right").hand.joint_angles
 
 
 def test_two_glove_receivers_share_same_port_server():
-    a = GloveHumanHandReceiver(glove_port=4145)
-    b = GloveHumanHandReceiver(glove_port=4145)
+    a = GloveHumanAnglesReceiver(glove_port=4145)
+    b = GloveHumanAnglesReceiver(glove_port=4145)
     assert a._srv is b._srv
 
 
 def test_device_status_sets_connected():
-    recv = GloveHumanHandReceiver(glove_port=4146)
+    recv = GloveHumanAnglesReceiver(glove_port=4146)
     disp = recv._srv.dispatcher
     assert not recv.connected("left")
     assert not recv.connected("right")
