@@ -12,7 +12,9 @@ import torch.nn.functional as F
 
 from whatslab.solvers.hand.fk_torch import KeyvectorFK
 from whatslab.solvers.hand.human_fk import FINGERS
-from whatslab.solvers.hand.net_losses import (AffineHandNet, coverage_loss,
+from whatslab.solvers.hand.net_losses import (AffineHandNet, bone_loss,
+                                              coverage_loss,
+                                              motion_loss_global,
                                               motion_loss_local, pinch_loss,
                                               position_loss)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
@@ -180,6 +182,8 @@ def main():
     ap.add_argument("--w-coverage", type=float, default=80.0)
     ap.add_argument("--save-every", type=int, default=1)
     ap.add_argument("--w-pinch", type=float, default=1.0)
+    ap.add_argument("--w-bone", type=float, default=0.0,
+                    help="손가락 내부 뼈 방향(tip-prox) 일치")
     ap.add_argument("--w-pos", type=float, default=0.0,
                     help="손가락별 6D keyvector 일치. 반경·각도를 동시에 정하므로"
                          " 쌍거리(--w-dist)가 불필요해진다 — 손가락 간 결합 없음")
@@ -189,6 +193,9 @@ def main():
     ap.add_argument("--affine", action="store_true",
                     help="기본값이라 무동작 — 명시용으로만 남긴다")
     ap.add_argument("--partial-chamfer", action="store_true")
+    ap.add_argument("--local-motion", action="store_true",
+                    help="motion 을 로컬(두 섭동의 사잇각, 회전 불변)로. 기본은 글로벌"
+                         " — 부호·범위가 다르다(글로벌 최소 -1 / 로컬 최소 0)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -272,7 +279,7 @@ def main():
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
-        acc = torch.zeros(4, dtype=dt, device=dev)
+        acc = torch.zeros(5, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             x = X[perm[s:s + args.batch]]
@@ -290,8 +297,11 @@ def main():
             motion = zero
             if args.w_motion > 0.0:
                 dx_a, dy_a = perturb()
-                dx_b, dy_b = perturb()
-                motion = motion_loss_local(dx_a, dy_a, dx_b, dy_b)
+                if args.local_motion:
+                    dx_b, dy_b = perturb()
+                    motion = motion_loss_local(dx_a, dy_a, dx_b, dy_b)
+                else:
+                    motion = motion_loss_global(dx_a, dy_a)
 
             cover = zero
             if args.w_coverage > 0.0:
@@ -299,9 +309,10 @@ def main():
                                     (min(args.bank_batch, bank.shape[0]),))
                 cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
             pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
+            bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
 
             loss = (motion * args.w_motion + cover * args.w_coverage
-                    + pinch * args.w_pinch)
+                    + pinch * args.w_pinch + bone * args.w_bone)
             pos = zero
             if args.w_pos > 0.0:
                 pos = position_loss(x, y)
@@ -310,12 +321,13 @@ def main():
             loss.backward()
             opt.step()
             acc = acc + torch.stack([motion.detach(), cover.detach(),
-                                     pinch.detach(), pos.detach()])
+                                     pinch.detach(), pos.detach(),
+                                     bone.detach()])
             nb += 1
 
         vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
-              % (epoch, *vals), flush=True)
+              "  bone %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
