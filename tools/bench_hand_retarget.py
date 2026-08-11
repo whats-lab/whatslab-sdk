@@ -15,6 +15,33 @@ from whatslab.solvers.hand.human_fk import (FINGERS, HumanHandFK, palm_frame,
 SPREAD_PAIRS = (("index", "middle"), ("middle", "ring"), ("ring", "pinky"))
 
 
+def theta_blocks(names):
+    out = {}
+    for i, n in enumerate(names):
+        out.setdefault(n.split("_")[0], []).append(i)
+    return out
+
+
+def real_thetas(dump_path, profile_dir, steps):
+    d = json.load(open(dump_path))
+    prof = json.load(open("%s/%s/%s.json" % (profile_dir, d["hand_side"].lower(),
+                                             d["profile"])))
+    names = prof["theta"]
+    hi = np.asarray(d["theta_hi"], dtype=float)
+    lo = np.asarray(d["theta_lo"], dtype=float)
+    rows = [np.zeros(len(names))]
+    for th in d["pinch_thetas"]:
+        th = np.asarray(th, dtype=float)
+        rows += [th * k / (steps - 1) for k in range(1, steps)]
+    for kind in ("flex", "abd"):
+        sel = [i for i, n in enumerate(names) if n.endswith("_" + kind)]
+        a, b = np.zeros(len(names)), np.zeros(len(names))
+        for i in sel:
+            a[i], b[i] = (0.0, hi[i]) if kind == "flex" else (lo[i], hi[i])
+        rows += [a + (b - a) * k / (steps - 1) for k in range(1, steps)]
+    return names, np.asarray(rows)
+
+
 def theta_expander(dump_path, profile_dir):
     d = json.load(open(dump_path))
     side = d["hand_side"].lower()
