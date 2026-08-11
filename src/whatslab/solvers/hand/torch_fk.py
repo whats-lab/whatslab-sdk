@@ -97,7 +97,7 @@ class TorchKeyvectorFK(nn.Module):
         self.l_ref = float(kv.l_ref)
         self.dtype = dtype
 
-    def forward(self, q_act: torch.Tensor) -> torch.Tensor:
+    def forward(self, q_act: torch.Tensor, with_rot: bool = False):
         b = q_act.shape[0]
         dev = q_act.device
         eye = torch.eye(3, dtype=q_act.dtype, device=dev).expand(b, 3, 3)
@@ -120,6 +120,8 @@ class TorchKeyvectorFK(nn.Module):
             pos.append(pos[p] + (rot[p] @ jt.unsqueeze(-1)).squeeze(-1))
 
         out = []
+        tip_rot = []
+        rt = self.rot_t.to(q_act.dtype)
         for f in self.fingers:
             pts = []
             for k in self.frames[f]:
@@ -129,7 +131,14 @@ class TorchKeyvectorFK(nn.Module):
             prox = pts[-1]
             tip = pts[-2]
             out.append(torch.stack([self._local(tip), self._local(prox)], dim=1))
-        return torch.cat(out, dim=1).view(-1, len(self.fingers), KV_DIM)
+            if with_rot:
+                k = self.frames[f][-2]
+                fr = self.f_rot[k].to(q_act.dtype).unsqueeze(0)
+                tip_rot.append(rt.unsqueeze(0) @ rot[self.f_parent[k]] @ fr)
+        kvo = torch.cat(out, dim=1).view(-1, len(self.fingers), KV_DIM)
+        if not with_rot:
+            return kvo
+        return kvo, torch.stack(tip_rot, dim=1)
 
     def _local(self, p: torch.Tensor) -> torch.Tensor:
         r = self.rot_t.to(p.dtype)

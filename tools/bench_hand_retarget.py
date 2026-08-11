@@ -106,20 +106,25 @@ def load_poses(dump_path, profile_dir, steps, kinds=("pinch",)):
 LMC_MIN_MM = 0.5
 
 
-def local_frames(pts):
+def bone_axes(pts):
     out = {}
     for f in FINGERS:
         z = pts[f][-1] - pts[f][-2]
         nz = float(np.linalg.norm(z))
         if nz < 1e-9:
             raise ValueError("%s 마지막 뼈 길이가 0 이다" % f)
-        z = z / nz
-        x = np.cross(z, np.array([0.0, 1.0, 0.0]))
-        if float(np.linalg.norm(x)) < 1e-3:
-            x = np.cross(z, np.array([1.0, 0.0, 0.0]))
-        x = x / float(np.linalg.norm(x))
-        out[f] = np.column_stack([x, np.cross(z, x), z])
+        out[f] = z / nz
     return out
+
+
+def align_axis(w, src, dst):
+    k = np.cross(src, dst)
+    c = float(src @ dst)
+    s2 = float(k @ k)
+    if s2 < 1e-12:
+        return w if c > 0.0 else -w
+    kw = np.cross(k, w)
+    return w + kw + np.cross(k, kw) * (1.0 - c) / s2
 
 
 def motion_consistency(h_prev, h_cur, r_prev, r_cur, h_local, r_local):
@@ -136,7 +141,7 @@ def motion_consistency(h_prev, h_cur, r_prev, r_cur, h_local, r_local):
             continue
         un, vn = u / float(np.linalg.norm(u)), v / nv
         gmc.append(float(un @ vn))
-        lmc.append(float((h_local[f].T @ un) @ (r_local[f].T @ vn)))
+        lmc.append(float(un @ align_axis(vn, r_local[f], h_local[f])))
     return gmc, lmc
 
 
@@ -214,8 +219,8 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
             cur_r = {g: r_chain[g][-1] for g in FINGERS}
             if prev_h is not None:
                 g_, l_ = motion_consistency(prev_h, cur_h, prev_r, cur_r,
-                                            local_frames(h_chain),
-                                            local_frames(r_chain))
+                                            bone_axes(h_chain),
+                                            bone_axes(r_chain))
                 acc["gmc"] += g_
                 acc["lmc"] += l_
             prev_h, prev_r = cur_h, cur_r

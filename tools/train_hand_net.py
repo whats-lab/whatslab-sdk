@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from whatslab.solvers.hand.net_losses import (U_MARGIN, AffineHandNet,
                                               bone_loss, coverage_loss,
                                               motion_loss_global, pinch_loss,
-                                              motion_loss_local, position_loss,
+                                              orientation_loss, position_loss,
                                               posture_loss, saturation_loss,
                                               unit_to_joint)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
@@ -32,7 +32,7 @@ W_COVERAGE = 5.0
 W_BONE = 20.0
 W_PINCH = 1.0
 W_POS = 20.0
-W_MOTION_LOCAL = 0.0
+W_ORIENT = 0.0
 W_SAT = 0.0
 W_POSTURE = 0.0
 ABD_TAG = "abd"
@@ -147,10 +147,28 @@ def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0)
             rows.extend(q_combo(real_q, blocks, k, seed + 2))
     q = pin.neutral(r.fk.model)
     out = np.empty((len(rows), len(r.fingers), 6))
+    rot = np.empty((len(rows), len(r.fingers), 3, 3))
+    tips = [r.hkv.fids[f][-1] for f in r.fingers]
     for i, qv in enumerate(rows):
         q[iq] = qv
         out[i] = r.hkv.encode(q)
-    return out, n_real
+        rot[i] = np.array([r.hkv.rot.T @ r.fk.data.oMf[t].rotation for t in tips])
+    return out, rot, n_real
+
+
+def neutral_offset(r):
+    qh = pin.neutral(r.fk.model)
+    pin.forwardKinematics(r.fk.model, r.fk.data, qh)
+    pin.updateFramePlacements(r.fk.model, r.fk.data)
+    qr = pin.neutral(r.model)
+    pin.forwardKinematics(r.model, r.data, qr)
+    pin.updateFramePlacements(r.model, r.data)
+    out = np.empty((len(r.fingers), 3, 3))
+    for i, f in enumerate(r.fingers):
+        ah = r.hkv.rot.T @ r.fk.data.oMf[r.hkv.fids[f][-1]].rotation
+        ar = r.kv.rot.T @ r.data.oMf[r.kv.fids[f][-1]].rotation
+        out[i] = ar @ ah.T
+    return out
 
 
 def robot_extent(r, u):
@@ -191,7 +209,7 @@ def main():
     ap.add_argument("--w-bone", type=float, default=W_BONE)
     ap.add_argument("--w-pinch", type=float, default=W_PINCH)
     ap.add_argument("--w-pos", type=float, default=W_POS)
-    ap.add_argument("--w-motion-local", type=float, default=W_MOTION_LOCAL)
+    ap.add_argument("--w-orient", type=float, default=W_ORIENT)
     ap.add_argument("--w-sat", type=float, default=W_SAT)
     ap.add_argument("--w-posture", type=float, default=W_POSTURE)
     ap.add_argument("--u-margin", type=float, default=U_MARGIN)
@@ -240,16 +258,19 @@ def main():
              extension(r, iq_h, q_flat), extension(r, iq_h, q_fist)), flush=True)
 
 
-    X, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
-                              args.random, args.random_mode, args.seed)
+    X, AH, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
+                                  args.random, args.random_mode, args.seed)
     X = torch.as_tensor(X, dtype=dt, device=dev)
+    AH = torch.as_tensor(AH, dtype=dt, device=dev)
+    d_offset = torch.as_tensor(neutral_offset(r), dtype=dt, device=dev)
     n_val = int(round(X.shape[0] * args.val_frac))
     if n_val > 0:
         vperm = torch.randperm(X.shape[0], generator=torch.Generator().manual_seed(
             args.seed))
         Xval, X = X[vperm[:n_val]], X[vperm[n_val:]]
+        AHval, AH = AH[vperm[:n_val]], AH[vperm[n_val:]]
     else:
-        Xval = X[:0]
+        Xval, AHval = X[:0], AH[:0]
     bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
     hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
@@ -279,23 +300,25 @@ def main():
     def to_kv(x):
         return fk(unit_to_joint(net(x), lo, hi, args.u_margin))
 
-    def terms(x):
+    def terms(x, ah=None):
         u = net(x)
-        y = fk(unit_to_joint(u, lo, hi, args.u_margin))
+        qj = unit_to_joint(u, lo, hi, args.u_margin)
+        if args.w_orient > 0.0:
+            y, ar = fk(qj, with_rot=True)
+        else:
+            y, ar = fk(qj), None
         zero = torch.zeros((), dtype=x.dtype, device=x.device)
         motion = zero
-        mlocal = zero
-        if args.w_motion > 0.0 or args.w_motion_local > 0.0:
+        orient = zero
+        if ar is not None and ah is not None:
+            orient = orientation_loss(ar, ah, d_offset)
+        if args.w_motion > 0.0:
             d = F.normalize(torch.randn_like(x), dim=-1)
             step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
                                           device=x.device) * (
                 MOTION_HI - MOTION_LO)
             dx = d * step
-            dy = to_kv(x + dx) - y
-            if args.w_motion > 0.0:
-                motion = motion_loss_global(dx, dy)
-            if args.w_motion_local > 0.0:
-                mlocal = motion_loss_local(x, y, dx, dy)
+            motion = motion_loss_global(dx, to_kv(x + dx) - y)
         sel = torch.randint(0, bank.shape[0],
                             (min(args.bank_batch, bank.shape[0]),))
         cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
@@ -306,18 +329,19 @@ def main():
         post = posture_loss(u) if args.w_posture > 0.0 else zero
         loss = (motion * args.w_motion + cover * args.w_coverage
                 + pinch * args.w_pinch + bone * args.w_bone
-                + pos * args.w_pos + mlocal * args.w_motion_local
+                + pos * args.w_pos + orient * args.w_orient
                 + sat * args.w_sat + post * args.w_posture)
         return loss, torch.stack([motion.detach(), cover.detach(),
                                   pinch.detach(), pos.detach(), bone.detach(),
-                                  mlocal.detach(), sat.detach(), post.detach()])
+                                  orient.detach(), sat.detach(), post.detach()])
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
         acc = torch.zeros(8, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
-            loss, t = terms(X[perm[s:s + args.batch]])
+            sl = perm[s:s + args.batch]
+            loss, t = terms(X[sl], None if AH is None else AH[sl])
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -326,7 +350,7 @@ def main():
 
         vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
-              "  bone %.4e  mloc %+.4f  sat %.3e  post %.3e"
+              "  bone %.4e  orient %.4e  sat %.3e  post %.3e"
               % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             if Xval.shape[0] > 0:
@@ -336,13 +360,14 @@ def main():
                     xv = Xval[s:s + args.batch]
                     if xv.shape[0] < 2:
                         continue
-                    lv, tv = terms(xv)
+                    lv, tv = terms(xv, None if AHval is None else
+                                   AHval[s:s + args.batch])
                     vl += float(lv.detach()) * xv.shape[0]
                     vacc = vacc + tv * xv.shape[0]
                     vn += xv.shape[0]
                 vv = (vacc / max(vn, 1)).cpu().numpy()
                 print("  검증 loss %.4e  motion %+.4f  cover %.4e  pinch %.4e"
-                      "  pos %.4e  bone %.4e  mloc %+.4f  sat %.3e  post %.3e"
+                      "  pos %.4e  bone %.4e  orient %.4e  sat %.3e  post %.3e"
                       % (vl / max(vn, 1), *vv), flush=True)
             with torch.no_grad():
                 u = net(X[:min(512, X.shape[0])])

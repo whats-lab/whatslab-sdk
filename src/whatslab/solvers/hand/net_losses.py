@@ -58,28 +58,10 @@ def bone_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     hy = F.normalize(y[..., TIP] - y[..., 3:], dim=-1, eps=1e-9)
     return (1.0 - (hx * hy).sum(-1)).mean()
 
-def _finger_frame(v: torch.Tensor) -> torch.Tensor:
-    z = F.normalize(v, dim=-1, eps=1e-9)
-    ref = torch.zeros_like(z)
-    ref[..., 1] = 1.0
-    alt = torch.zeros_like(z)
-    alt[..., 0] = 1.0
-    x = torch.cross(z, ref, dim=-1)
-    x = torch.where(x.norm(dim=-1, keepdim=True) < 1e-3,
-                    torch.cross(z, alt, dim=-1), x)
-    x = F.normalize(x, dim=-1, eps=1e-9)
-    return torch.stack([x, torch.cross(z, x, dim=-1), z], dim=-1)
-
-
-def motion_loss_local(x: torch.Tensor, y: torch.Tensor, dx: torch.Tensor,
-                      dy: torch.Tensor) -> torch.Tensor:
-    rh = _finger_frame(x[..., TIP] - x[..., 3:])
-    rr = _finger_frame(y[..., TIP] - y[..., 3:])
-    a = F.normalize(dx[..., TIP], dim=-1, eps=1e-5)
-    b = F.normalize(dy[..., TIP], dim=-1, eps=1e-5)
-    ah = torch.einsum("...ij,...i->...j", rh, a)
-    br = torch.einsum("...ij,...i->...j", rr, b)
-    return -(ah * br).sum(-1).mean()
+def orientation_loss(a_robot: torch.Tensor, a_human: torch.Tensor,
+                     offset: torch.Tensor) -> torch.Tensor:
+    want = offset.unsqueeze(0) @ a_human
+    return ((a_robot - want) ** 2).sum((-2, -1)).mean() * 0.25
 
 
 def saturation_loss(u: torch.Tensor, knee: float = 0.9) -> torch.Tensor:
