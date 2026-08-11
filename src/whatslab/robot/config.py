@@ -142,6 +142,7 @@ class HandSolverCfg:
 
     backend: str = "dex"
     checkpoint: Optional[str] = None
+    mirror_to: Optional[str] = None
     thumb_offset: Optional[float] = None
     w_tip: Optional[float] = None
     w_shape: Optional[float] = None
@@ -162,8 +163,12 @@ class HandSolverCfg:
         def _f(k):
             v = d.get(k)
             return None if v is None else float(v)
+        mto = d.get("mirror_to")
+        if mto is not None and str(mto).lower() not in ("left", "right"):
+            raise ValueError(f"hand_solver.mirror_to 는 left|right: {mto!r}")
         return HandSolverCfg(
             backend=backend, checkpoint=None if ckpt is None else str(ckpt),
+            mirror_to=None if mto is None else str(mto).lower(),
             thumb_offset=_f("thumb_offset"),
             w_tip=_f("w_tip"), w_shape=_f("w_shape"), k_limit=_f("k_limit"),
             k_smooth=_f("k_smooth"),
@@ -174,6 +179,8 @@ class HandSolverCfg:
         out = {"backend": self.backend}
         if self.backend == "net":
             out["checkpoint"] = self.checkpoint
+            if self.mirror_to is not None:
+                out["mirror_to"] = self.mirror_to
             return out
         if self.backend != "kp":
             return out

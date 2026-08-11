@@ -98,10 +98,26 @@ class NetHandRetargeter:
     def _r_frame(self) -> np.ndarray:
         return self.kv.rot
 
+    def _check_side(self, path: str, sd) -> None:
+        if not isinstance(sd, dict):
+            return
+        want = self.mirror_to or self.hand_type
+        got = sd.get("side")
+        if got is not None and str(got).lower() != want:
+            raise ValueError(
+                "체크포인트 side 가 다르다: %s 는 '%s' 로 학습됐는데 '%s' 로 쓰려 한다."
+                " 반대 손 모델을 쓰려면 mirror_to='%s' 를 명시해라 (사람 p95 25mm +"
+                " 로봇 미러 오차를 감수하는 선택이다)" % (path, got, want, got))
+        cfg = sd.get("config")
+        if cfg is not None and str(cfg) != self.config_name:
+            raise ValueError("체크포인트 config 가 다르다: %s 는 '%s' 용인데 '%s' 로"
+                             " 쓰려 한다" % (path, cfg, self.config_name))
+
     def load(self, checkpoint: str) -> None:
         sd = torch.load(checkpoint, map_location="cpu")
         inner = sd["net"] if "net" in sd else sd
         self.u_margin = float(sd.get("u_margin", 1.0)) if isinstance(sd, dict) else 1.0
+        self._check_side(checkpoint, sd)
         wrapped = any(k.startswith("affine.") for k in inner)
         if wrapped and not isinstance(self.net, AffineHandNet):
             self.net = AffineHandNet(self.net, len(self.fingers))
