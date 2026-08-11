@@ -18,6 +18,8 @@ ACTS = {"leaky": nn.LeakyReLU, "gelu": nn.GELU, "silu": nn.SiLU,
         "tanh": nn.Tanh, "softplus": nn.Softplus}
 NORMS = ("none", "layer", "batch")
 INPUTS = {"kv": KV_DIM, "frames": FRAME_DIM}
+NET_DTYPE = torch.float32
+INFER_THREADS = 1
 LAYER_REMAP = {"%snets.%d.%d.%s" % (p, f, a, w):
                "%snets.%d.%d.%s" % (p, f, b, w)
                for p in ("", "net.") for f in range(5)
@@ -126,7 +128,7 @@ class NetHandRetargeter:
         self.net = HandNet(INPUTS[self.input_mode],
                            [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden, dropout=dropout, layers=layers,
-                           act=act, norm=norm).double()
+                           act=act, norm=norm).to(NET_DTYPE)
         self.net.eval()
         self.u_margin = 1.0
         if checkpoint is not None:
@@ -174,8 +176,9 @@ class NetHandRetargeter:
         if not (isinstance(sd, dict) and "dropout" in sd):
             inner = {LAYER_REMAP.get(k, k): v for k, v in inner.items()}
         self._rebuild_for(inner)
-        want = next(iter(inner.values())).dtype
-        self.net = self.net.to(dtype=want)
+        inner = {k: (v.to(NET_DTYPE) if v.is_floating_point() else v)
+                 for k, v in inner.items()}
+        self.net = self.net.to(NET_DTYPE)
         self.net.load_state_dict(inner)
         self.net.eval()
 
@@ -197,7 +200,7 @@ class NetHandRetargeter:
         self.net = HandNet(INPUTS[self.input_mode],
                            [len(self._cols[f]) for f in self.fingers],
                            hidden=h, dropout=cur.dropout, layers=nl,
-                           act=act, norm=norm).double()
+                           act=act, norm=norm).to(NET_DTYPE)
 
     def state_dict(self):
         return self.net.state_dict()

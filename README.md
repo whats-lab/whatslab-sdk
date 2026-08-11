@@ -162,6 +162,14 @@ Validation loss is for **picking the epoch within one run only** — runs with d
 loss weights have different total-loss definitions and cannot be compared. Rank weights
 with the bench.
 
+**Pin inference to `torch.set_num_threads(1)`.** This is a batch-1, 128-wide workload
+where multithreading is pure overhead, and the default (core count) hides a trap:
+measured at 32 threads the LeakyReLU net takes 0.200ms and the **GELU net 60.4ms**,
+versus 0.100ms and 0.143ms at one thread — `nn.GELU` opens parallel regions on tiny
+tensors for a 420x overhead. The library does not touch process-global settings, so the
+consumer must call it (`whatslab.solvers.hand.net_retargeter.INFER_THREADS` is the
+recommended value).
+
 Left/right handling is per-hand — the deciding measurement is that hand's **left/right
 URDF mirror fidelity**. orca's two URDFs are exact mirrors (0.86mm, limits identical on
 all 16 joints), so one left-trained model covers both sides via `hand_solver.mirror_to`

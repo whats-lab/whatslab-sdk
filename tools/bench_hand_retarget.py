@@ -5,6 +5,7 @@ import json
 import time
 
 import numpy as np
+import torch
 
 from whatslab.solvers.hand import HandRetargeter, KPHandRetargeter
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
@@ -104,6 +105,7 @@ def load_poses(dump_path, profile_dir, steps, kinds=("pinch",)):
 
 
 LMC_MIN_MM = 0.5
+THREADS = 1
 
 
 def bone_axes(pts):
@@ -314,6 +316,7 @@ def dex_probe(cfg, side):
 
 
 def main():
+    torch.set_num_threads(THREADS)
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dump", required=True, help="글러브 캘리브 덤프 json")
     ap.add_argument("--profiles", required=True, help="profiles/ 디렉토리")
