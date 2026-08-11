@@ -7,7 +7,9 @@ from .human_fk import (BONE_LINKS, FINGERS, HumanHandFK, link_candidates,
                        non_thumb, palm_frame_from_fingers)
 
 KV_DIM = 6
+FRAME_DIM = 24
 MIRROR_Z = np.array([1.0, 1.0, -1.0] * 2)
+MIRROR_M = np.diag([1.0, 1.0, -1.0])
 
 
 def chain_weights(seg_lengths: Sequence[float], frac: float = 0.5) -> Tuple[int, float]:
@@ -142,6 +144,19 @@ class HandKeyvector:
             out[i, 3:] = self.local(self.prox(pts, f))
         return out
 
+    def rot_of(self, fid: int) -> np.ndarray:
+        return self.rot.T @ self.data.oMf[fid].rotation
+
+    def encode_frames(self, q: np.ndarray) -> np.ndarray:
+        pts = self.points(q)
+        out = np.zeros((len(self.fingers), FRAME_DIM))
+        for i, f in enumerate(self.fingers):
+            out[i, 0:3] = self.local(pts[f][-1])
+            out[i, 3:12] = self.rot_of(self.fids[f][-1]).reshape(9)
+            out[i, 12:15] = self.local(self.prox(pts, f))
+            out[i, 15:24] = self.rot_of(self.prox_fids[f]).reshape(9)
+        return out
+
     def jacobian(self, q: np.ndarray, idx_v: Sequence[int]) -> np.ndarray:
         pin.computeJointJacobians(self.model, self.data, np.asarray(q, dtype=float))
         pin.updateFramePlacements(self.model, self.data)
@@ -157,3 +172,14 @@ class HandKeyvector:
     def _frame_jac(self, fid: int) -> np.ndarray:
         return pin.getFrameJacobian(self.model, self.data, fid,
                                     pin.LOCAL_WORLD_ALIGNED)[:3]
+
+
+def mirror_frames(x: np.ndarray) -> np.ndarray:
+    out = np.array(x, dtype=float, copy=True)
+    for a, b in ((0, 3), (12, 15)):
+        out[..., a:b] = out[..., a:b] * np.array([1.0, 1.0, -1.0])
+    for a in (3, 15):
+        r = out[..., a:a + 9].reshape(out.shape[:-1] + (3, 3))
+        out[..., a:a + 9] = (MIRROR_M @ r @ MIRROR_M).reshape(
+            out.shape[:-1] + (9,))
+    return out

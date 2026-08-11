@@ -8,14 +8,16 @@ import torch.nn as nn
 
 from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK
-from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
-                        human_chains, sensor_chains, sensor_prox)
+from .keyvector import (FRAME_DIM, KV_DIM, MIRROR_Z, HandKeyvector,
+                        finger_columns, human_chains, mirror_frames,
+                        sensor_chains, sensor_prox)
 from .net_losses import unit_to_joint
 
 LIMIT_FALLBACK = 2.0
 ACTS = {"leaky": nn.LeakyReLU, "gelu": nn.GELU, "silu": nn.SiLU,
         "tanh": nn.Tanh, "softplus": nn.Softplus}
 NORMS = ("none", "layer", "batch")
+INPUTS = {"kv": KV_DIM, "frames": FRAME_DIM}
 LAYER_REMAP = {"%snets.%d.%d.%s" % (p, f, a, w):
                "%snets.%d.%d.%s" % (p, f, b, w)
                for p in ("", "net.") for f in range(5)
@@ -71,7 +73,10 @@ class NetHandRetargeter:
                  checkpoint: Optional[str] = None, urdf_root: Optional[str] = None,
                  hidden: int = 128, mirror_to: Optional[str] = None,
                  dropout: float = 0.0, layers: int = 2, act: str = "leaky",
-                 norm: str = "none"):
+                 norm: str = "none", input_mode: str = "kv"):
+        if input_mode not in INPUTS:
+            raise ValueError("input_mode 는 %s 중 하나: %r"
+                             % (list(INPUTS), input_mode))
         if config_name not in CONFIG_REGISTRY:
             raise ValueError("알 수 없는 config '%s'. 가능: %s"
                              % (config_name, list(CONFIG_REGISTRY)))
@@ -79,6 +84,7 @@ class NetHandRetargeter:
         self.hand_type = hand_type.lower()
         self.config_name = config_name
         self.mirror_to = None if mirror_to is None else mirror_to.lower()
+        self.input_mode = input_mode
 
         root = getattr(config, "_models_root", None)
         fk_urdf = (os.path.join(root, "base_hand", "urdf", "%s.urdf" % self.hand_type)
@@ -117,7 +123,8 @@ class NetHandRetargeter:
         self.lower = lo[self._iq].copy()
         self.upper = hi[self._iq].copy()
 
-        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
+        self.net = HandNet(INPUTS[input_mode],
+                           [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden, dropout=dropout, layers=layers,
                            act=act, norm=norm).double()
         self.net.eval()
@@ -158,6 +165,12 @@ class NetHandRetargeter:
             self._want_act = str(sd["act"])
         if isinstance(sd, dict) and sd.get("norm") is not None:
             self._want_norm = str(sd["norm"])
+        if isinstance(sd, dict) and sd.get("input_mode") is not None:
+            got = str(sd["input_mode"])
+            if got != self.input_mode:
+                raise ValueError("체크포인트 input_mode 가 다르다: %s 는 '%s' 인데"
+                                 " '%s' 로 만들었다" % (checkpoint, got,
+                                                     self.input_mode))
         if not (isinstance(sd, dict) and "dropout" in sd):
             inner = {LAYER_REMAP.get(k, k): v for k, v in inner.items()}
         self._rebuild_for(inner)
@@ -181,7 +194,8 @@ class NetHandRetargeter:
         if (h == cur._hidden and nl == cur.layers and act == cur.act
                 and norm == cur.norm):
             return
-        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
+        self.net = HandNet(INPUTS[input_mode],
+                           [len(self._cols[f]) for f in self.fingers],
                            hidden=h, dropout=cur.dropout, layers=nl,
                            act=act, norm=norm).double()
 
@@ -196,10 +210,13 @@ class NetHandRetargeter:
         return unit_to_joint(u, self.lower, self.upper, self.u_margin)
 
     def encode_human(self, joint_angles: Mapping[str, float]) -> np.ndarray:
-        x = self.hkv.encode(self.fk.q_from_named(joint_angles))
-        if self.mirror_to is not None and self.mirror_to != self.hand_type:
-            x = x * MIRROR_Z
-        return x
+        q = self.fk.q_from_named(joint_angles)
+        flip = self.mirror_to is not None and self.mirror_to != self.hand_type
+        if self.input_mode == "frames":
+            x = self.hkv.encode_frames(q)
+            return mirror_frames(x) if flip else x
+        x = self.hkv.encode(q)
+        return x * MIRROR_Z if flip else x
 
     @property
     def dtype(self) -> torch.dtype:
