@@ -26,23 +26,9 @@ def chamfer_partial(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return ((a - b[ia]) ** 2).sum(-1).mean()
 
 
-def chamfer_reverse(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    _, ib = _nearest(a, b)
-    return ((a[ib] - b) ** 2).sum(-1).mean()
-
-
-CHAMFER_MODES = {"both": chamfer_both, "forward": chamfer_partial,
-                 "reverse": chamfer_reverse}
-
-
 def coverage_loss(y: torch.Tensor, bank: torch.Tensor,
-                  partial: bool = False, mode: Optional[str] = None
-                  ) -> torch.Tensor:
-    if mode is None:
-        mode = "forward" if partial else "both"
-    if mode not in CHAMFER_MODES:
-        raise ValueError("chamfer mode 는 %s: %r" % (list(CHAMFER_MODES), mode))
-    fn = CHAMFER_MODES[mode]
+                  partial: bool = False) -> torch.Tensor:
+    fn = chamfer_partial if partial else chamfer_both
     return sum(fn(y[:, i, TIP], bank[:, i, TIP]) for i in range(y.shape[1]))
 
 
@@ -51,23 +37,6 @@ def position_loss(x: torch.Tensor, y: torch.Tensor,
     if tip_only:
         return ((y[..., TIP] - x[..., TIP]) ** 2).sum(-1).mean()
     return ((y - x) ** 2).sum(-1).mean()
-
-
-def distance_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    n = x.shape[1]
-    out = torch.zeros((), dtype=x.dtype, device=x.device)
-    for i in range(n):
-        for j in range(i + 1, n):
-            dx = torch.norm(x[:, i, TIP] - x[:, j, TIP], dim=-1)
-            dy = torch.norm(y[:, i, TIP] - y[:, j, TIP], dim=-1)
-            out = out + ((dy - dx) ** 2).mean()
-    return out
-
-
-def smooth_loss(u: torch.Tensor, u_pert: torch.Tensor,
-                step: torch.Tensor) -> torch.Tensor:
-    gain = torch.norm(u_pert - u, dim=-1) / step.reshape(u.shape[0], -1).mean(-1)
-    return (gain ** 2).mean()
 
 
 def motion_loss_local(dx_a: torch.Tensor, dy_a: torch.Tensor,

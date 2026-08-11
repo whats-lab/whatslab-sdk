@@ -8,8 +8,6 @@ from .human_fk import (BONE_LINKS, FINGERS, HumanHandFK, link_candidates,
 
 KV_DIM = 6
 MIRROR_Z = np.array([1.0, 1.0, -1.0] * 2)
-REACH_SAMPLES = 25
-REACH_PASSES = 4
 
 
 def chain_weights(seg_lengths: Sequence[float], frac: float = 0.5) -> Tuple[int, float]:
@@ -90,41 +88,11 @@ class HandKeyvector:
         self.mid = {f: chain_weights(
             np.linalg.norm(np.diff(pts[f], axis=0), axis=1), frac) for f in FINGERS}
         self.origin = self._pos(self.dorsum).copy()
-        self.rot = palm_frame_from_fingers(pts)[1]
-        self.l_ref = max(self._reach(f) for f in FINGERS)
+        palm_o, self.rot = palm_frame_from_fingers(pts)
+        self.l_ref = float(np.linalg.norm(self.rot.T
+                                          @ (pts["middle"][-1] - palm_o)))
         if self.l_ref <= 1e-9:
-            raise ValueError("L_ref 가 0 이다 — dorsum 과 모든 손끝이 같은 위치다")
-
-    def _reach(self, finger: str) -> float:
-        lo = self.model.lowerPositionLimit
-        hi = self.model.upperPositionLimit
-        idx = [int(self.model.joints[j].idx_q)
-               for j in self.model.supports[
-                   self.model.frames[self.fids[finger][-1]].parent]
-               if j > 0 and self.model.joints[j].nq > 0]
-        q = pin.neutral(self.model)
-        for i in idx:
-            q[i] = 0.0 if lo[i] <= 0.0 <= hi[i] else (
-                lo[i] if abs(lo[i]) < abs(hi[i]) else hi[i])
-
-        def dist(qv):
-            return float(np.linalg.norm(
-                self.points(qv)[finger][-1] - self._pos(self.dorsum)))
-
-        best = dist(q)
-        for _ in range(REACH_PASSES):
-            improved = False
-            for i in idx:
-                a, b = max(float(lo[i]), -np.pi), min(float(hi[i]), np.pi)
-                for v in np.linspace(a, b, REACH_SAMPLES):
-                    qq = q.copy()
-                    qq[i] = v
-                    d = dist(qq)
-                    if d > best + 1e-12:
-                        best, q, improved = d, qq, True
-            if not improved:
-                break
-        return best
+            raise ValueError("L_ref 가 0 이다 — 팜 원점과 중지 끝이 같은 위치다")
 
     def _bid(self, name: str) -> int:
         if not self.model.existFrame(name):
