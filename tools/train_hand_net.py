@@ -27,6 +27,9 @@ COLLAPSE_DEG = 5.0
 SAT_U = 0.99
 VAL_FRAC = 0.1
 WEIGHT_DECAY = 0.01
+DROPOUT = 0.0
+HIDDEN = 128
+LAYERS = 2
 W_MOTION = 1.0
 W_COVERAGE = 5.0
 W_BONE = 20.0
@@ -215,12 +218,16 @@ def main():
     ap.add_argument("--u-margin", type=float, default=U_MARGIN)
     ap.add_argument("--val-frac", type=float, default=VAL_FRAC)
     ap.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
+    ap.add_argument("--dropout", type=float, default=DROPOUT)
+    ap.add_argument("--hidden", type=int, default=HIDDEN)
+    ap.add_argument("--layers", type=int, default=LAYERS)
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     dt = torch.float32
     dev = torch.device(args.device)
-    r = NetHandRetargeter(args.side, args.config)
+    r = NetHandRetargeter(args.side, args.config, dropout=args.dropout,
+                          hidden=args.hidden, layers=args.layers)
     r.u_margin = args.u_margin
     fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
     names_h, iq_h, lo_h, hi_h = q_axes(r)
@@ -278,9 +285,10 @@ def main():
     print("사람 %d (실측 %d + 합성 %d/%s)  로봇 bank %d  관절 %d  핀치임계 %.4f  %s"
           % (X.shape[0], n_real, args.random, args.random_mode, bank.shape[0],
              len(r.joint_names), pinch_thr, args.device), flush=True)
-    print("학습 %d / 검증 %d  weight_decay %.4g  u_margin %.2f"
-          % (X.shape[0], Xval.shape[0], args.weight_decay, args.u_margin),
-          flush=True)
+    print("학습 %d / 검증 %d  weight_decay %.4g  dropout %.2f  u_margin %.2f"
+          "  hidden %d x %d"
+          % (X.shape[0], Xval.shape[0], args.weight_decay, args.dropout,
+             args.u_margin, args.hidden, args.layers), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
@@ -385,11 +393,12 @@ def main():
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args),
                         "u_margin": args.u_margin, "side": args.side,
-                        "config": args.config}, ckpt + ".tmp")
+                        "config": args.config, "dropout": args.dropout},
+                       ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
             snap = {"net": net.state_dict(), "affine": True,
                     "u_margin": args.u_margin, "side": args.side,
-                    "config": args.config}
+                    "config": args.config, "dropout": args.dropout}
             torch.save(snap, os.path.join(args.out, "net.pt"))
             torch.save(snap, os.path.join(args.out, "ep%04d.pt" % (epoch + 1)))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
