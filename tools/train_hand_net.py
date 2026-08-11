@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench_hand_retarget as B  # noqa: E402
 
 PINCH_MM = 15.0
+ABD_TAG = "abd"
 MOTION_LO = 0.001
 MOTION_HI = 0.011
 FLAT_EPS = 0.002
@@ -55,11 +56,20 @@ def extension(r, iq, qv):
     return float(np.linalg.norm(r.hkv.encode(q)[:, :3], axis=1).mean())
 
 
+def flex_mask(names):
+    m = np.array([ABD_TAG not in n for n in names])
+    if not m.any() or m.all():
+        raise ValueError("굽힘/외전 관절을 이름으로 못 가른다 ('%s'): %s"
+                         % (ABD_TAG, names))
+    return m
+
+
 def flat_fist(r):
     names, iq, lo, hi = q_axes(r)
+    flex = flex_mask(names)
     flat = np.zeros(len(names))
-    fist = np.empty(len(names))
-    for j in range(len(names)):
+    fist = flat.copy()
+    for j in np.flatnonzero(flex):
         a, b = flat.copy(), flat.copy()
         a[j], b[j] = lo[j], hi[j]
         fist[j] = lo[j] if extension(r, iq, a) <= extension(r, iq, b) else hi[j]
@@ -76,7 +86,8 @@ def joint_blocks(r):
     return out
 
 
-def q_synergy(flat, fist, blocks, n, seed=0, shared=True, jitter=0.25):
+def q_synergy(flat, fist, blocks, lo, hi, flex, n, seed=0, shared=True,
+              jitter=0.25):
     rng = np.random.default_rng(seed)
     out = np.empty((n, flat.size))
     g = rng.uniform(0.0, 1.0, (n, 1)) if shared else None
@@ -85,6 +96,9 @@ def q_synergy(flat, fist, blocks, n, seed=0, shared=True, jitter=0.25):
         f = np.clip(s + rng.uniform(-jitter, jitter, (n, 1)), 0.0, 1.0)
         f = np.clip(f + rng.uniform(-0.05, 0.05, (n, len(b))), 0.0, 1.0)
         out[:, b] = flat[b] + f * (fist[b] - flat[b])
+    abd = np.flatnonzero(~flex)
+    a = rng.uniform(0.0, 1.0, (n, 1))
+    out[:, abd] = a * rng.uniform(lo[abd], hi[abd], (n, abd.size))
     return out
 
 
@@ -103,6 +117,7 @@ def q_uniform(lo, hi, n, seed=0):
 
 def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0):
     iq = np.asarray([r.fk._idx_q[n] for n in r.fk.joint_names])
+    flex = flex_mask(list(r.fk.joint_names))
     rows = list(real_q)
     n_real = len(rows)
     if n_random > 0:
@@ -111,11 +126,14 @@ def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0)
         elif mode == "combo":
             rows.extend(q_combo(real_q, blocks, n_random, seed))
         elif mode == "synergy":
-            rows.extend(q_synergy(flat, fist, blocks, n_random, seed))
+            rows.extend(q_synergy(flat, fist, blocks, lo, hi, flex,
+                                  n_random, seed))
         else:
             k = n_random // 3
-            rows.extend(q_synergy(flat, fist, blocks, n_random - 2 * k, seed))
-            rows.extend(q_synergy(flat, fist, blocks, k, seed + 1, shared=False))
+            rows.extend(q_synergy(flat, fist, blocks, lo, hi, flex,
+                                  n_random - 2 * k, seed))
+            rows.extend(q_synergy(flat, fist, blocks, lo, hi, flex, k, seed + 1,
+                                  shared=False))
             rows.extend(q_combo(real_q, blocks, k, seed + 2))
     q = pin.neutral(r.fk.model)
     out = np.empty((len(rows), len(FINGERS), 6))
