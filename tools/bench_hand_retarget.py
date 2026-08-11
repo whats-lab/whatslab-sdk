@@ -324,6 +324,7 @@ def main():
     ap.add_argument("--backends", nargs="+", default=["kp", "dex"],
                     choices=["kp", "dex", "net"])
     ap.add_argument("--net-checkpoint", default=None)
+    ap.add_argument("--net-input", default="kv", choices=["kv", "frames"])
     ap.add_argument("--steps", type=int, default=20)
     ap.add_argument("--traj", nargs="+", default=["pinch"],
                     choices=["pinch", "flex", "abd"],
@@ -344,7 +345,9 @@ def main():
             elif be == "net":
                 if args.net_checkpoint is None:
                     ap.error("--backends net 은 --net-checkpoint 가 필요하다")
-                eng = NetHandRetargeter(side, cfg, checkpoint=args.net_checkpoint)
+                eng = NetHandRetargeter(side, cfg,
+                                        checkpoint=args.net_checkpoint,
+                                        input_mode=args.net_input)
                 r = measure(eng, *net_probe(eng), side, trajs)
             else:
                 eng, t, b, fr = dex_probe(cfg, side)
