@@ -4,7 +4,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from whatslab.solvers.hand.net_losses import (AffineHandNet, ResidualAffine,
-                                             align_loss, chamfer_both,
+                                             chamfer_both,
                                              chamfer_partial, distance_loss,
                                              motion_loss_global, motion_loss_local,
                                              pinch_loss, soft_pinch_loss)
@@ -66,14 +66,6 @@ def test_local_motion_loss_is_rotation_invariant():
     rb = b @ q.T
     assert float(motion_loss_local(a, ra, b, rb)) == pytest.approx(0.0, abs=1e-18)
     assert float(motion_loss_global(a, ra)) > -0.99
-
-
-def test_align_loss_is_zero_on_exact_match_and_grows_with_error():
-    y = torch.randn(3, 5, 6, dtype=torch.float64)
-    assert float(align_loss(y, y.clone())) == pytest.approx(0.0, abs=1e-18)
-    off = y.clone()
-    off[:, :, 0] += 0.1
-    assert float(align_loss(y, off)) == pytest.approx(0.01, abs=1e-9)
 
 
 def test_pinch_loss_only_fires_on_close_human_pairs():

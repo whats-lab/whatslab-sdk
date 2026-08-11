@@ -4,7 +4,7 @@ from .hand_configs import CONFIG_REGISTRY
 from .keyvector import (HandKeyvector, chain_weights, finger_columns, human_chains,
                         sensor_chains)
 from .kp_retargeter import KPHandRetargeter
-from .net_losses import (AffineHandNet, ResidualAffine, align_loss, bone_loss,
+from .net_losses import (AffineHandNet, ResidualAffine, bone_loss,
                          chamfer_both,
                          chamfer_partial, coverage_loss, distance_loss,
                          flatness_loss, motion_loss_global, motion_loss_local,
@@ -16,6 +16,6 @@ __all__ = ["HandRetargeter", "KPHandRetargeter", "NetHandRetargeter", "HandNet",
            "HandRetargetController", "CONFIG_REGISTRY", "HandKeyvector",
            "KeyvectorFK", "keyvector_fk", "chain_weights", "finger_columns",
            "human_chains", "sensor_chains", "AffineHandNet", "ResidualAffine",
-           "align_loss", "bone_loss", "chamfer_both", "chamfer_partial", "coverage_loss",
+           "bone_loss", "chamfer_both", "chamfer_partial", "coverage_loss",
            "distance_loss", "flatness_loss", "motion_loss_global",
            "motion_loss_local", "pinch_loss", "soft_pinch_loss"]
