@@ -39,19 +39,62 @@ def robot_bank(r, n, seed=0):
     return out
 
 
-def human_samples(r, trajs, n_random, seed=0):
-    rows = [r.hkv.encode(r.fk.q_from_named(a))
-            for traj in trajs.values() for a in traj]
-    n_real = len(rows)
+def uniform_thetas(r, n, seed=0):
     rng = np.random.default_rng(seed)
     lo = r.fk.model.lowerPositionLimit
     hi = r.fk.model.upperPositionLimit
-    idx = [r.fk._idx_q[n] for n in r.fk.joint_names]
+    idx = [r.fk._idx_q[n_] for n_ in r.fk.joint_names]
     q = pin.neutral(r.fk.model)
-    for _ in range(n_random):
+    out = []
+    for _ in range(n):
         for i in idx:
             q[i] = rng.uniform(lo[i], hi[i])
-        rows.append(r.hkv.encode(q))
+        out.append(r.hkv.encode(q))
+    return np.asarray(out)
+
+
+def combo_thetas(real, blocks, n, seed=0):
+    rng = np.random.default_rng(seed)
+    out = np.empty((n, real.shape[1]))
+    for b in blocks.values():
+        pick = rng.integers(0, real.shape[0], n)
+        out[:, b] = real[pick][:, b]
+    return out
+
+
+def synergy_thetas(real, blocks, n, seed=0, jitter=0.25, shared=True):
+    rng = np.random.default_rng(seed)
+    lo = real.min(axis=0)
+    hi = real.max(axis=0)
+    out = np.empty((n, real.shape[1]))
+    g = rng.uniform(0.0, 1.0, (n, 1)) if shared else None
+    for b in blocks.values():
+        s = g if shared else rng.uniform(0.0, 1.0, (n, 1))
+        f = np.clip(s + rng.uniform(-jitter, jitter, (n, 1)), 0.0, 1.0)
+        f = np.clip(f + rng.uniform(-0.05, 0.05, (n, len(b))), 0.0, 1.0)
+        out[:, b] = lo[b] + f * (hi[b] - lo[b])
+    return out
+
+
+def human_samples(r, real, blocks, expand, n_random, mode, seed=0):
+    rows = [r.hkv.encode(r.fk.q_from_named(expand(th))) for th in real]
+    n_real = len(rows)
+    if n_random > 0:
+        if mode == "uniform":
+            rows.extend(uniform_thetas(r, n_random, seed))
+        else:
+            if mode == "combo":
+                th_all = combo_thetas(real, blocks, n_random, seed)
+            elif mode == "synergy":
+                th_all = synergy_thetas(real, blocks, n_random, seed)
+            else:
+                third = n_random // 3
+                th_all = np.concatenate([
+                    synergy_thetas(real, blocks, n_random - 2 * third, seed),
+                    synergy_thetas(real, blocks, third, seed + 1, shared=False),
+                    combo_thetas(real, blocks, third, seed + 2)])
+            for th in th_all:
+                rows.append(r.hkv.encode(r.fk.q_from_named(expand(th))))
     return np.asarray(rows), n_real
 
 
@@ -96,6 +139,12 @@ def main():
     ap.add_argument("--bank", type=int, default=20000)
     ap.add_argument("--bank-batch", type=int, default=2048)
     ap.add_argument("--random", type=int, default=6000)
+    ap.add_argument("--random-mode", default="mix",
+                    choices=["synergy", "combo", "uniform", "mix"],
+                    help="synergy=손가락별 굽힘정도 균등 / combo=실측 블록 조합"
+                         " / uniform=관절 독립균등 / mix=synergy+combo 반반")
+    ap.add_argument("--real-repeat", type=int, default=1,
+                    help="실측 프레임 반복 횟수 (실분포 비중 조절)")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--phase", type=int, default=1, choices=[1, 2])
@@ -131,21 +180,25 @@ def main():
     if side != args.side:
         ap.error("덤프 side=%s 와 --side %s 가 다르다" % (side, args.side))
     expand, anchor_lo, anchor_hi = B.theta_expander(args.dump, args.profiles)
+    theta_names, real_th = B.real_thetas(args.dump, args.profiles, 20)
+    blocks = B.theta_blocks(theta_names)
+    real_th = np.repeat(real_th, args.real_repeat, axis=0)
 
     if args.phase == 2:
         args.partial_chamfer = True
         args.local_motion = True
 
-    X, n_real = human_samples(r, trajs, args.random, args.seed)
+    X, n_real = human_samples(r, real_th, blocks, expand, args.random,
+                              args.random_mode, args.seed)
     X = torch.as_tensor(X, dtype=dt, device=dev)
     bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
     hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
     pinch_thr = PINCH_MM * 1e-3 / r.hkv.l_ref
-    print("사람 %d (실측 %d + 합성 %d)  로봇 bank %d  관절 %d  핀치임계 %.4f"
-          "  FK %s/%s/%s" % (X.shape[0], n_real, args.random, bank.shape[0],
-                             len(r.joint_names), pinch_thr, args.fk, args.device,
-                             "f64" if args.fp64 else "f32"), flush=True)
+    print("사람 %d (실측 %d + 합성 %d/%s)  로봇 bank %d  관절 %d  핀치임계 %.4f"
+          "  FK %s/%s/%s" % (X.shape[0], n_real, args.random, args.random_mode,
+                             bank.shape[0], len(r.joint_names), pinch_thr, args.fk,
+                             args.device, "f64" if args.fp64 else "f32"), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
