@@ -126,6 +126,14 @@ Phase 2: 단방향 Chamfer + 거리보존 + 로컬모션 + few-shot 앵커 + res
 평가는 `tools/bench_hand_retarget.py --backends net --net-checkpoint …`.
 좌우 통합 모델의 수용 기준은 `tools/check_mirror.py`.
 
+**ONNX 내보내기** — `tools/export_hand_net_onnx.py --config … --side … --checkpoint …
+--out x.onnx`. `q_human (batch, n) → q_robot (batch, m)` 그래프 하나로, **FK 까지
+그래프 안에 들어가므로 추론에 torch·pinocchio 가 필요 없다.** 소비자는 `numpy` +
+`onnxruntime` 만 있으면 된다(6735MB → 98MB). 사슬이 1-DoF 회전관절뿐이라 Rodrigues 로
+전개되고 `joint_roms` 선형 매핑도 상수로 박힌다. 정본(pinocchio+torch) 경로와 최대
+오차 2e-6 rad. 단일 프레임 0.20ms(정본 0.51ms), 배치 256 에서 프레임당 0.0045ms.
+`--mirror` 는 좌우 통합 모델을 반대 side 에 쓸 때 z 성분을 반전한다.
+
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
 | 심볼 | 설명 |

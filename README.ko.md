@@ -108,6 +108,7 @@ python tools/bench_arm_ik.py --traj fk                                   # 팔 I
 python tools/bench_hand_retarget.py --dump … --profiles … --traj flex    # 손 리타게팅: 형상/GMC/LMC
 python tools/train_hand_net.py --config orca_hand --side left …          # net 백엔드 학습
 python tools/check_mirror.py                                             # 좌우 미러 게이트
+python tools/export_hand_net_onnx.py --checkpoint … --out hand.onnx      # ONNX: 추론에 torch·pinocchio 불필요
 ```
 
 `bench_hand_retarget.py` 는 손 리타게팅을 손볼 때의 고정 기준선이다. `pinch` 만 보지 말고

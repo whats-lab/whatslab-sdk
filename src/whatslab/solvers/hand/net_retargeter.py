@@ -92,7 +92,10 @@ class NetHandRetargeter:
 
     def load(self, checkpoint: str) -> None:
         sd = torch.load(checkpoint, map_location="cpu")
-        self.net.load_state_dict(sd["net"] if "net" in sd else sd)
+        inner = sd["net"] if "net" in sd else sd
+        want = next(iter(inner.values())).dtype
+        self.net = self.net.to(dtype=want)
+        self.net.load_state_dict(inner)
         self.net.eval()
 
     def state_dict(self):
@@ -111,10 +114,14 @@ class NetHandRetargeter:
             x = x * MIRROR_Z
         return x
 
+    @property
+    def dtype(self) -> torch.dtype:
+        return next(self.net.parameters()).dtype
+
     def compute(self, joint_angles: Mapping[str, float]) -> np.ndarray:
         x = self.encode_human(joint_angles)
         with torch.no_grad():
-            unit = self.net(torch.as_tensor(x, dtype=torch.float64).unsqueeze(0))
+            unit = self.net(torch.as_tensor(x, dtype=self.dtype).unsqueeze(0))
         q_act = self.to_joint(unit.numpy()[0])
         self._q = pin.neutral(self.model)
         self._q[self._iq] = q_act
