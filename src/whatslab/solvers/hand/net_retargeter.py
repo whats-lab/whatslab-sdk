@@ -1,0 +1,113 @@
+import os
+from typing import List, Mapping, Optional, Sequence
+
+import numpy as np
+import pinocchio as pin
+import torch
+import torch.nn as nn
+
+from .hand_configs import CONFIG_REGISTRY
+from .human_fk import FINGERS, HumanHandFK
+from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
+                        human_chains, sensor_chains)
+
+LIMIT_FALLBACK = 2.0
+DORSUM_FRAME = "{side}_sensor_dorsum"
+
+
+class HandNet(nn.Module):
+
+    def __init__(self, in_dim: int, joint_counts: Sequence[int], hidden: int = 128):
+        super().__init__()
+        self.in_dim = int(in_dim)
+        self.joint_counts = [int(n) for n in joint_counts]
+        self.nets = nn.ModuleList([
+            nn.Sequential(nn.Linear(self.in_dim, hidden), nn.LeakyReLU(),
+                          nn.Linear(hidden, hidden), nn.LeakyReLU(),
+                          nn.Linear(hidden, n), nn.Tanh())
+            for n in self.joint_counts])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.cat([net(x[:, i]) for i, net in enumerate(self.nets)], dim=1)
+
+
+class NetHandRetargeter:
+
+    def __init__(self, hand_type: str, config_name: str = "base_hand",
+                 checkpoint: Optional[str] = None, urdf_root: Optional[str] = None,
+                 hidden: int = 128, mirror_to: Optional[str] = None):
+        if config_name not in CONFIG_REGISTRY:
+            raise ValueError("알 수 없는 config '%s'. 가능: %s"
+                             % (config_name, list(CONFIG_REGISTRY)))
+        config = CONFIG_REGISTRY[config_name](urdf_root=urdf_root)
+        self.hand_type = hand_type.lower()
+        self.config_name = config_name
+        self.mirror_to = None if mirror_to is None else mirror_to.lower()
+
+        root = getattr(config, "_models_root", None)
+        fk_urdf = (os.path.join(root, "base_hand", "urdf", "%s.urdf" % self.hand_type)
+                   if root else None)
+        self.fk = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
+        self.human_joint_names: List[str] = list(self.fk.joint_names)
+        self.hkv = HandKeyvector(self.fk.model, self.fk.data, human_chains(self.fk),
+                                 DORSUM_FRAME.format(side=self.hand_type))
+
+        self.urdf_path = config._get_urdf_path(self.hand_type)
+        self.model = pin.buildModelFromUrdf(self.urdf_path)
+        self.data = self.model.createData()
+        chains = sensor_chains(self.model, self.hand_type)
+        self.kv = HandKeyvector(self.model, self.data, chains,
+                               DORSUM_FRAME.format(side=self.hand_type))
+
+        self._cols = finger_columns(self.model, {f: self.kv.fids[f][-1]
+                                                for f in FINGERS})
+        order = [c for f in FINGERS for c in self._cols[f]]
+        by_v = {int(self.model.joints[j].idx_v): j for j in range(1, self.model.njoints)
+                if self.model.joints[j].nq > 0}
+        self._iv = [int(c) for c in order]
+        self._iq = [int(self.model.joints[by_v[c]].idx_q) for c in order]
+        self.joint_names = [self.model.names[by_v[c]] for c in order]
+
+        lo = np.where(np.isfinite(self.model.lowerPositionLimit),
+                      self.model.lowerPositionLimit, -LIMIT_FALLBACK)
+        hi = np.where(np.isfinite(self.model.upperPositionLimit),
+                      self.model.upperPositionLimit, LIMIT_FALLBACK)
+        self.lower = lo[self._iq].copy()
+        self.upper = hi[self._iq].copy()
+
+        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in FINGERS],
+                           hidden=hidden).double()
+        self.net.eval()
+        if checkpoint is not None:
+            self.load(checkpoint)
+        self._q = pin.neutral(self.model)
+
+    def load(self, checkpoint: str) -> None:
+        sd = torch.load(checkpoint, map_location="cpu")
+        self.net.load_state_dict(sd["net"] if "net" in sd else sd)
+        self.net.eval()
+
+    def state_dict(self):
+        return self.net.state_dict()
+
+    def reset(self) -> None:
+        self._q = pin.neutral(self.model)
+
+    def to_joint(self, unit) -> np.ndarray:
+        u = np.asarray(unit, dtype=float)
+        return self.lower + (u + 1.0) * 0.5 * (self.upper - self.lower)
+
+    def encode_human(self, joint_angles: Mapping[str, float]) -> np.ndarray:
+        x = self.hkv.encode(self.fk.q_from_named(joint_angles))
+        if self.mirror_to is not None and self.mirror_to != self.hand_type:
+            x = x * MIRROR_Z
+        return x
+
+    def compute(self, joint_angles: Mapping[str, float]) -> np.ndarray:
+        x = self.encode_human(joint_angles)
+        with torch.no_grad():
+            unit = self.net(torch.as_tensor(x, dtype=torch.float64).unsqueeze(0))
+        q_act = self.to_joint(unit.numpy()[0])
+        self._q = pin.neutral(self.model)
+        self._q[self._iq] = q_act
+        return q_act
