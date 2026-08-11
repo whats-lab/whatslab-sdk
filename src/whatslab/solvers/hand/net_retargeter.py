@@ -123,7 +123,7 @@ class NetHandRetargeter:
         self.lower = lo[self._iq].copy()
         self.upper = hi[self._iq].copy()
 
-        self.net = HandNet(INPUTS[input_mode],
+        self.net = HandNet(INPUTS[self.input_mode],
                            [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden, dropout=dropout, layers=layers,
                            act=act, norm=norm).double()
@@ -194,7 +194,7 @@ class NetHandRetargeter:
         if (h == cur._hidden and nl == cur.layers and act == cur.act
                 and norm == cur.norm):
             return
-        self.net = HandNet(INPUTS[input_mode],
+        self.net = HandNet(INPUTS[self.input_mode],
                            [len(self._cols[f]) for f in self.fingers],
                            hidden=h, dropout=cur.dropout, layers=nl,
                            act=act, norm=norm).double()

@@ -84,3 +84,22 @@ def test_coverage_penalises_collapse():
     spread = torch.randn(32, 5, 6, dtype=torch.float64)
     collapsed = bank[0].unsqueeze(0).repeat(32, 1, 1)
     assert float(coverage_loss(collapsed, bank)) > float(coverage_loss(spread, bank))
+
+
+def test_non_default_arch_checkpoint_round_trips():
+    pytest.importorskip("pinocchio")
+    from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
+    import tempfile
+    import os
+    for kw in ({"act": "gelu"}, {"hidden": 64}, {"layers": 3},
+               {"norm": "layer"}, {"input_mode": "frames"}):
+        src = NetHandRetargeter("left", "orca_hand", **kw)
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "n.pt")
+            torch.save({"net": src.net.state_dict(), "dropout": 0.0,
+                        "act": kw.get("act", "leaky"),
+                        "norm": kw.get("norm", "none"),
+                        "input_mode": kw.get("input_mode", "kv")}, p)
+            got = NetHandRetargeter("left", "orca_hand", checkpoint=p, **kw)
+        a = {n: 0.2 for n in src.human_joint_names}
+        assert np.allclose(src.compute(a), got.compute(a))
