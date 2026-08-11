@@ -154,8 +154,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="robotis_hx5_d20")
     ap.add_argument("--side", default="left")
-    ap.add_argument("--dump", required=True)
-    ap.add_argument("--profiles", required=True)
+    ap.add_argument("--dump", default=None,
+                    help="캘리 덤프. 실측 q 원본이 없을 때만 필요하다 — --real-npz 가"
+                         " 있거나 --random-mode synergy 면 생략한다")
+    ap.add_argument("--profiles", default=None)
     ap.add_argument("--out", required=True)
     ap.add_argument("--epochs", type=int, default=200)
     ap.add_argument("--batch", type=int, default=256)
@@ -210,10 +212,6 @@ def main():
         if args.device != "cpu" or not args.fp64:
             ap.error("--fk pinocchio 는 --device cpu --fp64 만 된다")
         fk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
-    side, trajs = B.load_poses(args.dump, args.profiles, 20,
-                               ("pinch", "flex", "abd"))
-    if side != args.side:
-        ap.error("덤프 side=%s 와 --side %s 가 다르다" % (side, args.side))
     names_h, iq_h, lo_h, hi_h = q_axes(r)
     blocks = joint_blocks(r)
     q_flat, q_fist = flat_fist(r)
@@ -226,9 +224,23 @@ def main():
                              % (rec["side"], args.side))
         real_q = np.asarray(rec["q"], dtype=float)
         print("실측 q %d 프레임 (%s)" % (real_q.shape[0], args.real_npz), flush=True)
-    else:
+    elif args.dump:
+        if not args.profiles:
+            ap.error("--dump 를 주면 --profiles 도 필요하다")
+        side, trajs = B.load_poses(args.dump, args.profiles, 20,
+                                   ("pinch", "flex", "abd"))
+        if side != args.side:
+            ap.error("덤프 side=%s 와 --side %s 가 다르다" % (side, args.side))
         real_q = np.asarray([[r.fk.q_from_named(a)[i] for i in iq_h]
                              for traj in trajs.values() for a in traj])
+    else:
+        if args.random_mode in ("combo", "mix"):
+            ap.error("--random-mode %s 는 실측 q 를 손가락별로 조합하므로 실측이 필요하다"
+                     " — --real-npz 나 --dump 를 주거나 --random-mode synergy 를 쓴다"
+                     % args.random_mode)
+        real_q = np.zeros((0, len(names_h)))
+        print("실측 q 없음 — 순수 비지도(합성 %d, %s)"
+              % (args.random, args.random_mode), flush=True)
     real_q = np.repeat(real_q, args.real_repeat, axis=0)
     print("q 공간: 관절 %d, 블록 %s, 펼침지표 flat %.4f / fist %.4f"
           % (len(names_h), {k: len(v) for k, v in blocks.items()},
