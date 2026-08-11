@@ -58,8 +58,17 @@ def motion_loss_local(dx_a: torch.Tensor, dy_a: torch.Tensor,
     return ((cos(dx_a, dx_b) - cos(dy_a, dy_b)) ** 2).mean()
 
 
-def align_loss(y: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    return ((y[..., TIP] - target[..., TIP]) ** 2).sum(-1).mean()
+def align_loss(y: torch.Tensor, target: torch.Tensor,
+               tip_only: bool = False) -> torch.Tensor:
+    if tip_only:
+        return ((y[..., TIP] - target[..., TIP]) ** 2).sum(-1).mean()
+    return ((y - target) ** 2).sum(-1).mean()
+
+
+def bone_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    hx = F.normalize(x[..., TIP] - x[..., 3:], dim=-1, eps=1e-9)
+    hy = F.normalize(y[..., TIP] - y[..., 3:], dim=-1, eps=1e-9)
+    return (1.0 - (hx * hy).sum(-1)).mean()
 
 
 def flatness_loss(y_plus: torch.Tensor, y_minus: torch.Tensor,

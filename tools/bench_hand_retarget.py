@@ -161,7 +161,7 @@ class Fair:
         hp = self.fk.points(angles)
         o, R = palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"])
         s = r_len / float(np.linalg.norm(R.T @ (hp["middle"][-1] - o)))
-        ang = []
+        ang, distal = [], []
         for f in FINGERS:
             b = bones[f][-len(hp[f]):]
             for k in range(len(b) - 1):
@@ -169,7 +169,10 @@ class Fair:
                 v = r_R.T @ (b[k + 1] - b[k])
                 nu, nv = np.linalg.norm(u), np.linalg.norm(v)
                 if nu > 1e-9 and nv > 1e-9:
-                    ang.append(np.degrees(np.arccos(np.clip(u @ v / (nu * nv), -1, 1))))
+                    a = np.degrees(np.arccos(np.clip(u @ v / (nu * nv), -1, 1)))
+                    ang.append(a)
+                    if k == len(b) - 2:
+                        distal.append(a)
         contact = {}
         for f in FINGERS:
             if f == "thumb":
@@ -179,13 +182,14 @@ class Fair:
         spread = [(float(np.linalg.norm(tips[a] - tips[b]))
                    - float(np.linalg.norm(hp[a][-1] - hp[b][-1])) * s) * 1e3
                   for a, b in SPREAD_PAIRS]
-        return float(np.mean(ang)), contact, float(np.mean(np.abs(spread)))
+        return (float(np.mean(ang)), contact, float(np.mean(np.abs(spread))),
+                float(np.mean(distal)) if distal else float("nan"))
 
 
 def measure(engine, tips_of, bones_of, frame_of, side, trajs):
     fair = Fair(side)
     r_o, r_R, r_len = frame_of()
-    acc = {k: [] for k in ("shape", "spread", "dq", "ms", "pinch", "open",
+    acc = {k: [] for k in ("shape", "distal", "spread", "dq", "ms", "pinch", "open",
                            "gmc", "lmc")}
     for f, traj in trajs.items():
         engine.reset()
@@ -199,8 +203,9 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
             prev = q
             tips = tips_of()
             bones = bones_of()
-            sh, con, spr = fair.score(ang, tips, bones, r_R, r_len)
+            sh, con, spr, dis = fair.score(ang, tips, bones, r_R, r_len)
             acc["shape"].append(sh)
+            acc["distal"].append(dis)
             acc["spread"].append(spr)
             h_chain = fair.chain_local(ang)
             r_chain = {g: np.array([r_R.T @ (p - r_o) for p in bones[g]])
@@ -221,7 +226,8 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
     gmc = np.asarray(acc["gmc"])
     lmc = np.asarray(acc["lmc"])
     pinch = np.mean(acc["pinch"]) if acc["pinch"] else float("nan")
-    return (np.mean(acc["shape"]), np.mean(acc["spread"]), pinch,
+    return (np.mean(acc["shape"]), np.mean(acc["distal"]),
+            np.mean(acc["spread"]), pinch,
             np.mean(acc["open"]), 100.0 * gmc.mean(), 100.0 * lmc.mean(),
             100.0 * (lmc.mean() - gmc.mean()),
             np.percentile(acc["dq"], 95), np.mean(acc["ms"]))
@@ -319,9 +325,9 @@ def main():
     side, trajs = load_poses(args.dump, args.profiles, args.steps, tuple(args.traj))
     print("side=%s  궤적 %s (%d개) x %d프레임" % (
         side, ",".join(args.traj), len(trajs), args.steps))
-    print("%-26s %8s %8s %10s %10s %7s %7s %7s %8s %7s" % (
-        "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "GMC", "LMC", "격차",
-        "|dq|p95", "ms"))
+    print("%-26s %7s %7s %7s %9s %9s %6s %6s %6s %7s %6s" % (
+        "설정", "형상°", "말단°", "벌림mm", "핀치접촉", "펴짐접촉", "GMC", "LMC",
+        "격차", "|dq|p95", "ms"))
     for cfg in args.configs:
         for be in args.backends:
             if be == "kp":
@@ -335,8 +341,8 @@ def main():
             else:
                 eng, t, b, fr = dex_probe(cfg, side)
                 r = measure(eng, t, b, fr, side, trajs)
-            print("%-26s %8.1f %8.1f %10.1f %10.1f %7.1f %7.1f %+7.1f %8.3f %7.2f"
-                  % ("%s %s" % (cfg, be), *r))
+            print("%-26s %7.1f %7.1f %7.1f %9.1f %9.1f %6.1f %6.1f %+6.1f %7.3f"
+                  " %6.2f" % ("%s %s" % (cfg, be), *r))
 
 
 if __name__ == "__main__":
