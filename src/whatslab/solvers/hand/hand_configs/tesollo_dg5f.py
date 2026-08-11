@@ -6,6 +6,7 @@ from ._base import HandConfig
 class TesolloDG5FConfig(HandConfig):
 
     _MODEL_SUBDIR = "tesollo_dg5f"
+    _URDF_FILENAME = "dg5f_{hand_type}.urdf"
 
     _HUMAN_CHAIN: ClassVar[Dict[str, List[str]]] = {
         "thumb": ["wrist", "thumb_cmc0", "thumb_cmc1", "thumb_mcp", "thumb_ip", "thumb_tip"],

@@ -78,7 +78,7 @@ class TorchKeyvectorFK(nn.Module):
         fr_rot, fr_trans, fr_parent = [], [], []
         for f in self.fingers:
             ids = []
-            for fid in kv.fids[f]:
+            for fid in list(kv.fids[f]) + [kv.prox_fids[f]]:
                 ids.append(len(fr_parent))
                 fr_parent.append(int(model.frames[fid].parent))
                 fr_rot.append(model.frames[fid].placement.rotation)
@@ -95,7 +95,6 @@ class TorchKeyvectorFK(nn.Module):
         self.register_buffer("origin", torch.as_tensor(kv.origin, dtype=dtype))
         self.register_buffer("rot_t", torch.as_tensor(kv.rot.T.copy(), dtype=dtype))
         self.l_ref = float(kv.l_ref)
-        self.mid = dict(kv.mid)
         self.dtype = dtype
 
     def forward(self, q_act: torch.Tensor) -> torch.Tensor:
@@ -127,9 +126,8 @@ class TorchKeyvectorFK(nn.Module):
                 pj = self.f_parent[k]
                 off = self.f_trans[k].to(q_act.dtype).view(1, 3, 1)
                 pts.append(pos[pj] + (rot[pj] @ off).squeeze(-1))
-            tip = pts[-1]
-            i, t = self.mid[f]
-            prox = pts[i] * (1.0 - t) + pts[i + 1] * t
+            prox = pts[-1]
+            tip = pts[-2]
             out.append(torch.stack([self._local(tip), self._local(prox)], dim=1))
         return torch.cat(out, dim=1).view(-1, len(self.fingers), KV_DIM)
 
