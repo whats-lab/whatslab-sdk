@@ -9,14 +9,21 @@ from .keyvector import KV_DIM
 TIP = slice(0, 3)
 
 
+def _nearest(a: torch.Tensor, b: torch.Tensor):
+    with torch.no_grad():
+        d = torch.cdist(a.detach(), b.detach())
+        return d.argmin(1), d.argmin(0)
+
+
 def chamfer_both(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    d = ((a.unsqueeze(1) - b.unsqueeze(0)) ** 2).sum(-1)
-    return d.min(1).values.mean() + d.min(0).values.mean()
+    ia, ib = _nearest(a, b)
+    return (((a - b[ia]) ** 2).sum(-1).mean()
+            + ((a[ib] - b) ** 2).sum(-1).mean())
 
 
 def chamfer_partial(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    d = ((a.unsqueeze(1) - b.unsqueeze(0)) ** 2).sum(-1)
-    return d.min(1).values.mean()
+    ia, _ = _nearest(a, b)
+    return ((a - b[ia]) ** 2).sum(-1).mean()
 
 
 def coverage_loss(y: torch.Tensor, bank: torch.Tensor,
