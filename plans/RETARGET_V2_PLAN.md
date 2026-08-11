@@ -227,11 +227,60 @@ Phase 1 이 가장 크게 실패한 곳이 벌림축(GMC −37.9)이고 논문 �
 
 **판정**: LMC 우선, GMC 병기, `|dq|p95`. 기준선은 §0.
 
-## 6. Phase 3 — 셀슈바 백본 + 다중 임베디먼트
+## 6. Phase 3 — 셀슈바 백본 + 다중 임베디먼트  **(Phase 1·2 완료 후)**
 
-`ref/planing.md` IV Phase 3 그대로. **필수 실험은 앵커 개수(5/10/20/50) 대비 LMC 곡선을
-백본 유/무로 비교**하는 것 하나다 — 이게 없으면 "백본 없이 손마다 5~10분 학습하면
-되는데 왜?"에 답할 수 없다.
+`ref/planing.md` IV Phase 3 를 기준으로 하되, 목적함수는 아래로 확정한다.
+
+```
+L_backbone = λ1·L_smooth + λ2·L_contrastive(clean/noisy) + λ3·L_feasibility(joint_roms)
+```
+
+| 항 | 식 | 무엇을 위한 것인가 |
+|---|---|---|
+| `L_smooth` | `E_x[ ‖f_θ(x+δ) − f_θ(x)‖² / ‖δ‖² ]`, 작은 δ (Lipschitz 근사) | **few-shot 정당화.** 앵커 하나가 주변 이웃까지 대신 끌어주게 latent 를 부드럽게 정렬한다 |
+| `L_contrastive` | `InfoNCE(z_clean, z_noisy_same_pose)` vs negative(다른 pose) | **VLA 정당화.** 노이즈 성분이 latent 에 새지 않게 — latent 는 순수 기구학적 자세만 담는다 |
+| `L_feasibility` | 아래 참조 | 도달 불가 영역으로의 매핑 억제 |
+
+**빠지는 것**: masked reconstruction, 뼈길이 불변항. 두 정당화 어느 쪽도 직접 요구하지
+않는다. **남는 것**: temporal smoothness (VLA 도 시퀀스 예측이라 공통 요구).
+
+**두 정당화는 서로 긴장 관계다.** 글러브 센서 노이즈(드롭아웃·EM 간섭)에 강하게 적응시키면,
+VLA 가 나중에 내는 (노이즈 없는) 키포인트 예측과 latent 사이에 분포 괴리가 생긴다.
+즉 강건성을 위한 노이즈 aug 가 VLA 연결 시 독이 될 수 있다. `L_contrastive` 는 이걸
+"노이즈 강건성은 유지하되 latent 표현은 노이즈 무관"으로 분리하는 장치다.
+
+**중복 위험 3건 — 가중치를 낮게 시작한다.**
+1. `L_metric`(latent 위의 pairwise 거리보존)은 Phase 2 의 `L_dist`(keyvector 위)와 겹친다.
+   keyvector 가 이미 6D 상대구조라 latent 에 또 얹는 건 중복 정규화일 수 있다 → **기본 제외**,
+   ablation (d) 에서만 켠다.
+2. `L_smooth` 는 **GeoRT flatness 와 겹친다.** flatness 는 `(f(x+δ)+f(x−δ)−2f(x))²` 로
+   2차차분이고 둘 다 이미 구현돼 있다. 차이는 출력단(정확 FK 통과) vs latent 단이다.
+   출력단 항이 이미 있는 상태에서 추가 이득이 있는지부터 잰다.
+3. Phase 1 실측에서 **flatness 가 1e-10 수준**으로 사실상 0 이었다 — 이 계열 항이
+   현재 스케일에서 학습에 기여하지 않는다는 신호다. `L_smooth` 도 같은 함정에 빠질 수 있으니
+   δ 크기와 가중치를 먼저 검증한다.
+
+**`L_feasibility` 는 재해석이 필요하다.** 출력이 `tanh → joint_roms` 선형 매핑이라
+q 는 **구조적으로 항상 범위 안**이다 → q 에 대한 feasibility 페널티는 공허하다.
+의미 있는 형태는 **tanh 포화 억제**다: `E[ relu(|pre_tanh| − c)² ]`. 포화하면 그래디언트가
+죽고 관절이 한계에 달라붙는다(팔 IK 에서 joint5 가 가동범위 하한에 45% 프레임 붙어 있던
+것과 같은 실패). 이걸 `L_feasibility` 로 쓴다.
+
+**필수 ablation** (이게 없으면 정당화가 아니라 가설이다). **같은 gradient step 수로 맞추고**
+few-shot 앵커 학습까지 끝낸 뒤 LMC 를 비교한다:
+
+| | backbone pretext | 확인하는 것 |
+|---|---|---|
+| (a) | 없음 (Phase 2 손실만, backbone 포함 end-to-end) | 기준선 |
+| (b) | `+ L_smooth` | 매끄러움이 few-shot 효율을 올리는가 |
+| (c) | `+ L_smooth + L_contrastive` | 노이즈 불변이 추가 이득이 있는가 |
+| (d) | `+ 전부 + L_metric` | 중복 정규화인지 확인 |
+
+**(b) 가 (a) 를 못 이기면 backbone pretext 는 기각하고 Phase 2 상태를 최종으로 둔다.**
+
+**두 번째 필수 실험**: **앵커 개수(5/10/20/50) 대비 LMC 곡선을 백본 유/무로 비교.**
+이게 없으면 "백본 없이 손마다 5~10분 학습하면 되는데 왜?"에 답할 수 없다. 백본의 가치는
+품질이 아니라 **로봇이 몇 대든 공유된다**는 것이므로, 곡선의 기울기가 근거가 된다.
 
 ## 7. 규칙
 
