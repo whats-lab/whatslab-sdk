@@ -236,14 +236,17 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
   테스트는 `tests/conftest.py` 의 autouse 픽스처가 매번 레지스트리를 비운다.
 - 데이터 글러브 경로는 Spine **2.3.1 이하**만 지원(Quest 경로는 Spine 무관).
 - 글러브 OSC 주소·페이로드의 정본은 **Spine `docs/OSC_Protocol.md`** 다. 여기서 임의로
-  주소를 바꾸지 말 것 — `GloveHumanHandReceiver` 는 `/{side}/quat/get`,
-  `GloveRobotHandReceiver` 는 `/{side}/joint_angles/get` + `/{side}/wrist/get` 을 받는다.
+  주소를 바꾸지 말 것 — `GloveHumanAnglesReceiver`·`GloveRobotHandReceiver` 가
+  `/{side}/joint_angles/get` + `/{side}/wrist/get` 을 받는다.
   모든 Spine 메시지의 `args[0]` 은 messageType 헤더(10진 문자열)이고 실데이터는
   `args[1]` 부터다. `joint_angles` 는 **(이름, rad) 쌍**이라 배열 순서를 가정하지
-  않는다(순서 = pinocchio 내부 순서, 프로파일마다 다름). `wrist` 만
-  `HandCoordinateConvention` 을 타지 않고 raw `(w,x,y,z)` → `[y,x,z,-w]` 로 나가므로
-  `unpack_wrist` → `spine_lh_xyzw` → `wrist_to_canonical` 3단계로 quat 계열과 같은
-  프레임에 올린다 — 이 조합은 프로토콜 문서에서 유도했고 실기 검증은 아직 없다.
+  않는다(순서 = pinocchio 내부 순서, 프로파일마다 다름). **`wrist` 는 변환하지 않고
+  Spine 프레임 그대로 커밋한다** — 전에 `unpack_wrist` → `spine_lh_xyzw` →
+  `wrist_to_canonical` 3단계를 두었는데 실기 검증이 없는 유도값이었고 실제로 손목이
+  틀어졌다. 변환이 필요하면 소비자 쪽에서 한다.
+- **`GloveHumanHandReceiver`(`/{side}/quat/get`)는 제거했다.** 구면관절 FK 와 함께
+  쓰던 경로이고(`parse_aga_raw`·`AGA_SKIP_JOINT`·`wrist_to_canonical`) 손 리타게팅
+  입력이 관절각으로 바뀐 뒤로 소비자가 없다. 되살리지 말 것.
 - `whatslab.data` 는 lerobot 라이브러리 없이 v2.1 을 쓰는 경량 sink 다 — lerobot 을
   런타임 의존으로 추가하지 않는다(numpy1 env 비오염 목적).
 - 새 런타임 자산은 `[tool.setuptools.package-data]` 에 명시해야 wheel 에 들어간다

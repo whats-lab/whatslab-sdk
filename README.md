@@ -73,9 +73,11 @@ Supported Spine versions: **2.3.1 and below** (newer versions are not yet suppor
 Controller / hand-tracking (Quest) paths do not require Spine.
 
 The glove path follows Spine's OSC contract as documented in Spine's
-`docs/OSC_Protocol.md`: `GloveHumanHandReceiver` consumes `/{side}/quat/get`, and
-`GloveRobotHandReceiver` consumes `/{side}/joint_angles/get` (name/angle pairs) plus
-`/{side}/wrist/get`. Every Spine message carries the message type in `args[0]`.
+`docs/OSC_Protocol.md`: `GloveHumanAnglesReceiver` consumes
+`/{side}/joint_angles/get` (name/angle pairs) plus `/{side}/wrist/get`, and
+`GloveRobotHandReceiver` consumes the same addresses for the IK-bypass path. Every
+Spine message carries the message type in `args[0]`. `wrist` is passed through in
+Spine's own frame with no conversion.
 
 ## Quick start
 

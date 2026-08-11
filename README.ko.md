@@ -74,9 +74,10 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 핸드트래킹(Quest) 경로는 Spine 이 필요 없습니다.
 
 글러브 경로는 Spine `docs/OSC_Protocol.md` 의 OSC 계약을 그대로 따릅니다 —
-`GloveHumanHandReceiver` 는 `/{side}/quat/get`, `GloveRobotHandReceiver` 는
+`GloveHumanAnglesReceiver` 와 `GloveRobotHandReceiver` 가
 `/{side}/joint_angles/get`((이름, 각도) 쌍) + `/{side}/wrist/get` 을 받습니다.
-모든 Spine 메시지는 `args[0]` 에 messageType 헤더를 싣습니다.
+모든 Spine 메시지는 `args[0]` 에 messageType 헤더를 싣습니다. `wrist` 는 변환 없이
+Spine 프레임 그대로 전달됩니다.
 
 ## 빠른 시작
 
