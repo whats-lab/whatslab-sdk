@@ -129,7 +129,8 @@ def label(img, text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--npz", required=True)
-    ap.add_argument("--pairs", nargs="+", required=True)
+    ap.add_argument("--pairs", nargs="+", required=True,
+                    help="tag=config=checkpoint[=kv|frames] 를 여러 개")
     ap.add_argument("--side", default="left")
     ap.add_argument("--out", required=True)
     ap.add_argument("--stride", type=int, default=4)
@@ -147,8 +148,10 @@ def main():
                               "%s.urdf" % a.side)
     views = []
     for spec in a.pairs:
-        tag, cfg, ck = spec.split("=")
-        r = NetHandRetargeter(a.side, cfg, checkpoint=ck)
+        parts = spec.split("=")
+        tag, cfg, ck = parts[0], parts[1], parts[2]
+        mode = parts[3] if len(parts) > 3 else "kv"
+        r = NetHandRetargeter(a.side, cfg, checkpoint=ck, input_mode=mode)
         u = CONFIG_REGISTRY[cfg]()._get_urdf_path(a.side)
         pl = cam_from_palm(r.kv.origin, r.kv.rot, r.kv.l_ref, a.flip)
         views.append((tag, View(u, tag, pl, cfg in ROLL180), r))
