@@ -96,3 +96,27 @@ def test_encode_is_invariant_to_dorsum_origin_choice():
     pts = kv.points(q)
     manual = kv.rot.T @ (pts["index"][-1] - kv.origin) / kv.l_ref
     assert np.abs(kv.encode(q)[FINGERS.index("index"), :3] - manual).max() < 1e-12
+
+
+def test_four_finger_subset_encodes_without_pinky():
+    fk = HumanHandFK("left")
+    fours = [f for f in FINGERS if f != "pinky"]
+    kv4 = HandKeyvector(fk.model, fk.data, human_chains(fk, fours),
+                        "left_sensor_dorsum")
+    assert kv4.fingers == fours
+    x = kv4.encode(pin.neutral(fk.model))
+    assert x.shape == (4, 6)
+    kv5 = HandKeyvector(fk.model, fk.data, human_chains(fk), "left_sensor_dorsum")
+    assert kv5.encode(pin.neutral(fk.model)).shape == (5, 6)
+    j = kv4.jacobian(pin.neutral(fk.model),
+                     [fk.model.joints[fk.model.getJointId(n)].idx_v
+                      for n in fk.joint_names])
+    assert j.shape[:2] == (4, 6)
+
+
+def test_palm_frame_needs_three_non_thumb_fingers():
+    fk = HumanHandFK("left")
+    with pytest.raises(ValueError, match="3개 이상"):
+        HandKeyvector(fk.model, fk.data,
+                      human_chains(fk, ["thumb", "index", "middle"]),
+                      "left_sensor_dorsum")

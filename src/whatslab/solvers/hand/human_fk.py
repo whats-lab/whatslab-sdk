@@ -35,9 +35,18 @@ def rot_between(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return np.eye(3) + K + K @ K * ((1 - d) / (np.linalg.norm(c) ** 2))
 
 
+def non_thumb(names) -> List[str]:
+    out = [f for f in FINGERS if f in names and f != "thumb"]
+    if len(out) < 3:
+        raise ValueError("팜 프레임에는 엄지 외 손가락이 3개 이상 필요하다: %s"
+                         % (list(names),))
+    return out
+
+
 def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
-    o = np.mean([base_pts[f] for f in ("index", "middle", "ring", "pinky")], axis=0)
-    x = base_pts["index"] - base_pts["pinky"]
+    fs = non_thumb(base_pts)
+    o = np.mean([base_pts[f] for f in fs], axis=0)
+    x = base_pts[fs[0]] - base_pts[fs[-1]]
     x = x / np.linalg.norm(x)
     y = o - np.asarray(palm_pt, dtype=float)
     y = y - x * (y @ x)
@@ -50,11 +59,11 @@ def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
 
 
 def palm_frame_from_fingers(pts: Dict[str, np.ndarray]):
-    o = np.mean([pts[f][0] for f in ("index", "middle", "ring", "pinky")], axis=0)
-    x = pts["index"][0] - pts["pinky"][0]
+    fs = non_thumb(pts)
+    o = np.mean([pts[f][0] for f in fs], axis=0)
+    x = pts[fs[0]][0] - pts[fs[-1]][0]
     x = x / np.linalg.norm(x)
-    y = np.mean([pts[f][-1] - pts[f][0]
-                 for f in ("index", "middle", "ring", "pinky")], axis=0)
+    y = np.mean([pts[f][-1] - pts[f][0] for f in fs], axis=0)
     y = y - x * (y @ x)
     ny = float(np.linalg.norm(y))
     if ny < 1e-3:

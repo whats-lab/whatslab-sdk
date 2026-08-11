@@ -48,21 +48,24 @@ class NetHandRetargeter:
         root = getattr(config, "_models_root", None)
         fk_urdf = (os.path.join(root, "base_hand", "urdf", "%s.urdf" % self.hand_type)
                    if root else None)
+        declared = getattr(config, "_HUMAN_CHAIN", None) or {}
+        self.fingers = [f for f in FINGERS if f in declared] or list(FINGERS)
         self.fk = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
         self.human_joint_names: List[str] = list(self.fk.joint_names)
-        self.hkv = HandKeyvector(self.fk.model, self.fk.data, human_chains(self.fk),
+        self.hkv = HandKeyvector(self.fk.model, self.fk.data,
+                                 human_chains(self.fk, self.fingers),
                                  DORSUM_FRAME.format(side=self.hand_type))
 
         self.urdf_path = config._get_urdf_path(self.hand_type)
         self.model = pin.buildModelFromUrdf(self.urdf_path)
         self.data = self.model.createData()
-        chains = sensor_chains(self.model, self.hand_type)
+        chains = sensor_chains(self.model, self.hand_type, fingers=self.fingers)
         self.kv = HandKeyvector(self.model, self.data, chains,
                                DORSUM_FRAME.format(side=self.hand_type))
 
         self._cols = finger_columns(self.model, {f: self.kv.fids[f][-1]
-                                                for f in FINGERS})
-        order = [c for f in FINGERS for c in self._cols[f]]
+                                                for f in self.fingers})
+        order = [c for f in self.fingers for c in self._cols[f]]
         by_v = {int(self.model.joints[j].idx_v): j for j in range(1, self.model.njoints)
                 if self.model.joints[j].nq > 0}
         self._iv = [int(c) for c in order]
@@ -76,7 +79,7 @@ class NetHandRetargeter:
         self.lower = lo[self._iq].copy()
         self.upper = hi[self._iq].copy()
 
-        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in FINGERS],
+        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden).double()
         self.net.eval()
         if checkpoint is not None:
@@ -96,7 +99,7 @@ class NetHandRetargeter:
         inner = sd["net"] if "net" in sd else sd
         wrapped = any(k.startswith("affine.") for k in inner)
         if wrapped and not isinstance(self.net, AffineHandNet):
-            self.net = AffineHandNet(self.net, len(FINGERS))
+            self.net = AffineHandNet(self.net, len(self.fingers))
         elif not wrapped and isinstance(self.net, AffineHandNet):
             self.net = self.net.net
         want = next(iter(inner.values())).dtype

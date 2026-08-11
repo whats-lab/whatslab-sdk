@@ -1,10 +1,10 @@
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pinocchio as pin
 
 from .human_fk import (BONE_LINKS, FINGERS, HumanHandFK, link_candidates,
-                       palm_frame_from_fingers)
+                       non_thumb, palm_frame_from_fingers)
 
 KV_DIM = 6
 MIRROR_Z = np.array([1.0, 1.0, -1.0] * 2)
@@ -26,9 +26,10 @@ def chain_weights(seg_lengths: Sequence[float], frac: float = 0.5) -> Tuple[int,
     return int(lengths.size) - 1, 1.0
 
 
-def human_chains(fk: HumanHandFK) -> Dict[str, List[str]]:
+def human_chains(fk: HumanHandFK,
+                 fingers: Optional[Sequence[str]] = None) -> Dict[str, List[str]]:
     out = {}
-    for f in FINGERS:
+    for f in (FINGERS if fingers is None else fingers):
         names = []
         for jn in BONE_LINKS[f]:
             cand = [c for c in link_candidates(fk.side, jn) if fk.model.existFrame(c)]
@@ -40,8 +41,10 @@ def human_chains(fk: HumanHandFK) -> Dict[str, List[str]]:
     return out
 
 
-def sensor_chains(model, side: str, n_links: int = 3) -> Dict[str, List[str]]:
-    tips = {f: "%s_sensor_%s_distal" % (side, f) for f in FINGERS}
+def sensor_chains(model, side: str, n_links: int = 3,
+                  fingers: Optional[Sequence[str]] = None) -> Dict[str, List[str]]:
+    tips = {f: "%s_sensor_%s_distal" % (side, f)
+            for f in (FINGERS if fingers is None else fingers)}
     missing = [n for n in tips.values()
                if not model.existFrame(n, pin.FrameType.BODY)]
     if missing:
@@ -78,21 +81,29 @@ class HandKeyvector:
                  dorsum_frame: str, frac: float = 0.5):
         self.model = model
         self.data = data
-        self.fids = {f: [self._bid(n) for n in chains[f]] for f in FINGERS}
-        for f in FINGERS:
+        self.fingers = [f for f in FINGERS if f in chains]
+        if len(self.fingers) != len(chains):
+            raise ValueError("사슬에 알 수 없는 손가락 이름이 있다: %s"
+                             % sorted(set(chains) - set(FINGERS)))
+        self.fids = {f: [self._bid(n) for n in chains[f]] for f in self.fingers}
+        for f in self.fingers:
             if len(self.fids[f]) < 2:
                 raise ValueError("%s 사슬이 2점 미만이다: %s" % (f, list(chains[f])))
         self.dorsum = self._bid(dorsum_frame)
 
         pts = self.points(pin.neutral(model))
         self.mid = {f: chain_weights(
-            np.linalg.norm(np.diff(pts[f], axis=0), axis=1), frac) for f in FINGERS}
+            np.linalg.norm(np.diff(pts[f], axis=0), axis=1), frac)
+            for f in self.fingers}
         self.origin = self._pos(self.dorsum).copy()
         palm_o, self.rot = palm_frame_from_fingers(pts)
-        self.l_ref = float(np.linalg.norm(self.rot.T
-                                          @ (pts["middle"][-1] - palm_o)))
+        self.ref_finger = ("middle" if "middle" in self.fingers
+                           else non_thumb(self.fingers)[0])
+        self.l_ref = float(np.linalg.norm(
+            self.rot.T @ (pts[self.ref_finger][-1] - palm_o)))
         if self.l_ref <= 1e-9:
-            raise ValueError("L_ref 가 0 이다 — 팜 원점과 중지 끝이 같은 위치다")
+            raise ValueError("L_ref 가 0 이다 — 팜 원점과 %s 끝이 같은 위치다"
+                             % self.ref_finger)
 
     def _bid(self, name: str) -> int:
         if not self.model.existFrame(name):
@@ -106,7 +117,7 @@ class HandKeyvector:
         pin.forwardKinematics(self.model, self.data, np.asarray(q, dtype=float))
         pin.updateFramePlacements(self.model, self.data)
         return {f: np.array([self._pos(i).copy() for i in self.fids[f]])
-                for f in FINGERS}
+                for f in self.fingers}
 
     def prox(self, pts: Dict[str, np.ndarray], finger: str) -> np.ndarray:
         k, t = self.mid[finger]
@@ -117,8 +128,8 @@ class HandKeyvector:
 
     def encode(self, q: np.ndarray) -> np.ndarray:
         pts = self.points(q)
-        out = np.zeros((len(FINGERS), KV_DIM))
-        for i, f in enumerate(FINGERS):
+        out = np.zeros((len(self.fingers), KV_DIM))
+        for i, f in enumerate(self.fingers):
             out[i, :3] = self.local(pts[f][-1])
             out[i, 3:] = self.local(self.prox(pts, f))
         return out
@@ -127,8 +138,8 @@ class HandKeyvector:
         pin.computeJointJacobians(self.model, self.data, np.asarray(q, dtype=float))
         pin.updateFramePlacements(self.model, self.data)
         cols = np.asarray(idx_v, dtype=int)
-        out = np.zeros((len(FINGERS), KV_DIM, cols.size))
-        for i, f in enumerate(FINGERS):
+        out = np.zeros((len(self.fingers), KV_DIM, cols.size))
+        for i, f in enumerate(self.fingers):
             k, t = self.mid[f]
             jt = self._frame_jac(self.fids[f][-1])
             jp = (self._frame_jac(self.fids[f][k]) * (1.0 - t)

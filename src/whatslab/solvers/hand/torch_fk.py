@@ -73,9 +73,10 @@ class TorchKeyvectorFK(nn.Module):
                       if int(model.joints[j].nq) == 1 else 0.0
                       for j in range(self.n_joint)]
 
+        self.fingers = list(kv.fingers)
         self.frames: Dict[str, List[int]] = {}
         fr_rot, fr_trans, fr_parent = [], [], []
-        for f in FINGERS:
+        for f in self.fingers:
             ids = []
             for fid in kv.fids[f]:
                 ids.append(len(fr_parent))
@@ -120,7 +121,7 @@ class TorchKeyvectorFK(nn.Module):
             pos.append(pos[p] + (rot[p] @ jt.unsqueeze(-1)).squeeze(-1))
 
         out = []
-        for f in FINGERS:
+        for f in self.fingers:
             pts = []
             for k in self.frames[f]:
                 pj = self.f_parent[k]
@@ -130,7 +131,7 @@ class TorchKeyvectorFK(nn.Module):
             i, t = self.mid[f]
             prox = pts[i] * (1.0 - t) + pts[i + 1] * t
             out.append(torch.stack([self._local(tip), self._local(prox)], dim=1))
-        return torch.cat(out, dim=1).view(-1, len(FINGERS), KV_DIM)
+        return torch.cat(out, dim=1).view(-1, len(self.fingers), KV_DIM)
 
     def _local(self, p: torch.Tensor) -> torch.Tensor:
         r = self.rot_t.to(p.dtype)
