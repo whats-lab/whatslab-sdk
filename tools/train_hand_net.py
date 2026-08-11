@@ -16,7 +16,8 @@ from whatslab.solvers.hand.net_losses import (U_MARGIN, bone_loss,
                                               orientation_loss, position_loss,
                                               posture_loss, saturation_loss,
                                               unit_to_joint)
-from whatslab.solvers.hand.net_retargeter import (ACTS, NORMS,
+from whatslab.solvers.hand.keyvector import FRAME_DIM
+from whatslab.solvers.hand.net_retargeter import (ACTS, INPUTS, NORMS,
                                                   NetHandRetargeter)
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -33,6 +34,7 @@ HIDDEN = 128
 LAYERS = 2
 ACT = "leaky"
 NORM = "none"
+INPUT = "kv"
 W_MOTION = 1.0
 W_COVERAGE = 5.0
 W_BONE = 20.0
@@ -153,13 +155,17 @@ def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0)
             rows.extend(q_combo(real_q, blocks, k, seed + 2))
     q = pin.neutral(r.fk.model)
     out = np.empty((len(rows), len(r.fingers), 6))
-    rot = np.empty((len(rows), len(r.fingers), 3, 3))
-    tips = [r.hkv.fids[f][-1] for f in r.fingers]
+    net_in = np.empty((len(rows), len(r.fingers),
+                       FRAME_DIM if r.input_mode == "frames" else 6))
+    rot = np.empty((len(rows), len(r.fingers), 2, 3, 3))
+    fids = [(r.hkv.fids[f][-1], r.hkv.prox_fids[f]) for f in r.fingers]
     for i, qv in enumerate(rows):
         q[iq] = qv
         out[i] = r.hkv.encode(q)
-        rot[i] = np.array([r.hkv.rot.T @ r.fk.data.oMf[t].rotation for t in tips])
-    return out, rot, n_real
+        net_in[i] = (r.hkv.encode_frames(q) if r.input_mode == "frames"
+                     else out[i])
+        rot[i] = np.array([[r.hkv.rot_of(a), r.hkv.rot_of(b)] for a, b in fids])
+    return out, net_in, rot, n_real
 
 
 def neutral_offset(r):
@@ -169,11 +175,13 @@ def neutral_offset(r):
     qr = pin.neutral(r.model)
     pin.forwardKinematics(r.model, r.data, qr)
     pin.updateFramePlacements(r.model, r.data)
-    out = np.empty((len(r.fingers), 3, 3))
+    out = np.empty((len(r.fingers), 2, 3, 3))
     for i, f in enumerate(r.fingers):
-        ah = r.hkv.rot.T @ r.fk.data.oMf[r.hkv.fids[f][-1]].rotation
-        ar = r.kv.rot.T @ r.data.oMf[r.kv.fids[f][-1]].rotation
-        out[i] = ar @ ah.T
+        for k, (hf, rf) in enumerate(((r.hkv.fids[f][-1], r.kv.fids[f][-1]),
+                                      (r.hkv.prox_fids[f], r.kv.prox_fids[f]))):
+            ah = r.hkv.rot.T @ r.fk.data.oMf[hf].rotation
+            ar = r.kv.rot.T @ r.data.oMf[rf].rotation
+            out[i, k] = ar @ ah.T
     return out
 
 
@@ -226,6 +234,9 @@ def main():
     ap.add_argument("--layers", type=int, default=LAYERS)
     ap.add_argument("--act", default=ACT, choices=sorted(ACTS))
     ap.add_argument("--norm", default=NORM, choices=list(NORMS))
+    ap.add_argument("--input", dest="input_mode", default=INPUT,
+                    choices=list(INPUTS),
+                    help="kv=손끝·prox 위치 6D / frames=두 프레임의 위치+3x3 회전 24D")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -233,7 +244,7 @@ def main():
     dev = torch.device(args.device)
     r = NetHandRetargeter(args.side, args.config, dropout=args.dropout,
                           hidden=args.hidden, layers=args.layers, act=args.act,
-                          norm=args.norm)
+                          norm=args.norm, input_mode=args.input_mode)
     r.u_margin = args.u_margin
     fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
     names_h, iq_h, lo_h, hi_h = q_axes(r)
@@ -271,9 +282,11 @@ def main():
              extension(r, iq_h, q_flat), extension(r, iq_h, q_fist)), flush=True)
 
 
-    X, AH, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
-                                  args.random, args.random_mode, args.seed)
-    X = torch.as_tensor(X, dtype=dt, device=dev)
+    KVH, XN, AH, n_real = human_samples(r, real_q, blocks, q_flat, q_fist,
+                                        lo_h, hi_h, args.random,
+                                        args.random_mode, args.seed)
+    X = torch.as_tensor(XN, dtype=dt, device=dev)
+    KV = torch.as_tensor(KVH, dtype=dt, device=dev)
     AH = torch.as_tensor(AH, dtype=dt, device=dev)
     d_offset = torch.as_tensor(neutral_offset(r), dtype=dt, device=dev)
     n_val = int(round(X.shape[0] * args.val_frac))
@@ -281,9 +294,10 @@ def main():
         vperm = torch.randperm(X.shape[0], generator=torch.Generator().manual_seed(
             args.seed))
         Xval, X = X[vperm[:n_val]], X[vperm[n_val:]]
+        KVval, KV = KV[vperm[:n_val]], KV[vperm[n_val:]]
         AHval, AH = AH[vperm[:n_val]], AH[vperm[n_val:]]
     else:
-        Xval, AHval = X[:0], AH[:0]
+        Xval, KVval, AHval = X[:0], KV[:0], AH[:0]
     bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
     hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
@@ -292,10 +306,10 @@ def main():
           % (X.shape[0], n_real, args.random, args.random_mode, bank.shape[0],
              len(r.joint_names), pinch_thr, args.device), flush=True)
     print("학습 %d / 검증 %d  weight_decay %.4g  dropout %.2f  u_margin %.2f"
-          "  hidden %d x %d  act %s  norm %s"
+          "  hidden %d x %d  act %s  norm %s  input %s"
           % (X.shape[0], Xval.shape[0], args.weight_decay, args.dropout,
-             args.u_margin, args.hidden, args.layers, args.act, args.norm),
-          flush=True)
+             args.u_margin, args.hidden, args.layers, args.act, args.norm,
+             args.input_mode), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
@@ -315,7 +329,12 @@ def main():
     def to_kv(x):
         return fk(unit_to_joint(net(x), lo, hi, args.u_margin))
 
-    def terms(x, ah=None):
+    pos_slots = (0, 12) if args.input_mode == "frames" else (0, 3)
+    pos_mask = torch.zeros(INPUTS[args.input_mode], dtype=dt, device=dev)
+    for a in pos_slots:
+        pos_mask[a:a + 3] = 1.0
+
+    def terms(x, kvx, ah=None):
         u = net(x)
         qj = unit_to_joint(u, lo, hi, args.u_margin)
         if args.w_orient > 0.0:
@@ -328,18 +347,19 @@ def main():
         if ar is not None and ah is not None:
             orient = orientation_loss(ar, ah, d_offset)
         if args.w_motion > 0.0:
-            d = F.normalize(torch.randn_like(x), dim=-1)
+            d = F.normalize(torch.randn_like(x) * pos_mask, dim=-1)
             step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
                                           device=x.device) * (
                 MOTION_HI - MOTION_LO)
             dx = d * step
-            motion = motion_loss_global(dx, to_kv(x + dx) - y)
+            dkv = torch.cat([dx[..., a:a + 3] for a in pos_slots], dim=-1)
+            motion = motion_loss_global(dkv, to_kv(x + dx) - y)
         sel = torch.randint(0, bank.shape[0],
                             (min(args.bank_batch, bank.shape[0]),))
         cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
-        pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
-        bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
-        pos = position_loss(x, y) if args.w_pos > 0.0 else zero
+        pinch = pinch_loss(kvx, y, pinch_thr) if args.w_pinch > 0.0 else zero
+        bone = bone_loss(kvx, y) if args.w_bone > 0.0 else zero
+        pos = position_loss(kvx, y) if args.w_pos > 0.0 else zero
         sat = saturation_loss(u) if args.w_sat > 0.0 else zero
         post = posture_loss(u) if args.w_posture > 0.0 else zero
         loss = (motion * args.w_motion + cover * args.w_coverage
@@ -356,7 +376,7 @@ def main():
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             sl = perm[s:s + args.batch]
-            loss, t = terms(X[sl], None if AH is None else AH[sl])
+            loss, t = terms(X[sl], KV[sl], AH[sl])
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -375,7 +395,7 @@ def main():
                     xv = Xval[s:s + args.batch]
                     if xv.shape[0] < 2:
                         continue
-                    lv, tv = terms(xv, None if AHval is None else
+                    lv, tv = terms(xv, KVval[s:s + args.batch],
                                    AHval[s:s + args.batch])
                     vl += float(lv.detach()) * xv.shape[0]
                     vacc = vacc + tv * xv.shape[0]
@@ -401,12 +421,14 @@ def main():
                         "epoch": epoch, "cfg": vars(args),
                         "u_margin": args.u_margin, "side": args.side,
                         "config": args.config, "dropout": args.dropout,
-                        "act": args.act, "norm": args.norm}, ckpt + ".tmp")
+                        "act": args.act, "norm": args.norm,
+                        "input_mode": args.input_mode}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
             snap = {"net": net.state_dict(),
                     "u_margin": args.u_margin, "side": args.side,
                     "config": args.config, "dropout": args.dropout,
-                    "act": args.act, "norm": args.norm}
+                    "act": args.act, "norm": args.norm,
+                    "input_mode": args.input_mode}
             torch.save(snap, os.path.join(args.out, "net.pt"))
             torch.save(snap, os.path.join(args.out, "ep%04d.pt" % (epoch + 1)))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:

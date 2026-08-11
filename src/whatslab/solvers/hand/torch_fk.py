@@ -132,13 +132,14 @@ class TorchKeyvectorFK(nn.Module):
             tip = pts[-2]
             out.append(torch.stack([self._local(tip), self._local(prox)], dim=1))
             if with_rot:
-                k = self.frames[f][-2]
-                fr = self.f_rot[k].to(q_act.dtype).unsqueeze(0)
-                tip_rot.append(rt.unsqueeze(0) @ rot[self.f_parent[k]] @ fr)
+                for k in (self.frames[f][-2], self.frames[f][-1]):
+                    fr = self.f_rot[k].to(q_act.dtype).unsqueeze(0)
+                    tip_rot.append(rt.unsqueeze(0) @ rot[self.f_parent[k]] @ fr)
         kvo = torch.cat(out, dim=1).view(-1, len(self.fingers), KV_DIM)
         if not with_rot:
             return kvo
-        return kvo, torch.stack(tip_rot, dim=1)
+        rr = torch.stack(tip_rot, dim=1)
+        return kvo, rr.view(rr.shape[0], len(self.fingers), 2, 3, 3)
 
     def _local(self, p: torch.Tensor) -> torch.Tensor:
         r = self.rot_t.to(p.dtype)
