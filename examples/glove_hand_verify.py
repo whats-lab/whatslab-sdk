@@ -15,7 +15,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="orca_hand", help="로봇 손 리타게팅 config")
     ap.add_argument("--side", default="right", choices=["left", "right"])
-    ap.add_argument("--backend", default="kp", choices=["dex", "kp"])
+    ap.add_argument("--backend", default="kp", choices=["dex", "kp", "net"])
+    ap.add_argument("--net-checkpoint", default=None,
+                    help="--backend net 의 학습 체크포인트")
     ap.add_argument("--urdf-root", default=os.environ.get("WHATSLAB_MODELS_ROOT"))
     ap.add_argument("--rate", type=float, default=60.0)
     ap.add_argument("--dump", default=None, help="프레임 기록 npz 경로")
@@ -29,24 +31,31 @@ def main():
 
     print(f"[setup] {args.config} {args.side} backend={args.backend}")
     print(f"[setup] models={args.urdf_root or '(패키지 내장)'}")
+    extra = {}
+    if args.backend == "net":
+        if args.net_checkpoint is None:
+            ap.error("--backend net 은 --net-checkpoint 가 필요하다")
+        extra["checkpoint"] = args.net_checkpoint
     m = HandModel(hand_config=args.config, side=args.side, urdf_root=args.urdf_root,
-                  backend=args.backend)
+                  backend=args.backend, **extra)
     ctrl = m.sides[args.side].retarget
     eng = ctrl.engine
     kp = args.backend == "kp"
+    net = args.backend == "net"
 
     viz = viz_human = None
     if args.viz:
-        if not kp:
-            ap.error("--viz 는 --backend kp 에서만 지원한다")
-        from whatslab.viz import HumanHandViz, KPHandViz
-        viz = KPHandViz(eng, port=args.viz_port)
+        if args.backend == "dex":
+            ap.error("--viz 는 --backend kp|net 에서만 지원한다")
+        from whatslab.viz import HumanHandViz, KPHandViz, RobotHandViz
+        viz = KPHandViz(eng, port=args.viz_port) if kp else RobotHandViz(
+            eng, port=args.viz_port)
         viz.start()
         viz_human = HumanHandViz(eng.fk, port=args.viz_port,
                                  offset=(0.0, -args.viz_gap, 0.0))
         viz_human.start()
-        print("[viz] 왼쪽=사람 손 메쉬 / 오른쪽=로봇 손 메쉬 + 하늘색 목표 키포인트,"
-              " 주황 달성, 빨간선 오차")
+        print("[viz] 왼쪽=사람 손 메쉬 / 오른쪽=로봇 손 메쉬"
+              + (" + 하늘색 목표 키포인트, 주황 달성, 빨간선 오차" if kp else ""))
 
     m.start()
     print(f"[run] 글러브 OSC 수신 대기 (Ctrl-C 종료). 로봇 관절 {len(ctrl.joint_names)}개")
@@ -83,7 +92,10 @@ def main():
                         rec[f"r_{pk}"].append(rob.get(pk, np.nan))
                         rec[f"h_{pk}"].append(hum.get(pk, np.nan))
                 if viz is not None:
-                    viz.update(timestamp=t0)
+                    if net:
+                        viz.update(qv, timestamp=t0)
+                    else:
+                        viz.update(timestamp=t0)
                     angles = m.get_data()[args.side]["fingers"].hand.joint_angles
                     if angles:
                         viz_human.update(eng.fk.q_from_named(angles), timestamp=t0)
@@ -93,6 +105,9 @@ def main():
                 last_log = now
                 if not tracked:
                     print("[no-signal] 글러브 데이터 없음", flush=True)
+                elif net:
+                    print("[TRACKED] |dq| %.3f  q범위 [%+.2f, %+.2f]" % (
+                        rec["dq"][-1], qv.min(), qv.max()), flush=True)
                 elif kp and rec["tip_err"]:
                     print("[TRACKED] 지문오차 %5.1fmm  엄지-검지 목표 %5.1f → 로봇 %5.1fmm"
                           "  |dq| %.3f" % (

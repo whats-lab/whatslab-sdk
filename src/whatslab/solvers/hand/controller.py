@@ -6,9 +6,11 @@ import numpy as np
 
 from whatslab.core.types import HandCommand, InputSample
 from .kp_retargeter import KPHandRetargeter
+from .net_retargeter import NetHandRetargeter
 from .retargeter import HandRetargeter
 
-BACKENDS = {"dex": HandRetargeter, "kp": KPHandRetargeter}
+BACKENDS = {"dex": HandRetargeter, "kp": KPHandRetargeter,
+            "net": NetHandRetargeter}
 
 
 class HandRetargetController:

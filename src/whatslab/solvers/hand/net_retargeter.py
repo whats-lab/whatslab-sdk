@@ -82,6 +82,14 @@ class NetHandRetargeter:
             self.load(checkpoint)
         self._q = pin.neutral(self.model)
 
+    @property
+    def _r_origin(self) -> np.ndarray:
+        return self.kv.origin
+
+    @property
+    def _r_frame(self) -> np.ndarray:
+        return self.kv.rot
+
     def load(self, checkpoint: str) -> None:
         sd = torch.load(checkpoint, map_location="cpu")
         self.net.load_state_dict(sd["net"] if "net" in sd else sd)
