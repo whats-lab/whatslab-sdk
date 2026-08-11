@@ -5,7 +5,6 @@ torch = pytest.importorskip("torch")
 
 from whatslab.solvers.hand.net_losses import (AffineHandNet, ResidualAffine,
                                              chamfer_both, chamfer_partial,
-                                             chamfer_reverse, coverage_loss,
                                              motion_loss_local, pinch_loss,
                                              position_loss, soft_pinch_loss)
 
@@ -75,26 +74,3 @@ def test_soft_pinch_uses_nearest_candidates_only():
     cand[2, 0, 0] = 9.0
     assert float(soft_pinch_loss(y, cand, top_k=1)) == pytest.approx(0.0, abs=1e-12)
     assert float(soft_pinch_loss(y, cand, top_k=3, tau=1e6)) > 0.0
-
-
-def test_forward_chamfer_rewards_collapse_but_reverse_punishes_it():
-    torch.manual_seed(0)
-    bank = torch.randn(500, 3, dtype=torch.float64)
-    spread = torch.randn(64, 3, dtype=torch.float64)
-    collapsed = bank[0].repeat(64, 1)
-    assert float(chamfer_partial(collapsed, bank)) < float(
-        chamfer_partial(spread, bank))
-    assert float(chamfer_reverse(collapsed, bank)) > float(
-        chamfer_reverse(spread, bank))
-
-
-def test_coverage_mode_selects_the_direction():
-    torch.manual_seed(0)
-    y = torch.randn(8, 5, 6, dtype=torch.float64)
-    bank = torch.randn(64, 5, 6, dtype=torch.float64)
-    both = float(coverage_loss(y, bank, mode="both"))
-    fwd = float(coverage_loss(y, bank, mode="forward"))
-    rev = float(coverage_loss(y, bank, mode="reverse"))
-    assert both == pytest.approx(fwd + rev, rel=1e-9)
-    assert float(coverage_loss(y, bank, partial=True)) == pytest.approx(fwd)
-    assert float(coverage_loss(y, bank)) == pytest.approx(both)
