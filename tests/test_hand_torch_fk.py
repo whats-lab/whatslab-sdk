@@ -4,7 +4,6 @@ import pytest
 pin = pytest.importorskip("pinocchio")
 torch = pytest.importorskip("torch")
 
-from whatslab.solvers.hand.fk_torch import KeyvectorFK
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -37,17 +36,21 @@ def test_matches_pinocchio_encode(cfg):
 @pytest.mark.parametrize("cfg", CONFIGS)
 def test_gradient_matches_pinocchio_jacobian(cfg):
     r, tfk = _rig(cfg)
-    pk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
     q0 = _random_q(r, 4, seed=1)
     rng = np.random.default_rng(2)
-    w = torch.as_tensor(rng.normal(size=(4, 5, 6)), dtype=torch.float64)
+    w = rng.normal(size=(4, 5, 6))
 
-    grads = []
-    for fn in (tfk, pk):
-        q = torch.tensor(q0, dtype=torch.float64, requires_grad=True)
-        (fn(q) * w).sum().backward()
-        grads.append(q.grad.numpy().copy())
-    assert np.abs(grads[0] - grads[1]).max() < 1e-9
+    q = torch.tensor(q0, dtype=torch.float64, requires_grad=True)
+    (tfk(q) * torch.as_tensor(w, dtype=torch.float64)).sum().backward()
+    got = q.grad.numpy().copy()
+
+    ref = np.empty_like(got)
+    for i, row in enumerate(q0):
+        full = pin.neutral(r.model)
+        full[r._iq] = row
+        jac = r.kv.jacobian(full, r._iv)
+        ref[i] = np.einsum("fkn,fk->n", jac, w[i])
+    assert np.abs(got - ref).max() < 1e-9
 
 
 def test_float32_stays_within_training_tolerance():

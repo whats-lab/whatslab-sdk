@@ -4,9 +4,9 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from whatslab.solvers.hand.net_losses import (AffineHandNet, ResidualAffine,
-                                             chamfer_both, chamfer_partial,
-                                             motion_loss_local, pinch_loss,
-                                             position_loss, soft_pinch_loss)
+                                             bone_loss, chamfer_both,
+                                             coverage_loss, motion_loss_global,
+                                             pinch_loss, position_loss)
 
 
 def _kv(vals):
@@ -31,31 +31,12 @@ def test_affine_wrapper_passes_through_at_init():
     assert torch.allclose(net(x), inner(x[:, 0]))
 
 
-def test_partial_chamfer_ignores_uncovered_target_region():
-    a = _kv([[[0.0, 0.0, 0.0, 0, 0, 0]]]).reshape(1, 1, 6)
-    b = _kv([[[0.0, 0.0, 0.0, 0, 0, 0]], [[9.0, 0.0, 0.0, 0, 0, 0]]]).reshape(2, 1, 6)
-    both = chamfer_both(a[:, 0, :3], b[:, 0, :3])
-    part = chamfer_partial(a[:, 0, :3], b[:, 0, :3])
-    assert float(part) == pytest.approx(0.0, abs=1e-12)
-    assert float(both) > 39.0
-
-
 def test_position_loss_is_zero_on_match_and_grows_with_offset():
     x = torch.randn(3, 5, 6, dtype=torch.float64)
     assert float(position_loss(x, x.clone())) == pytest.approx(0.0, abs=1e-18)
     off = x.clone()
     off[:, :, 0] += 0.1
     assert float(position_loss(x, off)) == pytest.approx(0.01, abs=1e-9)
-
-
-def test_local_motion_loss_is_rotation_invariant():
-    torch.manual_seed(0)
-    a = torch.randn(4, 5, 6, dtype=torch.float64)
-    b = torch.randn(4, 5, 6, dtype=torch.float64)
-    q, _ = torch.linalg.qr(torch.randn(6, 6, dtype=torch.float64))
-    ra = a @ q.T
-    rb = b @ q.T
-    assert float(motion_loss_local(a, ra, b, rb)) == pytest.approx(0.0, abs=1e-18)
 
 
 def test_pinch_loss_only_fires_on_close_human_pairs():
@@ -67,10 +48,26 @@ def test_pinch_loss_only_fires_on_close_human_pairs():
     assert float(pinch_loss(x, y, threshold=0.0)) == 0.0
 
 
-def test_soft_pinch_uses_nearest_candidates_only():
-    y = torch.zeros(1, 5, 6, dtype=torch.float64)
-    cand = torch.zeros(3, 5, 6, dtype=torch.float64)
-    cand[1, 0, 0] = 5.0
-    cand[2, 0, 0] = 9.0
-    assert float(soft_pinch_loss(y, cand, top_k=1)) == pytest.approx(0.0, abs=1e-12)
-    assert float(soft_pinch_loss(y, cand, top_k=3, tau=1e6)) > 0.0
+def test_global_motion_loss_is_minimal_when_displacements_align():
+    torch.manual_seed(0)
+    dx = torch.randn(4, 5, 6, dtype=torch.float64)
+    assert float(motion_loss_global(dx, dx.clone())) == pytest.approx(-1.0, abs=1e-9)
+    assert float(motion_loss_global(dx, -dx)) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_bone_loss_is_zero_on_matching_intra_finger_direction():
+    torch.manual_seed(0)
+    x = torch.randn(3, 5, 6, dtype=torch.float64)
+    assert float(bone_loss(x, x.clone())) == pytest.approx(0.0, abs=1e-12)
+    flipped = x.clone()
+    flipped[..., :3] = x[..., 3:]
+    flipped[..., 3:] = x[..., :3]
+    assert float(bone_loss(x, flipped)) > 1.0
+
+
+def test_coverage_penalises_collapse():
+    torch.manual_seed(0)
+    bank = torch.randn(200, 5, 6, dtype=torch.float64)
+    spread = torch.randn(32, 5, 6, dtype=torch.float64)
+    collapsed = bank[0].unsqueeze(0).repeat(32, 1, 1)
+    assert float(coverage_loss(collapsed, bank)) > float(coverage_loss(spread, bank))
