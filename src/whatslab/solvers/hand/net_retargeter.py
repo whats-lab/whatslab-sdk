@@ -10,7 +10,7 @@ from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK
 from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
                         human_chains, sensor_chains, sensor_prox)
-from .net_losses import AffineHandNet
+from .net_losses import AffineHandNet, unit_to_joint
 
 LIMIT_FALLBACK = 2.0
 DORSUM_FRAME = "{side}_sensor_dorsum"
@@ -85,6 +85,7 @@ class NetHandRetargeter:
         self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden).double()
         self.net.eval()
+        self.u_margin = 1.0
         if checkpoint is not None:
             self.load(checkpoint)
         self._q = pin.neutral(self.model)
@@ -100,6 +101,7 @@ class NetHandRetargeter:
     def load(self, checkpoint: str) -> None:
         sd = torch.load(checkpoint, map_location="cpu")
         inner = sd["net"] if "net" in sd else sd
+        self.u_margin = float(sd.get("u_margin", 1.0)) if isinstance(sd, dict) else 1.0
         wrapped = any(k.startswith("affine.") for k in inner)
         if wrapped and not isinstance(self.net, AffineHandNet):
             self.net = AffineHandNet(self.net, len(self.fingers))
@@ -118,7 +120,7 @@ class NetHandRetargeter:
 
     def to_joint(self, unit) -> np.ndarray:
         u = np.asarray(unit, dtype=float)
-        return self.lower + (u + 1.0) * 0.5 * (self.upper - self.lower)
+        return unit_to_joint(u, self.lower, self.upper, self.u_margin)
 
     def encode_human(self, joint_angles: Mapping[str, float]) -> np.ndarray:
         x = self.hkv.encode(self.fk.q_from_named(joint_angles))

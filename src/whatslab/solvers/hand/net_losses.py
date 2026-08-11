@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +8,20 @@ import torch.nn.functional as F
 from .keyvector import KV_DIM
 
 TIP = slice(0, 3)
+U_MARGIN = 1.25
+U_LEAK = 0.01
+
+
+def unit_to_joint(u, lower, upper, margin: float = 1.0):
+    half = (upper - lower) * 0.5
+    v = lower + half + margin * u * half
+    if margin <= 1.0:
+        return v
+    if isinstance(v, torch.Tensor):
+        c = torch.maximum(torch.minimum(v, upper), lower)
+    else:
+        c = np.clip(v, lower, upper)
+    return c + U_LEAK * (v - c)
 
 
 def _nearest(a: torch.Tensor, b: torch.Tensor):
