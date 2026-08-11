@@ -108,6 +108,7 @@ python tools/bench_arm_ik.py --traj fk                                 # arm IK:
 python tools/bench_hand_retarget.py --dump … --profiles … --traj flex  # hand retargeting: shape / GMC / LMC
 python tools/train_hand_net.py --config orca_hand --side left …        # train the `net` backend
 python tools/check_mirror.py                                           # left/right mirror gate
+python tools/export_hand_net_onnx.py --checkpoint … --out hand.onnx    # ONNX: no torch/pinocchio at inference
 ```
 
 `bench_hand_retarget.py` is the fixed baseline for hand-retargeting changes. Judge on
