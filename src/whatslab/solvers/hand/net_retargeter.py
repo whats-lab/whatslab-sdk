@@ -9,7 +9,7 @@ import torch.nn as nn
 from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK
 from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
-                        human_chains, sensor_chains)
+                        human_chains, sensor_chains, sensor_prox)
 from .net_losses import AffineHandNet
 
 LIMIT_FALLBACK = 2.0
@@ -52,16 +52,19 @@ class NetHandRetargeter:
         self.fingers = [f for f in FINGERS if f in declared] or list(FINGERS)
         self.fk = HumanHandFK(self.hand_type, urdf_path=fk_urdf)
         self.human_joint_names: List[str] = list(self.fk.joint_names)
-        self.hkv = HandKeyvector(self.fk.model, self.fk.data,
-                                 human_chains(self.fk, self.fingers),
-                                 DORSUM_FRAME.format(side=self.hand_type))
+        self.hkv = HandKeyvector(
+            self.fk.model, self.fk.data, human_chains(self.fk, self.fingers),
+            DORSUM_FRAME.format(side=self.hand_type),
+            sensor_prox(self.fk.model, self.hand_type, self.fingers))
 
         self.urdf_path = config._get_urdf_path(self.hand_type)
         self.model = pin.buildModelFromUrdf(self.urdf_path)
         self.data = self.model.createData()
         chains = sensor_chains(self.model, self.hand_type, fingers=self.fingers)
-        self.kv = HandKeyvector(self.model, self.data, chains,
-                               DORSUM_FRAME.format(side=self.hand_type))
+        self.kv = HandKeyvector(
+            self.model, self.data, chains,
+            DORSUM_FRAME.format(side=self.hand_type),
+            sensor_prox(self.model, self.hand_type, self.fingers))
 
         self._cols = finger_columns(self.model, {f: self.kv.fids[f][-1]
                                                 for f in self.fingers})

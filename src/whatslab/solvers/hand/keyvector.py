@@ -41,6 +41,17 @@ def human_chains(fk: HumanHandFK,
     return out
 
 
+def sensor_prox(model, side: str,
+                fingers: Optional[Sequence[str]] = None) -> Dict[str, str]:
+    out = {}
+    for f in (FINGERS if fingers is None else fingers):
+        name = "%s_sensor_%s_proximal" % (side, f)
+        if not model.existFrame(name, pin.FrameType.BODY):
+            raise ValueError("URDF 에 proximal 센서 프레임이 없다: %s" % name)
+        out[f] = name
+    return out
+
+
 def sensor_chains(model, side: str, n_links: int = 3,
                   fingers: Optional[Sequence[str]] = None) -> Dict[str, List[str]]:
     tips = {f: "%s_sensor_%s_distal" % (side, f)
@@ -78,7 +89,7 @@ def finger_columns(model, tip_fids: Dict[str, int]) -> Dict[str, List[int]]:
 class HandKeyvector:
 
     def __init__(self, model, data, chains: Dict[str, Sequence[str]],
-                 dorsum_frame: str, frac: float = 0.5):
+                 dorsum_frame: str, prox_frames: Dict[str, str]):
         self.model = model
         self.data = data
         self.fingers = [f for f in FINGERS if f in chains]
@@ -91,10 +102,8 @@ class HandKeyvector:
                 raise ValueError("%s 사슬이 2점 미만이다: %s" % (f, list(chains[f])))
         self.dorsum = self._bid(dorsum_frame)
 
+        self.prox_fids = {f: self._bid(prox_frames[f]) for f in self.fingers}
         pts = self.points(pin.neutral(model))
-        self.mid = {f: chain_weights(
-            np.linalg.norm(np.diff(pts[f], axis=0), axis=1), frac)
-            for f in self.fingers}
         self.origin = self._pos(self.dorsum).copy()
         palm_o, self.rot = palm_frame_from_fingers(pts)
         self.ref_finger = ("middle" if "middle" in self.fingers
@@ -120,8 +129,7 @@ class HandKeyvector:
                 for f in self.fingers}
 
     def prox(self, pts: Dict[str, np.ndarray], finger: str) -> np.ndarray:
-        k, t = self.mid[finger]
-        return pts[finger][k] * (1.0 - t) + pts[finger][k + 1] * t
+        return self._pos(self.prox_fids[finger]).copy()
 
     def local(self, p: np.ndarray) -> np.ndarray:
         return self.rot.T @ (np.asarray(p, dtype=float) - self.origin) / self.l_ref
@@ -140,10 +148,8 @@ class HandKeyvector:
         cols = np.asarray(idx_v, dtype=int)
         out = np.zeros((len(self.fingers), KV_DIM, cols.size))
         for i, f in enumerate(self.fingers):
-            k, t = self.mid[f]
             jt = self._frame_jac(self.fids[f][-1])
-            jp = (self._frame_jac(self.fids[f][k]) * (1.0 - t)
-                  + self._frame_jac(self.fids[f][k + 1]) * t)
+            jp = self._frame_jac(self.prox_fids[f])
             out[i, :3] = (self.rot.T @ jt)[:, cols] / self.l_ref
             out[i, 3:] = (self.rot.T @ jp)[:, cols] / self.l_ref
         return out

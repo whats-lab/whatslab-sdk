@@ -7,13 +7,14 @@ pin = pytest.importorskip("pinocchio")
 
 from whatslab.solvers.hand.human_fk import palm_frame_from_fingers, FINGERS, HumanHandFK
 from whatslab.solvers.hand.keyvector import (HandKeyvector, chain_weights,
-                                            human_chains)
+                                            human_chains, sensor_prox)
 
 
 def _human_kv(side):
     fk = HumanHandFK(side)
     return fk, HandKeyvector(fk.model, fk.data, human_chains(fk),
-                             side + "_sensor_dorsum")
+                             side + "_sensor_dorsum",
+                             sensor_prox(fk.model, side))
 
 
 def _walk(segs, frac=0.5):
@@ -73,21 +74,23 @@ def test_lref_scale_matches_bench_metric_scale_on_both_hands():
         assert r.kv.l_ref / r.hkv.l_ref == pytest.approx(r_len / h_len, rel=1e-9)
 
 
-def test_prox_sits_at_half_arc_length_and_is_pose_independent():
+def test_prox_is_the_proximal_sensor_frame():
     fk, kv = _human_kv("left")
     rng = np.random.default_rng(0)
-    for _ in range(3):
+    lo = fk.model.lowerPositionLimit
+    hi = fk.model.upperPositionLimit
+    iq = [fk._idx_q[n] for n in fk.joint_names]
+    for _ in range(4):
         q = pin.neutral(fk.model)
-        for n in fk.joint_names:
-            iq = fk._idx_q[n]
-            q[iq] = rng.uniform(fk.model.lowerPositionLimit[iq],
-                                fk.model.upperPositionLimit[iq])
+        q[iq] = rng.uniform(lo[iq], hi[iq])
         pts = kv.points(q)
+        pin.forwardKinematics(fk.model, fk.data, q)
+        pin.updateFramePlacements(fk.model, fk.data)
         for f in FINGERS:
-            k, t = kv.mid[f]
-            segs = np.linalg.norm(np.diff(pts[f], axis=0), axis=1)
-            walked = float(segs[:k].sum() + segs[k] * t)
-            assert walked == pytest.approx(0.5 * float(segs.sum()), rel=1e-9)
+            fid = fk.model.getFrameId("left_sensor_%s_proximal" % f,
+                                      pin.FrameType.BODY)
+            want = fk.data.oMf[fid].translation
+            assert np.abs(kv.prox(pts, f) - want).max() < 1e-12, f
 
 
 def test_encode_is_invariant_to_dorsum_origin_choice():
@@ -102,11 +105,14 @@ def test_four_finger_subset_encodes_without_pinky():
     fk = HumanHandFK("left")
     fours = [f for f in FINGERS if f != "pinky"]
     kv4 = HandKeyvector(fk.model, fk.data, human_chains(fk, fours),
-                        "left_sensor_dorsum")
+                        "left_sensor_dorsum",
+                        sensor_prox(fk.model, "left", fours))
     assert kv4.fingers == fours
     x = kv4.encode(pin.neutral(fk.model))
     assert x.shape == (4, 6)
-    kv5 = HandKeyvector(fk.model, fk.data, human_chains(fk), "left_sensor_dorsum")
+    kv5 = HandKeyvector(fk.model, fk.data, human_chains(fk),
+                         "left_sensor_dorsum",
+                         sensor_prox(fk.model, "left"))
     assert kv5.encode(pin.neutral(fk.model)).shape == (5, 6)
     j = kv4.jacobian(pin.neutral(fk.model),
                      [fk.model.joints[fk.model.getJointId(n)].idx_v
@@ -119,4 +125,6 @@ def test_palm_frame_needs_three_non_thumb_fingers():
     with pytest.raises(ValueError, match="3개 이상"):
         HandKeyvector(fk.model, fk.data,
                       human_chains(fk, ["thumb", "index", "middle"]),
-                      "left_sensor_dorsum")
+                      "left_sensor_dorsum",
+                      sensor_prox(fk.model, "left",
+                                  ["thumb", "index", "middle"]))
