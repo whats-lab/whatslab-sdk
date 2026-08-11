@@ -8,6 +8,33 @@
 
 **Tech Stack:** numpy 1.26, pinocchio(pip `pin`), torch(기존 `hand` extra), pytest.
 
+## 구현 결과 (2026-08-11) — 이 계획은 실행됐다
+
+**Task 0~6 구현·테스트 완료.** 테스트 143 passed / 6 skipped. 측정 결과와 판정은
+`plans/RETARGET_V2_PLAN.md` §4~5 가 정본이고, 이 문서는 **작업 단위와 코드 근거**로 남긴다.
+
+계획 대비 바뀐 것 넷 (전부 의도적):
+
+1. **`sensor_chains` 를 `keyvector.py` 로 빼서 `KPHandRetargeter` 와 같은 규약을 쓴다.**
+   처음엔 `net_retargeter` 안에서 사슬을 따로 유도했는데 robotis 에서 5점, orca 에서 5점이
+   나와 kp 의 4점과 달랐다 → 팜 프레임 회전이 어긋나 **두 백엔드를 공정 비교할 수 없게 된다.**
+   지금은 팜 회전이 kp 와 `0.00e+00` 일치한다. (원점은 설계상 다르다: kp 는 너클 평균,
+   net 은 dorsum.)
+2. **`net_losses.py` 를 추가**했다(계획의 File Structure 에 없던 파일). 손실을 함수로
+   분리해야 회전 불변성 같은 성질을 단위 테스트로 고정할 수 있다.
+3. **`chain_weights` 테스트를 표현이 아니라 결과 위치로 검사**하도록 고쳤다. 계획의 테스트는
+   `chain_weights([1,1]) == (1, 0.0)` 을 기대했는데 구현은 `(0, 1.0)` 을 낸다 — **같은 점**이다.
+   표현을 고정하면 등가 구현을 거짓 실패로 만든다.
+4. **`--traj flex`/`abd` 를 Task 4 보다 먼저 넣었다.** 핀치 램프만으로는 미해결 문제가
+   측정에 안 나타나서, 지표보다 궤적이 먼저 필요했다.
+
+**측정 중 잡은 함정 하나**: stale `__pycache__` 로 재현 불가한 런이 나왔다(orca kp 굽힘
+형상 32.5° → 실제 43.4°). 측정 전 pycache 제거를 규칙으로 박았다.
+
+**아직 안 한 것**: Task 7(orca 교차 확인)은 robotis 학습이 끝난 뒤 순차 실행 중.
+
+---
+
 ## Global Constraints
 
 - **파이썬 코드에 독스트링·주석을 쓰지 않는다** (`src`·`tools`·`examples`·`tests`). 예외는 `# noqa`/`# type:`/`# pragma`/shebang, 그리고 `argparse(description=__doc__)` 를 쓰는 `tools/` 파일의 모듈 독스트링.
