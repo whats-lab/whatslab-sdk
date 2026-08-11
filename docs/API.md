@@ -113,16 +113,32 @@ from whatslab.solvers.hand import HandRetargetController
 | `NetHandRetargeter(hand_type, config_name, checkpoint=None, ..., mirror_to=None)` | `net` 백엔드 엔진 — 사람 keyvector → 로봇 관절각. `compute(joint_angles) -> q` 는 `KPHandRetargeter` 와 같은 계약. forward 1회라 FK 가 없다. `mirror_to` 를 주면 입력 keyvector 의 z 성분을 반전해 좌우 통합 모델을 쓴다. |
 | `HandNet(in_dim, joint_counts, hidden=128)` | 손가락별 MLP `(in_dim, hidden, hidden, n_joints_i)` + `Tanh`. 출력 `[-1,1]` 을 `joint_roms` 로 선형 매핑한다. |
 | `AffineHandNet(net, n_finger, dim=6)` / `ResidualAffine(n_finger, dim=6)` | 손가락별 residual affine(`A=0`,`b=0` 초기화 → 항등). few-shot 앵커가 잡아야 하는 전역 정렬을 소수 파라미터로 흡수한다. |
-| `coverage_loss` / `motion_loss_global` / `bone_loss` / `pinch_loss` / `position_loss` / `chamfer_both` | 학습 손실 5종이 정본이고 **가중치는 `tools/train_hand_net.py` 의 상수로 고정**돼 있다(`W_MOTION` 1 / `W_COVERAGE` 5 / `W_BONE` 20 / `W_PINCH` 1 / `W_POS` 20). `coverage_loss` 는 양방향 Chamfer 이고 그 역방향 항이 출력 붕괴를 막는 유일한 장치다. `distance_loss`/`extension_loss`/`flatness_loss`/`motion_loss_local`/`soft_pinch_loss`/`chamfer_partial` 은 제거했다 — 근거는 `plans/RETARGET_V2_PLAN.md` §5.3~5.5. |
+| `coverage_loss` / `motion_loss_global` / `bone_loss` / `pinch_loss` / `position_loss` / `orientation_loss` / `saturation_loss` / `posture_loss` / `unit_to_joint` / `chamfer_both` | 앞 5종이 정본이고 **가중치는 `tools/train_hand_net.py` 의 상수로 고정**돼 있다(`W_MOTION` 1 / `W_COVERAGE` 5 / `W_BONE` 20 / `W_PINCH` 1 / `W_POS` 20). `coverage_loss` 는 양방향 Chamfer 이고 그 역방향 항이 출력 붕괴를 막는 유일한 장치다. 뒤 3종은 기본 가중치 0 이다. `orientation_loss` 는 말단 센서 프레임 방위를 잡는다 — keyvector 에 회전 정보가 없어 뼈축 주변 롤을 아무 항도 잡지 않았다. `unit_to_joint` 는 tanh 출력을 관절한계로 옮기는 정본 매핑(`u_margin`). `distance_loss`/`extension_loss`/`flatness_loss`/`motion_loss_local`/`soft_pinch_loss`/`chamfer_partial` 은 제거했다 — 근거는 `plans/RETARGET_V2_PLAN.md` §5.3~5.5. |
 | `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
 
-rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp|net, net 은 `checkpoint` 필수) + kp 가중치
-(`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
+rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp|net, net 은 `checkpoint` 필수),
+`mirror_to`(left|right, 아래) + kp 가중치(`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
 
-`net` 백엔드는 학습이 필요하다 — `tools/train_hand_net.py`(Phase 1: GeoRT 5원칙 /
-Phase 2: 단방향 Chamfer + 거리보존 + 로컬모션 + few-shot 앵커 + residual affine),
-평가는 `tools/bench_hand_retarget.py --backends net --net-checkpoint …`.
-좌우 통합 모델의 수용 기준은 `tools/check_mirror.py`.
+`net` 백엔드는 학습이 필요하다 — `tools/train_hand_net.py`, 평가는
+`tools/bench_hand_retarget.py --backends net --net-checkpoint …`. 학습 플래그:
+손실 가중치 `--w-motion|coverage|bone|pinch|pos|orient|sat|posture`, 정규화
+`--dropout`/`--weight-decay`/`--val-frac`, 구조 `--hidden`/`--layers`, 출력 매핑
+`--u-margin`. 구조는 체크포인트 모양에서 역산되므로 로드할 때 따로 줄 필요가 없다.
+
+**좌우 처리는 손마다 다르고, 판정 기준은 그 손의 좌우 URDF 미러 정확도다.** 같은
+정규화 출력을 양쪽 URDF 에 넣고 왼손 keyvector 를 `MIRROR_Z` 한 것과 오른손
+keyvector 를 비교해서 잰다. 오른손 사람 입력에 대한 실측 지문추종 오차:
+
+| 손 | 좌우 URDF 미러 | 오른손 전용 모델 | 왼손 모델 + `mirror_to` |
+|---|---|---|---|
+| orca | 0.86mm (한계 16/16 동일) | 24.02 / p95 43.60mm | **24.49 / p95 46.58mm** |
+| robotis | 14.0mm (`finger_joint1~4` 규약 불일치) | **30.50 / p95 58.07mm** | 49.65 / p95 117.47mm |
+
+즉 **orca 는 체크포인트 하나로 양손을 쓴다**(`mirror_to`, 대가 2%). robotis 는
+좌우 URDF 가 비대칭이라 미러가 63% 악화되므로 **side 별 체크포인트가 필수**다.
+체크포인트에 학습 side 가 기록되고 로드할 때 대조하므로, 반대 side 에 쓰려면
+`mirror_to` 를 명시해야 한다 — 좌우를 뒤바꿔 넣어도 관절 수가 같아 조용히
+로드되던 사고를 막는다.
 
 **ONNX 내보내기** — `tools/export_hand_net_onnx.py --config … --side … --checkpoint …
 --out x.onnx`. `q_human (batch, n) → q_robot (batch, m)` 그래프 하나로, **FK 까지
