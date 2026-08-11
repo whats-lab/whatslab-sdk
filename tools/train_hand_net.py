@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from whatslab.solvers.hand.fk_torch import KeyvectorFK
 from whatslab.solvers.hand.human_fk import FINGERS
 from whatslab.solvers.hand.net_losses import (AffineHandNet, align_loss,
+                                              bone_loss,
                                               coverage_loss, distance_loss,
                                               flatness_loss, motion_loss_global,
                                               motion_loss_local, pinch_loss)
@@ -157,6 +158,8 @@ def main():
     ap.add_argument("--w-flatness", type=float, default=0.0)
     ap.add_argument("--save-every", type=int, default=1)
     ap.add_argument("--w-pinch", type=float, default=1.0)
+    ap.add_argument("--w-bone", type=float, default=0.0,
+                    help="손가락 내부 뼈 방향(tip-prox) 일치 — 손끝마디 굽힘 억제")
     ap.add_argument("--w-dist", type=float, default=1.0)
     ap.add_argument("--w-align", type=float, default=1.0)
     ap.add_argument("--anchors", type=int, default=50)
@@ -280,9 +283,11 @@ def main():
                                     (min(args.bank_batch, bank.shape[0]),))
                 cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
             pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
+            bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
 
             loss = (motion * args.w_motion + cover * args.w_coverage
-                    + flat * args.w_flatness + pinch * args.w_pinch)
+                    + flat * args.w_flatness + pinch * args.w_pinch
+                    + bone * args.w_bone)
             dist = zero
             align = zero
             if args.phase == 2:
@@ -295,12 +300,12 @@ def main():
             loss.backward()
             opt.step()
             acc = acc + torch.stack([motion.detach(), cover.detach(),
-                                     flat.detach(), pinch.detach(),
+                                     bone.detach(), pinch.detach(),
                                      dist.detach(), align.detach()])
             nb += 1
 
         vals = (acc / max(nb, 1)).cpu().numpy()
-        print("epoch %3d  motion %+.4f  cover %.4e  flat %.4e  pinch %.4e"
+        print("epoch %3d  motion %+.4f  cover %.4e  bone %.4e  pinch %.4e"
               "  dist %.4e  align %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
