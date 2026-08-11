@@ -39,29 +39,6 @@ def position_loss(x: torch.Tensor, y: torch.Tensor,
     return ((y - x) ** 2).sum(-1).mean()
 
 
-def extension_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    dx = torch.norm(x[..., TIP], dim=-1)
-    dy = torch.norm(y[..., TIP], dim=-1)
-    return ((dy - dx) ** 2).mean()
-
-
-def distance_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    n = x.shape[1]
-    out = torch.zeros((), dtype=x.dtype, device=x.device)
-    for i in range(n):
-        for j in range(i + 1, n):
-            dx = torch.norm(x[:, i, TIP] - x[:, j, TIP], dim=-1)
-            dy = torch.norm(y[:, i, TIP] - y[:, j, TIP], dim=-1)
-            out = out + ((dy - dx) ** 2).mean()
-    return out
-
-
-def motion_loss_global(dx: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
-    a = F.normalize(dx.reshape(-1, KV_DIM), dim=-1, eps=1e-5)
-    b = F.normalize(dy.reshape(-1, KV_DIM), dim=-1, eps=1e-5)
-    return -(a * b).sum(-1).mean()
-
-
 def motion_loss_local(dx_a: torch.Tensor, dy_a: torch.Tensor,
                       dx_b: torch.Tensor, dy_b: torch.Tensor) -> torch.Tensor:
     def cos(u, v):
@@ -69,17 +46,6 @@ def motion_loss_local(dx_a: torch.Tensor, dy_a: torch.Tensor,
         vn = F.normalize(v.reshape(-1, KV_DIM), dim=-1, eps=1e-5)
         return (un * vn).sum(-1)
     return ((cos(dx_a, dx_b) - cos(dy_a, dy_b)) ** 2).mean()
-
-
-def bone_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    hx = F.normalize(x[..., TIP] - x[..., 3:], dim=-1, eps=1e-9)
-    hy = F.normalize(y[..., TIP] - y[..., 3:], dim=-1, eps=1e-9)
-    return (1.0 - (hx * hy).sum(-1)).mean()
-
-
-def flatness_loss(y_plus: torch.Tensor, y_minus: torch.Tensor,
-                  y: torch.Tensor) -> torch.Tensor:
-    return ((y_plus + y_minus - 2.0 * y) ** 2).mean()
 
 
 def pinch_loss(x: torch.Tensor, y: torch.Tensor, threshold: float) -> torch.Tensor:

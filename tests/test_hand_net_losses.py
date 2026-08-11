@@ -4,10 +4,9 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from whatslab.solvers.hand.net_losses import (AffineHandNet, ResidualAffine,
-                                             chamfer_both, extension_loss,
-                                             chamfer_partial, distance_loss,
-                                             motion_loss_global, motion_loss_local,
-                                             pinch_loss, soft_pinch_loss)
+                                             chamfer_both, chamfer_partial,
+                                             motion_loss_local, pinch_loss,
+                                             position_loss, soft_pinch_loss)
 
 
 def _kv(vals):
@@ -41,20 +40,12 @@ def test_partial_chamfer_ignores_uncovered_target_region():
     assert float(both) > 39.0
 
 
-def test_distance_loss_is_zero_when_pairwise_distances_match():
+def test_position_loss_is_zero_on_match_and_grows_with_offset():
     x = torch.randn(3, 5, 6, dtype=torch.float64)
-    assert float(distance_loss(x, x.clone())) == pytest.approx(0.0, abs=1e-18)
-
-
-def test_distance_loss_penalises_uniform_scaling():
-    x = torch.randn(3, 5, 6, dtype=torch.float64)
-    assert float(distance_loss(x, x * 2.0)) > 0.0
-
-
-def test_global_motion_loss_is_minimal_when_aligned():
-    d = torch.randn(4, 5, 6, dtype=torch.float64)
-    assert float(motion_loss_global(d, d)) == pytest.approx(-1.0, abs=1e-9)
-    assert float(motion_loss_global(d, -d)) == pytest.approx(1.0, abs=1e-9)
+    assert float(position_loss(x, x.clone())) == pytest.approx(0.0, abs=1e-18)
+    off = x.clone()
+    off[:, :, 0] += 0.1
+    assert float(position_loss(x, off)) == pytest.approx(0.01, abs=1e-9)
 
 
 def test_local_motion_loss_is_rotation_invariant():
@@ -65,20 +56,6 @@ def test_local_motion_loss_is_rotation_invariant():
     ra = a @ q.T
     rb = b @ q.T
     assert float(motion_loss_local(a, ra, b, rb)) == pytest.approx(0.0, abs=1e-18)
-    assert float(motion_loss_global(a, ra)) > -0.99
-
-
-def test_extension_loss_sees_radial_size_where_distance_loss_is_blind():
-    x = torch.zeros(1, 5, 6, dtype=torch.float64)
-    y = torch.zeros(1, 5, 6, dtype=torch.float64)
-    for i in range(5):
-        x[0, i, 0] = 1.0
-        x[0, i, 1] = 0.2 * i
-        y[0, i, 0] = 0.5
-        y[0, i, 1] = 0.2 * i
-    assert float(distance_loss(x, y)) == pytest.approx(0.0, abs=1e-15)
-    assert float(extension_loss(x, y)) == pytest.approx(0.18689, abs=1e-4)
-    assert float(extension_loss(x, x.clone())) == pytest.approx(0.0, abs=1e-18)
 
 
 def test_pinch_loss_only_fires_on_close_human_pairs():
