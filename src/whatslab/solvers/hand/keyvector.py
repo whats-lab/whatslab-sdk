@@ -88,10 +88,11 @@ class HandKeyvector:
         self.mid = {f: chain_weights(
             np.linalg.norm(np.diff(pts[f], axis=0), axis=1), frac) for f in FINGERS}
         self.origin = self._pos(self.dorsum).copy()
-        self.rot = palm_frame_from_fingers(pts)[1]
-        self.l_ref = float(np.linalg.norm(pts["middle"][-1] - self.origin))
+        palm_o, self.rot = palm_frame_from_fingers(pts)
+        self.l_ref = float(np.linalg.norm(self.rot.T
+                                          @ (pts["middle"][-1] - palm_o)))
         if self.l_ref <= 1e-9:
-            raise ValueError("L_ref 가 0 이다 — dorsum 과 중지 끝이 같은 위치다")
+            raise ValueError("L_ref 가 0 이다 — 팜 원점과 중지 끝이 같은 위치다")
 
     def _bid(self, name: str) -> int:
         if not self.model.existFrame(name):

@@ -32,6 +32,13 @@ def coverage_loss(y: torch.Tensor, bank: torch.Tensor,
     return sum(fn(y[:, i, TIP], bank[:, i, TIP]) for i in range(y.shape[1]))
 
 
+def position_loss(x: torch.Tensor, y: torch.Tensor,
+                  tip_only: bool = False) -> torch.Tensor:
+    if tip_only:
+        return ((y[..., TIP] - x[..., TIP]) ** 2).sum(-1).mean()
+    return ((y - x) ** 2).sum(-1).mean()
+
+
 def extension_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     dx = torch.norm(x[..., TIP], dim=-1)
     dy = torch.norm(y[..., TIP], dim=-1)

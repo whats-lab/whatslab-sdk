@@ -15,6 +15,7 @@ from whatslab.solvers.hand.human_fk import FINGERS
 from whatslab.solvers.hand.net_losses import (AffineHandNet, bone_loss,
                                               coverage_loss, distance_loss,
                                               extension_loss, flatness_loss,
+                                              position_loss,
                                               motion_loss_global,
                                               motion_loss_local, pinch_loss)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
@@ -187,6 +188,9 @@ def main():
     ap.add_argument("--w-dist", type=float, default=0.0)
     ap.add_argument("--w-ext", type=float, default=0.0,
                     help="손가락별 ||dorsum->tip|| 크기 일치 — 굽힘 진폭 부족 대응")
+    ap.add_argument("--w-pos", type=float, default=0.0,
+                    help="손가락별 6D keyvector 일치. 반경·각도를 동시에 정하므로"
+                         " 쌍거리(--w-dist)가 불필요해진다 — 손가락 간 결합 없음")
     ap.add_argument("--no-affine", action="store_true",
                     help="residual affine 을 끈다 — 기본은 켜져 있다. 손마다 크기가"
                          " 달라서 L_dist/L_ext 가 형태 불일치와 정면으로 부딪힌다")
@@ -270,7 +274,7 @@ def main():
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
-        acc = torch.zeros(6, dtype=dt, device=dev)
+        acc = torch.zeros(7, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             x = X[perm[s:s + args.batch]]
@@ -312,23 +316,27 @@ def main():
                     + bone * args.w_bone)
             dist = zero
             ext = zero
+            pos = zero
             if args.w_dist > 0.0:
                 dist = distance_loss(x, y)
                 loss = loss + dist * args.w_dist
             if args.w_ext > 0.0:
                 ext = extension_loss(x, y)
                 loss = loss + ext * args.w_ext
+            if args.w_pos > 0.0:
+                pos = position_loss(x, y)
+                loss = loss + pos * args.w_pos
             opt.zero_grad()
             loss.backward()
             opt.step()
             acc = acc + torch.stack([motion.detach(), cover.detach(),
                                      bone.detach(), pinch.detach(),
-                                     dist.detach(), ext.detach()])
+                                     dist.detach(), ext.detach(), pos.detach()])
             nb += 1
 
         vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  bone %.4e  pinch %.4e"
-              "  dist %.4e  ext %.4e" % (epoch, *vals), flush=True)
+              "  dist %.4e  ext %.4e  pos %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
