@@ -15,6 +15,7 @@ from .net_losses import AffineHandNet, unit_to_joint
 LIMIT_FALLBACK = 2.0
 ACTS = {"leaky": nn.LeakyReLU, "gelu": nn.GELU, "silu": nn.SiLU,
         "tanh": nn.Tanh, "softplus": nn.Softplus}
+NORMS = ("none", "layer", "batch")
 LAYER_REMAP = {"%snets.%d.%d.%s" % (p, f, a, w):
                "%snets.%d.%d.%s" % (p, f, b, w)
                for p in ("", "net.") for f in range(5)
@@ -25,11 +26,15 @@ DORSUM_FRAME = "{side}_sensor_dorsum"
 class HandNet(nn.Module):
 
     def __init__(self, in_dim: int, joint_counts: Sequence[int], hidden: int = 128,
-                 dropout: float = 0.0, layers: int = 2, act: str = "leaky"):
+                 dropout: float = 0.0, layers: int = 2, act: str = "leaky",
+                 norm: str = "none"):
         super().__init__()
         if act not in ACTS:
             raise ValueError("act 는 %s 중 하나: %r" % (list(ACTS), act))
+        if norm not in NORMS:
+            raise ValueError("norm 는 %s 중 하나: %r" % (list(NORMS), norm))
         self.act = act
+        self.norm = norm
         self.in_dim = int(in_dim)
         self.joint_counts = [int(n) for n in joint_counts]
         self.dropout = float(dropout)
@@ -43,8 +48,12 @@ class HandNet(nn.Module):
         mods: List[nn.Module] = []
         d = self.in_dim
         for _ in range(self.layers):
-            mods += [nn.Linear(d, self.hidden_of()), ACTS[self.act](),
-                     nn.Dropout(self.dropout)]
+            mods += [nn.Linear(d, self.hidden_of())]
+            if self.norm == "layer":
+                mods.append(nn.LayerNorm(self.hidden_of()))
+            elif self.norm == "batch":
+                mods.append(nn.BatchNorm1d(self.hidden_of()))
+            mods += [ACTS[self.act](), nn.Dropout(self.dropout)]
             d = self.hidden_of()
         mods += [nn.Linear(d, n_out), nn.Tanh()]
         return nn.Sequential(*mods)
@@ -61,7 +70,8 @@ class NetHandRetargeter:
     def __init__(self, hand_type: str, config_name: str = "base_hand",
                  checkpoint: Optional[str] = None, urdf_root: Optional[str] = None,
                  hidden: int = 128, mirror_to: Optional[str] = None,
-                 dropout: float = 0.0, layers: int = 2, act: str = "leaky"):
+                 dropout: float = 0.0, layers: int = 2, act: str = "leaky",
+                 norm: str = "none"):
         if config_name not in CONFIG_REGISTRY:
             raise ValueError("알 수 없는 config '%s'. 가능: %s"
                              % (config_name, list(CONFIG_REGISTRY)))
@@ -109,7 +119,7 @@ class NetHandRetargeter:
 
         self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
                            hidden=hidden, dropout=dropout, layers=layers,
-                           act=act).double()
+                           act=act, norm=norm).double()
         self.net.eval()
         self.u_margin = 1.0
         if checkpoint is not None:
@@ -146,7 +156,10 @@ class NetHandRetargeter:
         self._check_side(checkpoint, sd)
         if isinstance(sd, dict) and sd.get("act") is not None:
             self._want_act = str(sd["act"])
-        inner = {LAYER_REMAP.get(k, k): v for k, v in inner.items()}
+        if isinstance(sd, dict) and sd.get("norm") is not None:
+            self._want_norm = str(sd["norm"])
+        if not (isinstance(sd, dict) and "dropout" in sd):
+            inner = {LAYER_REMAP.get(k, k): v for k, v in inner.items()}
         self._rebuild_for(inner)
         wrapped = any(k.startswith("affine.") for k in inner)
         if wrapped and not isinstance(self.net, AffineHandNet):
@@ -164,15 +177,18 @@ class NetHandRetargeter:
         if first is None:
             return
         h = int(first.shape[0])
-        nl = len([k for k in inner if k.startswith("%snets.0." % pre)
-                  and k.endswith(".weight")]) - 1
+        lin = [k for k in inner if k.startswith("%snets.0." % pre)
+               and k.endswith(".weight") and inner[k].dim() == 2]
+        nl = len(lin) - 1
         cur = self.net.net if isinstance(self.net, AffineHandNet) else self.net
         act = getattr(self, "_want_act", cur.act)
-        if h == cur._hidden and nl == cur.layers and act == cur.act:
+        norm = getattr(self, "_want_norm", cur.norm)
+        if (h == cur._hidden and nl == cur.layers and act == cur.act
+                and norm == cur.norm):
             return
         rebuilt = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
                           hidden=h, dropout=cur.dropout, layers=nl,
-                          act=act).double()
+                          act=act, norm=norm).double()
         self.net = (AffineHandNet(rebuilt, len(self.fingers))
                     if isinstance(self.net, AffineHandNet) else rebuilt)
 
