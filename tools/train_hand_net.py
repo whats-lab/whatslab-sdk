@@ -100,11 +100,13 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--phase", type=int, default=1, choices=[1, 2])
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--float32", action="store_true")
+    ap.add_argument("--fp64", action="store_true",
+                    help="기본은 float32 — 정본 대조 검증용으로만 fp64 를 쓴다")
     ap.add_argument("--fk", default="torch", choices=["torch", "pinocchio"])
     ap.add_argument("--w-motion", type=float, default=1.0)
     ap.add_argument("--w-coverage", type=float, default=80.0)
-    ap.add_argument("--w-flatness", type=float, default=0.1)
+    ap.add_argument("--w-flatness", type=float, default=0.0)
+    ap.add_argument("--save-every", type=int, default=1)
     ap.add_argument("--w-pinch", type=float, default=1.0)
     ap.add_argument("--w-dist", type=float, default=1.0)
     ap.add_argument("--w-align", type=float, default=1.0)
@@ -115,14 +117,14 @@ def main():
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
-    dt = torch.float32 if args.float32 else torch.float64
+    dt = torch.float64 if args.fp64 else torch.float32
     dev = torch.device(args.device)
     r = NetHandRetargeter(args.side, args.config)
     if args.fk == "torch":
         fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
     else:
-        if args.device != "cpu" or args.float32:
-            ap.error("--fk pinocchio 는 cpu/float64 만 된다")
+        if args.device != "cpu" or not args.fp64:
+            ap.error("--fk pinocchio 는 --device cpu --fp64 만 된다")
         fk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
     side, trajs = B.load_poses(args.dump, args.profiles, 20,
                                ("pinch", "flex", "abd"))
@@ -143,7 +145,7 @@ def main():
     print("사람 %d (실측 %d + 합성 %d)  로봇 bank %d  관절 %d  핀치임계 %.4f"
           "  FK %s/%s/%s" % (X.shape[0], n_real, args.random, bank.shape[0],
                              len(r.joint_names), pinch_thr, args.fk, args.device,
-                             "f32" if args.float32 else "f64"), flush=True)
+                             "f64" if args.fp64 else "f32"), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
@@ -175,7 +177,7 @@ def main():
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
-        acc = np.zeros(6)
+        acc = torch.zeros(6, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             x = X[perm[s:s + args.batch]]
@@ -189,25 +191,32 @@ def main():
                 dx = d * step
                 return dx, to_kv(x + dx) - y
 
-            dx_a, dy_a = perturb()
-            if args.local_motion:
-                dx_b, dy_b = perturb()
-                motion = motion_loss_local(dx_a, dy_a, dx_b, dy_b)
-            else:
-                motion = motion_loss_global(dx_a, dy_a)
+            zero = torch.zeros((), dtype=x.dtype, device=x.device)
+            motion = zero
+            if args.w_motion > 0.0:
+                dx_a, dy_a = perturb()
+                if args.local_motion:
+                    dx_b, dy_b = perturb()
+                    motion = motion_loss_local(dx_a, dy_a, dx_b, dy_b)
+                else:
+                    motion = motion_loss_global(dx_a, dy_a)
 
-            d2 = F.normalize(torch.randn_like(x), dim=-1) * FLAT_EPS
-            flat = flatness_loss(to_kv(x + d2), to_kv(x - d2), y)
+            flat = zero
+            if args.w_flatness > 0.0:
+                d2 = F.normalize(torch.randn_like(x), dim=-1) * FLAT_EPS
+                flat = flatness_loss(to_kv(x + d2), to_kv(x - d2), y)
 
-            sel = torch.randint(0, bank.shape[0],
-                                (min(args.bank_batch, bank.shape[0]),))
-            cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
-            pinch = pinch_loss(x, y, pinch_thr)
+            cover = zero
+            if args.w_coverage > 0.0:
+                sel = torch.randint(0, bank.shape[0],
+                                    (min(args.bank_batch, bank.shape[0]),))
+                cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
+            pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
 
             loss = (motion * args.w_motion + cover * args.w_coverage
                     + flat * args.w_flatness + pinch * args.w_pinch)
-            dist = torch.zeros((), dtype=x.dtype, device=x.device)
-            align = torch.zeros((), dtype=x.dtype, device=x.device)
+            dist = zero
+            align = zero
             if args.phase == 2:
                 dist = distance_loss(x, y)
                 loss = loss + dist * args.w_dist
@@ -217,20 +226,21 @@ def main():
             opt.zero_grad()
             loss.backward()
             opt.step()
-            acc += [float(motion.detach()), float(cover.detach()),
-                    float(flat.detach()), float(pinch.detach()),
-                    float(dist.detach()), float(align.detach())]
+            acc = acc + torch.stack([motion.detach(), cover.detach(),
+                                     flat.detach(), pinch.detach(),
+                                     dist.detach(), align.detach()])
             nb += 1
 
-        acc /= max(nb, 1)
+        vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  flat %.4e  pinch %.4e"
-              "  dist %.4e  align %.4e" % (epoch, *acc), flush=True)
-        torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
-                    "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
-        os.replace(ckpt + ".tmp", ckpt)
-        torch.save({"net": net.state_dict(), "affine": args.phase == 2
-                    and not args.no_affine},
-                   os.path.join(args.out, "net.pt"))
+              "  dist %.4e  align %.4e" % (epoch, *vals), flush=True)
+        if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
+            torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
+                        "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
+            os.replace(ckpt + ".tmp", ckpt)
+            torch.save({"net": net.state_dict(), "affine": args.phase == 2
+                        and not args.no_affine},
+                       os.path.join(args.out, "net.pt"))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
         json.dump(vars(args), fh, indent=2)
 
