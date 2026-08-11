@@ -13,8 +13,9 @@ import torch.nn.functional as F
 from whatslab.solvers.hand.fk_torch import KeyvectorFK
 from whatslab.solvers.hand.human_fk import FINGERS
 from whatslab.solvers.hand.net_losses import (AffineHandNet, coverage_loss,
-                                              motion_loss_local, pinch_loss,
-                                              position_loss)
+                                              distance_loss, motion_loss_local,
+                                              pinch_loss, position_loss,
+                                              smooth_loss)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -180,6 +181,10 @@ def main():
     ap.add_argument("--w-coverage", type=float, default=80.0)
     ap.add_argument("--save-every", type=int, default=1)
     ap.add_argument("--w-pinch", type=float, default=1.0)
+    ap.add_argument("--w-dist", type=float, default=0.0,
+                    help="손끝 쌍거리(접선). 굽힘 진폭을 깎는다 — 측정 근거는 계획서")
+    ap.add_argument("--w-smooth", type=float, default=0.0,
+                    help="입력 섭동당 출력 변화량(게인)을 벌금 — |dq| 떨림 억제")
     ap.add_argument("--w-pos", type=float, default=0.0,
                     help="손가락별 6D keyvector 일치. 반경·각도를 동시에 정하므로"
                          " 쌍거리(--w-dist)가 불필요해진다 — 손가락 간 결합 없음")
@@ -188,7 +193,12 @@ def main():
                          " 달라서 L_dist/L_ext 가 형태 불일치와 정면으로 부딪힌다")
     ap.add_argument("--affine", action="store_true",
                     help="기본값이라 무동작 — 명시용으로만 남긴다")
-    ap.add_argument("--partial-chamfer", action="store_true")
+    ap.add_argument("--partial-chamfer", action="store_true",
+                    help="--chamfer forward 와 같다 (구 스크립트 호환)")
+    ap.add_argument("--chamfer", default=None,
+                    choices=["both", "forward", "reverse"],
+                    help="both=GeoRT 원본 / forward=사람->로봇(이 구조에서 무정보,"
+                         " 붕괴를 보상) / reverse=로봇->사람 = coverage 본체")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -272,18 +282,20 @@ def main():
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
-        acc = torch.zeros(4, dtype=dt, device=dev)
+        acc = torch.zeros(6, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
             x = X[perm[s:s + args.batch]]
             y = to_kv(x)
 
-            def perturb():
+            def perturb(keep=False):
                 d = F.normalize(torch.randn_like(x), dim=-1)
                 step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
                                               device=x.device) * (
                     MOTION_HI - MOTION_LO)
                 dx = d * step
+                if keep:
+                    return dx, to_kv(x + dx) - y, step
                 return dx, to_kv(x + dx) - y
 
             zero = torch.zeros((), dtype=x.dtype, device=x.device)
@@ -297,11 +309,24 @@ def main():
             if args.w_coverage > 0.0:
                 sel = torch.randint(0, bank.shape[0],
                                     (min(args.bank_batch, bank.shape[0]),))
-                cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
+                cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer,
+                                      mode=args.chamfer)
             pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
 
             loss = (motion * args.w_motion + cover * args.w_coverage
                     + pinch * args.w_pinch)
+            dist = zero
+            if args.w_dist > 0.0:
+                dist = distance_loss(x, y)
+                loss = loss + dist * args.w_dist
+            smooth = zero
+            if args.w_smooth > 0.0:
+                d = F.normalize(torch.randn_like(x), dim=-1)
+                step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
+                                              device=x.device) * (
+                    MOTION_HI - MOTION_LO)
+                smooth = smooth_loss(net(x), net(x + d * step), step)
+                loss = loss + smooth * args.w_smooth
             pos = zero
             if args.w_pos > 0.0:
                 pos = position_loss(x, y)
@@ -310,12 +335,13 @@ def main():
             loss.backward()
             opt.step()
             acc = acc + torch.stack([motion.detach(), cover.detach(),
-                                     pinch.detach(), pos.detach()])
+                                     pinch.detach(), pos.detach(),
+                                     dist.detach(), smooth.detach()])
             nb += 1
 
         vals = (acc / max(nb, 1)).cpu().numpy()
-        print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
-              % (epoch, *vals), flush=True)
+        print("epoch %3d  motion %.4e  cover %.4e  pinch %.4e  pos %.4e"
+              "  dist %.4e  smooth %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")

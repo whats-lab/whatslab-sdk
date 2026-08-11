@@ -42,35 +42,22 @@ def test_chain_weights_rejects_degenerate_chain():
         chain_weights([])
 
 
-def test_encode_shape_and_lref_is_palm_frame_middle_length():
+def test_lref_is_max_reachable_dorsum_to_tip_over_all_fingers():
     fk, kv = _human_kv("left")
-    q = pin.neutral(fk.model)
-    x = kv.encode(q)
+    x = kv.encode(pin.neutral(fk.model))
     assert x.shape == (5, 6)
-    pts = kv.points(q)
-    palm_o, rot = palm_frame_from_fingers(pts)
-    assert kv.l_ref == pytest.approx(
-        float(np.linalg.norm(rot.T @ (pts["middle"][-1] - palm_o))), abs=1e-12)
-    tip = float(np.linalg.norm(pts["middle"][-1] - kv.origin))
-    assert np.linalg.norm(x[FINGERS.index("middle"), :3]) == pytest.approx(
-        tip / kv.l_ref, abs=1e-9)
-
-
-def test_lref_scale_matches_bench_metric_scale_on_both_hands():
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), "tools"))
-    from bench_hand_retarget import net_probe
-
-    from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
-    fk, hkv = _human_kv("left")
-    for cfg in ("robotis_hx5_d20", "orca_hand"):
-        r = NetHandRetargeter("left", cfg)
-        r_len = net_probe(r)[2]()[2]
-        hp = r.fk.points({n: 0.0 for n in r.fk.joint_names})
-        o, rot = palm_frame_from_fingers({f: hp[f] for f in FINGERS})
-        h_len = float(np.linalg.norm(rot.T @ (hp["middle"][-1] - o)))
-        assert r.kv.l_ref / r.hkv.l_ref == pytest.approx(r_len / h_len, rel=1e-9)
+    rng = np.random.default_rng(0)
+    lo = fk.model.lowerPositionLimit
+    hi = fk.model.upperPositionLimit
+    iq = [fk._idx_q[n] for n in fk.joint_names]
+    for _ in range(200):
+        q = pin.neutral(fk.model)
+        q[iq] = rng.uniform(lo[iq], hi[iq])
+        pts = kv.points(q)
+        for f in FINGERS:
+            d = float(np.linalg.norm(pts[f][-1] - kv.origin))
+            assert d <= kv.l_ref * (1.0 + 1e-6), f
+    assert np.abs(kv.encode(pin.neutral(fk.model))[:, :3]).max() <= 1.0 + 1e-9
 
 
 def test_prox_sits_at_half_arc_length_and_is_pose_independent():
