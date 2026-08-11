@@ -10,11 +10,10 @@ import pinocchio as pin
 import torch
 import torch.nn.functional as F
 
-from whatslab.solvers.hand.human_fk import FINGERS
-from whatslab.solvers.hand.net_losses import (AffineHandNet, bone_loss,
-                                              coverage_loss,
+from whatslab.solvers.hand.net_losses import (U_MARGIN, AffineHandNet,
+                                              bone_loss, coverage_loss,
                                               motion_loss_global, pinch_loss,
-                                              position_loss)
+                                              position_loss, unit_to_joint)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -23,6 +22,9 @@ import bench_hand_retarget as B  # noqa: E402
 
 PINCH_MM = 15.0
 COLLAPSE_DEG = 5.0
+SAT_U = 0.99
+VAL_FRAC = 0.1
+WEIGHT_DECAY = 0.01
 W_MOTION = 1.0
 W_COVERAGE = 5.0
 W_BONE = 20.0
@@ -36,7 +38,7 @@ MOTION_HI = 0.011
 def robot_bank(r, n, seed=0):
     rng = np.random.default_rng(seed)
     u = rng.uniform(-1.0, 1.0, (n, len(r.joint_names)))
-    out = np.empty((n, len(FINGERS), 6))
+    out = np.empty((n, len(r.fingers), 6))
     q = pin.neutral(r.model)
     for i in range(n):
         q[r._iq] = r.to_joint(u[i])
@@ -82,7 +84,7 @@ def flat_fist(r):
 def joint_blocks(r):
     out = {}
     for j, n in enumerate(r.fk.joint_names):
-        for f in FINGERS:
+        for f in r.fingers:
             if f in n:
                 out.setdefault(f, []).append(j)
                 break
@@ -139,7 +141,7 @@ def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0)
                                   shared=False))
             rows.extend(q_combo(real_q, blocks, k, seed + 2))
     q = pin.neutral(r.fk.model)
-    out = np.empty((len(rows), len(FINGERS), 6))
+    out = np.empty((len(rows), len(r.fingers), 6))
     for i, qv in enumerate(rows):
         q[iq] = qv
         out[i] = r.hkv.encode(q)
@@ -184,12 +186,16 @@ def main():
     ap.add_argument("--w-bone", type=float, default=W_BONE)
     ap.add_argument("--w-pinch", type=float, default=W_PINCH)
     ap.add_argument("--w-pos", type=float, default=W_POS)
+    ap.add_argument("--u-margin", type=float, default=U_MARGIN)
+    ap.add_argument("--val-frac", type=float, default=VAL_FRAC)
+    ap.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     dt = torch.float32
     dev = torch.device(args.device)
     r = NetHandRetargeter(args.side, args.config)
+    r.u_margin = args.u_margin
     fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
     names_h, iq_h, lo_h, hi_h = q_axes(r)
     blocks = joint_blocks(r)
@@ -229,6 +235,13 @@ def main():
     X, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
                               args.random, args.random_mode, args.seed)
     X = torch.as_tensor(X, dtype=dt, device=dev)
+    n_val = int(round(X.shape[0] * args.val_frac))
+    if n_val > 0:
+        vperm = torch.randperm(X.shape[0], generator=torch.Generator().manual_seed(
+            args.seed))
+        Xval, X = X[vperm[:n_val]], X[vperm[n_val:]]
+    else:
+        Xval = X[:0]
     bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
     hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
@@ -236,12 +249,16 @@ def main():
     print("사람 %d (실측 %d + 합성 %d/%s)  로봇 bank %d  관절 %d  핀치임계 %.4f  %s"
           % (X.shape[0], n_real, args.random, args.random_mode, bank.shape[0],
              len(r.joint_names), pinch_thr, args.device), flush=True)
+    print("학습 %d / 검증 %d  weight_decay %.4g  u_margin %.2f"
+          % (X.shape[0], Xval.shape[0], args.weight_decay, args.u_margin),
+          flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
-    net = AffineHandNet(r.net, len(FINGERS)).to(dtype=dt, device=dev)
+    net = AffineHandNet(r.net, len(r.fingers)).to(dtype=dt, device=dev)
     net.train()
-    opt = torch.optim.AdamW(net.parameters(), lr=args.lr)
+    opt = torch.optim.AdamW(net.parameters(), lr=args.lr,
+                            weight_decay=args.weight_decay)
 
     start = 0
     if os.path.exists(ckpt):
@@ -252,63 +269,83 @@ def main():
         print("[resume] epoch %d 부터" % start, flush=True)
 
     def to_kv(x):
-        return fk(lo + (net(x) + 1.0) * 0.5 * (hi - lo))
+        return fk(unit_to_joint(net(x), lo, hi, args.u_margin))
+
+    def terms(x):
+        y = to_kv(x)
+        zero = torch.zeros((), dtype=x.dtype, device=x.device)
+        motion = zero
+        if args.w_motion > 0.0:
+            d = F.normalize(torch.randn_like(x), dim=-1)
+            step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
+                                          device=x.device) * (
+                MOTION_HI - MOTION_LO)
+            dx = d * step
+            motion = motion_loss_global(dx, to_kv(x + dx) - y)
+        sel = torch.randint(0, bank.shape[0],
+                            (min(args.bank_batch, bank.shape[0]),))
+        cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
+        pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
+        bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
+        pos = position_loss(x, y) if args.w_pos > 0.0 else zero
+        loss = (motion * args.w_motion + cover * args.w_coverage
+                + pinch * args.w_pinch + bone * args.w_bone
+                + pos * args.w_pos)
+        return loss, torch.stack([motion.detach(), cover.detach(),
+                                  pinch.detach(), pos.detach(), bone.detach()])
 
     for epoch in range(start, args.epochs):
         perm = torch.randperm(X.shape[0])
         acc = torch.zeros(5, dtype=dt, device=dev)
         nb = 0
         for s in range(0, X.shape[0] - args.batch + 1, args.batch):
-            x = X[perm[s:s + args.batch]]
-            y = to_kv(x)
-
-            def perturb():
-                d = F.normalize(torch.randn_like(x), dim=-1)
-                step = MOTION_LO + torch.rand(x.shape[0], 1, 1, dtype=x.dtype,
-                                              device=x.device) * (
-                    MOTION_HI - MOTION_LO)
-                dx = d * step
-                return dx, to_kv(x + dx) - y
-
-            zero = torch.zeros((), dtype=x.dtype, device=x.device)
-            motion = zero
-            if args.w_motion > 0.0:
-                motion = motion_loss_global(*perturb())
-
-            sel = torch.randint(0, bank.shape[0],
-                                (min(args.bank_batch, bank.shape[0]),))
-            cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
-            pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
-            bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
-            pos = position_loss(x, y) if args.w_pos > 0.0 else zero
-            loss = (motion * args.w_motion + cover * args.w_coverage
-                    + pinch * args.w_pinch + bone * args.w_bone
-                    + pos * args.w_pos)
+            loss, t = terms(X[perm[s:s + args.batch]])
             opt.zero_grad()
             loss.backward()
             opt.step()
-            acc = acc + torch.stack([motion.detach(), cover.detach(),
-                                     pinch.detach(), pos.detach(),
-                                     bone.detach()])
+            acc = acc + t
             nb += 1
 
         vals = (acc / max(nb, 1)).cpu().numpy()
         print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
               "  bone %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
+            if Xval.shape[0] > 0:
+                vacc = torch.zeros(5, dtype=dt, device=dev)
+                vl, vn = 0.0, 0
+                for s in range(0, Xval.shape[0], args.batch):
+                    xv = Xval[s:s + args.batch]
+                    if xv.shape[0] < 2:
+                        continue
+                    lv, tv = terms(xv)
+                    vl += float(lv.detach()) * xv.shape[0]
+                    vacc = vacc + tv * xv.shape[0]
+                    vn += xv.shape[0]
+                vv = (vacc / max(vn, 1)).cpu().numpy()
+                print("  검증 loss %.4e  motion %+.4f  cover %.4e  pinch %.4e"
+                      "  pos %.4e  bone %.4e"
+                      % (vl / max(vn, 1), *vv), flush=True)
             with torch.no_grad():
                 u = net(X[:min(512, X.shape[0])])
-                spread = float(np.rad2deg(
-                    ((u.max(0).values - u.min(0).values)
-                     * 0.5 * (hi - lo)).max().item()))
-            print("  출력범위 %.1f deg%s" % (spread,
-                                            "  <= 붕괴" if spread < COLLAPSE_DEG else ""),
-                  flush=True)
+                qj = unit_to_joint(u, lo, hi, args.u_margin)
+                span = (qj.max(0).values - qj.min(0).values).cpu().numpy()
+                sat = (u.abs() > SAT_U).double().mean(0).cpu().numpy()
+            span = np.rad2deg(span)
+            dead = [(r.joint_names[i], span[i], sat[i])
+                    for i in np.argsort(span)[:3]]
+            print("  출력범위 최대 %.1f 최소 %.1f deg%s  최소3 %s" %
+                  (span.max(), span.min(),
+                   "  <= 붕괴" if span.max() < COLLAPSE_DEG else "",
+                   " ".join("%s %.1f/포화%.0f%%" % (n, s, 100.0 * t)
+                            for n, s, t in dead)), flush=True)
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
-                        "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
+                        "epoch": epoch, "cfg": vars(args),
+                        "u_margin": args.u_margin}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
-            torch.save({"net": net.state_dict(), "affine": True},
-                       os.path.join(args.out, "net.pt"))
+            snap = {"net": net.state_dict(), "affine": True,
+                    "u_margin": args.u_margin}
+            torch.save(snap, os.path.join(args.out, "net.pt"))
+            torch.save(snap, os.path.join(args.out, "ep%04d.pt" % (epoch + 1)))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
         json.dump(vars(args), fh, indent=2)
 
