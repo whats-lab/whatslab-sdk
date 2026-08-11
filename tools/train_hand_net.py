@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench_hand_retarget as B  # noqa: E402
 
 PINCH_MM = 15.0
+COLLAPSE_DEG = 5.0
 W_MOTION = 1.0
 W_COVERAGE = 5.0
 W_BONE = 20.0
@@ -178,6 +179,11 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--save-every", type=int, default=1)
+    ap.add_argument("--w-motion", type=float, default=W_MOTION)
+    ap.add_argument("--w-coverage", type=float, default=W_COVERAGE)
+    ap.add_argument("--w-bone", type=float, default=W_BONE)
+    ap.add_argument("--w-pinch", type=float, default=W_PINCH)
+    ap.add_argument("--w-pos", type=float, default=W_POS)
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -266,17 +272,18 @@ def main():
 
             zero = torch.zeros((), dtype=x.dtype, device=x.device)
             motion = zero
-            if W_MOTION > 0.0:
+            if args.w_motion > 0.0:
                 motion = motion_loss_global(*perturb())
 
             sel = torch.randint(0, bank.shape[0],
                                 (min(args.bank_batch, bank.shape[0]),))
-            cover = coverage_loss(y, bank[sel])
-            pinch = pinch_loss(x, y, pinch_thr)
-            bone = bone_loss(x, y)
-            pos = position_loss(x, y)
-            loss = (motion * W_MOTION + cover * W_COVERAGE + pinch * W_PINCH
-                    + bone * W_BONE + pos * W_POS)
+            cover = coverage_loss(y, bank[sel]) if args.w_coverage > 0.0 else zero
+            pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
+            bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
+            pos = position_loss(x, y) if args.w_pos > 0.0 else zero
+            loss = (motion * args.w_motion + cover * args.w_coverage
+                    + pinch * args.w_pinch + bone * args.w_bone
+                    + pos * args.w_pos)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -289,6 +296,14 @@ def main():
         print("epoch %3d  motion %+.4f  cover %.4e  pinch %.4e  pos %.4e"
               "  bone %.4e" % (epoch, *vals), flush=True)
         if (epoch + 1) % args.save_every == 0 or epoch + 1 == args.epochs:
+            with torch.no_grad():
+                u = net(X[:min(512, X.shape[0])])
+                spread = float(np.rad2deg(
+                    ((u.max(0).values - u.min(0).values)
+                     * 0.5 * (hi - lo)).max().item()))
+            print("  출력범위 %.1f deg%s" % (spread,
+                                            "  <= 붕괴" if spread < COLLAPSE_DEG else ""),
+                  flush=True)
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
