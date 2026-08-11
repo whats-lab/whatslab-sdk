@@ -125,6 +125,38 @@ def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0)
     return out, n_real
 
 
+def robot_extent(r, u):
+    q = pin.neutral(r.model)
+    q[r._iq] = r.to_joint(u)
+    return float(np.linalg.norm(r.kv.encode(q)[:, :3], axis=1).mean())
+
+
+def robot_anchors(r, n, seed=0):
+    n_j = len(r.joint_names)
+    rng = np.random.default_rng(seed)
+    per = np.empty(n_j)
+    for j in range(n_j):
+        a, b = np.zeros(n_j), np.zeros(n_j)
+        a[j], b[j] = -1.0, 1.0
+        per[j] = -1.0 if robot_extent(r, a) >= robot_extent(r, b) else 1.0
+    cand = [np.zeros(n_j), per, -per]
+    cand += list(rng.uniform(-1.0, 1.0, (max(n, 1), n_j)))
+    ext = np.array([robot_extent(r, u) for u in cand])
+    return cand[int(ext.argmax())], cand[int(ext.argmin())]
+
+
+def anchor_pairs(r, q_flat, q_fist, iq_h, u_flat, u_fist, k):
+    xs, ys = [], []
+    qr = pin.neutral(r.model)
+    qh = pin.neutral(r.fk.model)
+    for a in np.linspace(0.0, 1.0, k):
+        qh[iq_h] = q_flat + (q_fist - q_flat) * a
+        xs.append(r.hkv.encode(qh))
+        qr[r._iq] = r.to_joint(u_flat + (u_fist - u_flat) * a)
+        ys.append(r.kv.encode(qr))
+    return np.asarray(xs), np.asarray(ys)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="robotis_hx5_d20")
@@ -160,10 +192,12 @@ def main():
     ap.add_argument("--w-pinch", type=float, default=1.0)
     ap.add_argument("--w-bone", type=float, default=0.0,
                     help="손가락 내부 뼈 방향(tip-prox) 일치 — 손끝마디 굽힘 억제")
-    ap.add_argument("--w-dist", type=float, default=1.0)
-    ap.add_argument("--w-align", type=float, default=1.0)
+    ap.add_argument("--w-dist", type=float, default=0.0)
+    ap.add_argument("--w-align", type=float, default=0.0)
     ap.add_argument("--anchors", type=int, default=50)
     ap.add_argument("--no-affine", action="store_true")
+    ap.add_argument("--affine", action="store_true",
+                    help="phase 1 에서도 residual affine 을 켠다")
     ap.add_argument("--partial-chamfer", action="store_true")
     ap.add_argument("--local-motion", action="store_true")
     args = ap.parse_args()
@@ -205,6 +239,10 @@ def main():
     if args.phase == 2:
         args.partial_chamfer = True
         args.local_motion = True
+        if args.w_dist == 0.0:
+            args.w_dist = 1.0
+        if args.w_align == 0.0:
+            args.w_align = 1.0
 
     X, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
                               args.random, args.random_mode, args.seed)
@@ -220,21 +258,23 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
+    args.affine = args.affine or (args.phase == 2 and not args.no_affine)
     net = r.net.to(dtype=dt, device=dev)
-    if args.phase == 2 and not args.no_affine:
+    if args.affine:
         net = AffineHandNet(net, len(FINGERS)).to(dtype=dt, device=dev)
     net.train()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr)
 
     ax = ay = None
-    if args.phase == 2 and args.w_align > 0.0:
-        u_flat, u_fist = robot_anchors(r, args.bank, args.seed)
+    if args.w_align > 0.0:
+        u_flat, u_fist = robot_anchors(r, min(args.bank, 4000), args.seed)
         ax_np, ay_np = anchor_pairs(r, q_flat, q_fist, iq_h, u_flat, u_fist,
                                     args.anchors)
         ax = torch.as_tensor(ax_np, dtype=dt, device=dev)
         ay = torch.as_tensor(ay_np, dtype=dt, device=dev)
-        print("앵커 %d 쌍 (flat↔fist 보간, 양쪽 다 물리 파라미터에서 생성)"
-              % ax.shape[0], flush=True)
+        print("앵커 %d 쌍  로봇 펼침지표 flat %.4f / fist %.4f"
+              % (ax.shape[0], robot_extent(r, u_flat), robot_extent(r, u_fist)),
+              flush=True)
     start = 0
     if os.path.exists(ckpt):
         sd = torch.load(ckpt, map_location="cpu")
@@ -290,12 +330,12 @@ def main():
                     + bone * args.w_bone)
             dist = zero
             align = zero
-            if args.phase == 2:
+            if args.w_dist > 0.0:
                 dist = distance_loss(x, y)
                 loss = loss + dist * args.w_dist
-                if ax is not None:
-                    align = align_loss(to_kv(ax), ay)
-                    loss = loss + align * args.w_align
+            if ax is not None:
+                align = align_loss(to_kv(ax), ay)
+                loss = loss + align * args.w_align
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -311,8 +351,7 @@ def main():
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
-            torch.save({"net": net.state_dict(), "affine": args.phase == 2
-                        and not args.no_affine},
+            torch.save({"net": net.state_dict(), "affine": args.affine},
                        os.path.join(args.out, "net.pt"))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
         json.dump(vars(args), fh, indent=2)
