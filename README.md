@@ -149,6 +149,19 @@ abduction 41.0 was a fixed 50-degree roll offset). It now aligns the bone axes b
 rotation before comparing directions, which is frame-independent. LMC recorded before
 `c2c7967` is not comparable to this table.
 
+**400 epochs is enough.** With a validation split (`--val-frac 0.1`) the loss plateaus at
+300-400 and never turns back up through 600 (only 1.4-2.3% gain from 300 to 600). The
+bench flattens at the same point — LMC at 100/200/300/**400**/500/600/1000 epochs is
+82.8/84.5/85.9/**86.2**/86.4/86.3/85.7, and tip error is already flat by epoch 100. Past
+600 there is no gain and `|dq|p95` and LMC drift slightly worse. Training longer can even
+hurt: output saturation deepens until a joint dies (dg5f's pinky metacarpal went from
+6.5deg / 87% saturated at 300 epochs to 0.4deg / 100% at 1000). For long runs, pair it
+with `--u-margin 1.25` or `--w-sat`.
+
+Validation loss is for **picking the epoch within one run only** — runs with different
+loss weights have different total-loss definitions and cannot be compared. Rank weights
+with the bench.
+
 Left/right handling is per-hand — the deciding measurement is that hand's **left/right
 URDF mirror fidelity**. orca's two URDFs are exact mirrors (0.86mm, limits identical on
 all 16 joints), so one left-trained model covers both sides via `hand_solver.mirror_to`
