@@ -10,6 +10,7 @@ from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK
 from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
                         human_chains, sensor_chains)
+from .net_losses import AffineHandNet
 
 LIMIT_FALLBACK = 2.0
 DORSUM_FRAME = "{side}_sensor_dorsum"
@@ -93,6 +94,11 @@ class NetHandRetargeter:
     def load(self, checkpoint: str) -> None:
         sd = torch.load(checkpoint, map_location="cpu")
         inner = sd["net"] if "net" in sd else sd
+        wrapped = any(k.startswith("affine.") for k in inner)
+        if wrapped and not isinstance(self.net, AffineHandNet):
+            self.net = AffineHandNet(self.net, len(FINGERS))
+        elif not wrapped and isinstance(self.net, AffineHandNet):
+            self.net = self.net.net
         want = next(iter(inner.values())).dtype
         self.net = self.net.to(dtype=want)
         self.net.load_state_dict(inner)

@@ -187,9 +187,11 @@ def main():
     ap.add_argument("--w-dist", type=float, default=0.0)
     ap.add_argument("--w-ext", type=float, default=0.0,
                     help="손가락별 ||dorsum->tip|| 크기 일치 — 굽힘 진폭 부족 대응")
-    ap.add_argument("--no-affine", action="store_true")
+    ap.add_argument("--no-affine", action="store_true",
+                    help="residual affine 을 끈다 — 기본은 켜져 있다. 손마다 크기가"
+                         " 달라서 L_dist/L_ext 가 형태 불일치와 정면으로 부딪힌다")
     ap.add_argument("--affine", action="store_true",
-                    help="phase 1 에서도 residual affine 을 켠다")
+                    help="기본값이라 무동작 — 명시용으로만 남긴다")
     ap.add_argument("--partial-chamfer", action="store_true")
     ap.add_argument("--local-motion", action="store_true")
     args = ap.parse_args()
@@ -248,7 +250,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
-    args.affine = args.affine or (args.phase == 2 and not args.no_affine)
+    args.affine = not args.no_affine
     net = r.net.to(dtype=dt, device=dev)
     if args.affine:
         net = AffineHandNet(net, len(FINGERS)).to(dtype=dt, device=dev)
