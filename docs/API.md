@@ -115,7 +115,7 @@ from whatslab.solvers.hand import HandRetargetController
 | `NetHandRetargeter(hand_type, config_name, checkpoint=None, ..., mirror_to=None)` | `net` 백엔드 엔진 — 사람 keyvector → 로봇 관절각. `compute(joint_angles) -> q` 는 `KPHandRetargeter` 와 같은 계약. forward 1회라 FK 가 없다. `mirror_to` 를 주면 입력 keyvector 의 z 성분을 반전해 좌우 통합 모델을 쓴다. |
 | `HandNet(in_dim, joint_counts, hidden=128)` | 손가락별 MLP `(in_dim, hidden, hidden, n_joints_i)` + `Tanh`. 출력 `[-1,1]` 을 `joint_roms` 로 선형 매핑한다. |
 | `AffineHandNet(net, n_finger, dim=6)` / `ResidualAffine(n_finger, dim=6)` | 손가락별 residual affine(`A=0`,`b=0` 초기화 → 항등). few-shot 앵커가 잡아야 하는 전역 정렬을 소수 파라미터로 흡수한다. |
-| `coverage_loss` / `distance_loss` / `motion_loss_global` / `motion_loss_local` / `align_loss` / `flatness_loss` / `pinch_loss` / `soft_pinch_loss` / `chamfer_both` / `chamfer_partial` | 학습 손실. `motion_loss_local` 은 두 섭동의 사잇각을 맞춰 회전에 불변하고, `motion_loss_global` 은 변위 방향을 직접 맞춘다. `coverage_loss(partial=True)` 는 단방향 Chamfer 로 로봇 여분 영역 왜곡을 피한다. |
+| `coverage_loss` / `distance_loss` / `motion_loss_global` / `motion_loss_local` / `flatness_loss` / `pinch_loss` / `soft_pinch_loss` / `chamfer_both` / `chamfer_partial` | 학습 손실. `motion_loss_local` 은 두 섭동의 사잇각을 맞춰 회전에 불변하고, `motion_loss_global` 은 변위 방향을 직접 맞춘다. `coverage_loss(partial=True)` 는 단방향 Chamfer 로 로봇 여분 영역 왜곡을 피한다. |
 | `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
 
 rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp) + kp 가중치
