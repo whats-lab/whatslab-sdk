@@ -10,12 +10,10 @@ import pinocchio as pin
 import torch
 import torch.nn.functional as F
 
-from whatslab.solvers.hand.fk_torch import KeyvectorFK
 from whatslab.solvers.hand.human_fk import FINGERS
 from whatslab.solvers.hand.net_losses import (AffineHandNet, bone_loss,
                                               coverage_loss,
-                                              motion_loss_global,
-                                              motion_loss_local, pinch_loss,
+                                              motion_loss_global, pinch_loss,
                                               position_loss)
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
@@ -24,6 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench_hand_retarget as B  # noqa: E402
 
 PINCH_MM = 15.0
+W_MOTION = 1.0
+W_COVERAGE = 5.0
+W_BONE = 20.0
+W_PINCH = 1.0
+W_POS = 20.0
 ABD_TAG = "abd"
 MOTION_LO = 0.001
 MOTION_HI = 0.011
@@ -173,41 +176,15 @@ def main():
                     help="실측 프레임 반복 횟수 (실분포 비중 조절)")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--phase", type=int, default=1, choices=[1, 2])
     ap.add_argument("--device", default="cpu")
-    ap.add_argument("--fp64", action="store_true",
-                    help="기본은 float32 — 정본 대조 검증용으로만 fp64 를 쓴다")
-    ap.add_argument("--fk", default="torch", choices=["torch", "pinocchio"])
-    ap.add_argument("--w-motion", type=float, default=1.0)
-    ap.add_argument("--w-coverage", type=float, default=80.0)
     ap.add_argument("--save-every", type=int, default=1)
-    ap.add_argument("--w-pinch", type=float, default=1.0)
-    ap.add_argument("--w-bone", type=float, default=0.0,
-                    help="손가락 내부 뼈 방향(tip-prox) 일치")
-    ap.add_argument("--w-pos", type=float, default=0.0,
-                    help="손가락별 6D keyvector 일치. 반경·각도를 동시에 정하므로"
-                         " 쌍거리(--w-dist)가 불필요해진다 — 손가락 간 결합 없음")
-    ap.add_argument("--no-affine", action="store_true",
-                    help="residual affine 을 끈다 — 기본은 켜져 있다. 손마다 크기가"
-                         " 달라서 L_dist/L_ext 가 형태 불일치와 정면으로 부딪힌다")
-    ap.add_argument("--affine", action="store_true",
-                    help="기본값이라 무동작 — 명시용으로만 남긴다")
-    ap.add_argument("--partial-chamfer", action="store_true")
-    ap.add_argument("--local-motion", action="store_true",
-                    help="motion 을 로컬(두 섭동의 사잇각, 회전 불변)로. 기본은 글로벌"
-                         " — 부호·범위가 다르다(글로벌 최소 -1 / 로컬 최소 0)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
-    dt = torch.float64 if args.fp64 else torch.float32
+    dt = torch.float32
     dev = torch.device(args.device)
     r = NetHandRetargeter(args.side, args.config)
-    if args.fk == "torch":
-        fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
-    else:
-        if args.device != "cpu" or not args.fp64:
-            ap.error("--fk pinocchio 는 --device cpu --fp64 만 된다")
-        fk = KeyvectorFK(r.kv, r._iq, r._iv, pin.neutral(r.model))
+    fk = TorchKeyvectorFK(r.kv, r._iq, r.joint_names, dtype=dt).to(dev)
     names_h, iq_h, lo_h, hi_h = q_axes(r)
     blocks = joint_blocks(r)
     q_flat, q_fist = flat_fist(r)
@@ -242,8 +219,6 @@ def main():
           % (len(names_h), {k: len(v) for k, v in blocks.items()},
              extension(r, iq_h, q_flat), extension(r, iq_h, q_fist)), flush=True)
 
-    if args.phase == 2:
-        args.partial_chamfer = True
 
     X, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
                               args.random, args.random_mode, args.seed)
@@ -252,17 +227,13 @@ def main():
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
     hi = torch.as_tensor(r.upper, dtype=dt, device=dev)
     pinch_thr = PINCH_MM * 1e-3 / r.hkv.l_ref
-    print("사람 %d (실측 %d + 합성 %d/%s)  로봇 bank %d  관절 %d  핀치임계 %.4f"
-          "  FK %s/%s/%s" % (X.shape[0], n_real, args.random, args.random_mode,
-                             bank.shape[0], len(r.joint_names), pinch_thr, args.fk,
-                             args.device, "f64" if args.fp64 else "f32"), flush=True)
+    print("사람 %d (실측 %d + 합성 %d/%s)  로봇 bank %d  관절 %d  핀치임계 %.4f  %s"
+          % (X.shape[0], n_real, args.random, args.random_mode, bank.shape[0],
+             len(r.joint_names), pinch_thr, args.device), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
-    args.affine = not args.no_affine
-    net = r.net.to(dtype=dt, device=dev)
-    if args.affine:
-        net = AffineHandNet(net, len(FINGERS)).to(dtype=dt, device=dev)
+    net = AffineHandNet(r.net, len(FINGERS)).to(dtype=dt, device=dev)
     net.train()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr)
 
@@ -295,28 +266,17 @@ def main():
 
             zero = torch.zeros((), dtype=x.dtype, device=x.device)
             motion = zero
-            if args.w_motion > 0.0:
-                dx_a, dy_a = perturb()
-                if args.local_motion:
-                    dx_b, dy_b = perturb()
-                    motion = motion_loss_local(dx_a, dy_a, dx_b, dy_b)
-                else:
-                    motion = motion_loss_global(dx_a, dy_a)
+            if W_MOTION > 0.0:
+                motion = motion_loss_global(*perturb())
 
-            cover = zero
-            if args.w_coverage > 0.0:
-                sel = torch.randint(0, bank.shape[0],
-                                    (min(args.bank_batch, bank.shape[0]),))
-                cover = coverage_loss(y, bank[sel], partial=args.partial_chamfer)
-            pinch = pinch_loss(x, y, pinch_thr) if args.w_pinch > 0.0 else zero
-            bone = bone_loss(x, y) if args.w_bone > 0.0 else zero
-
-            loss = (motion * args.w_motion + cover * args.w_coverage
-                    + pinch * args.w_pinch + bone * args.w_bone)
-            pos = zero
-            if args.w_pos > 0.0:
-                pos = position_loss(x, y)
-                loss = loss + pos * args.w_pos
+            sel = torch.randint(0, bank.shape[0],
+                                (min(args.bank_batch, bank.shape[0]),))
+            cover = coverage_loss(y, bank[sel])
+            pinch = pinch_loss(x, y, pinch_thr)
+            bone = bone_loss(x, y)
+            pos = position_loss(x, y)
+            loss = (motion * W_MOTION + cover * W_COVERAGE + pinch * W_PINCH
+                    + bone * W_BONE + pos * W_POS)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -332,7 +292,7 @@ def main():
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args)}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
-            torch.save({"net": net.state_dict(), "affine": args.affine},
+            torch.save({"net": net.state_dict(), "affine": True},
                        os.path.join(args.out, "net.pt"))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
         json.dump(vars(args), fh, indent=2)
