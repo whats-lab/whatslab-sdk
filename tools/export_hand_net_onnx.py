@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 
 from whatslab.solvers.hand.human_fk import FINGERS
-from whatslab.solvers.hand.net_losses import AffineHandNet
 from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.torch_fk import TorchKeyvectorFK
 
@@ -48,19 +47,14 @@ def main():
     ap.add_argument("--samples", type=int, default=256)
     args = ap.parse_args()
 
-    sd = torch.load(args.checkpoint, map_location="cpu")
     r = NetHandRetargeter(args.side, args.config)
-    net = r.net
-    if bool(sd.get("affine", False)):
-        net = AffineHandNet(net, len(FINGERS)).double()
-        r.net = net
-    net.load_state_dict(sd["net"] if "net" in sd else sd)
-    r.net = net.float().eval()
+    r.load(args.checkpoint)
+    r.net = r.net.float().eval()
 
     graph = HandRetargetGraph(r, mirror=args.mirror).eval()
     n_h = len(r.fk.joint_names)
-    print("사람 관절 %d → 로봇 관절 %d  (affine=%s, mirror=%s)"
-          % (n_h, len(r.joint_names), bool(sd.get("affine", False)), args.mirror))
+    print("사람 관절 %d → 로봇 관절 %d  (act=%s, mirror=%s)"
+          % (n_h, len(r.joint_names), getattr(r.net, "act", "leaky"), args.mirror))
 
     rng = np.random.default_rng(0)
     lo = r.fk.model.lowerPositionLimit[[r.fk._idx_q[n] for n in r.fk.joint_names]]

@@ -10,8 +10,8 @@ import pinocchio as pin
 import torch
 import torch.nn.functional as F
 
-from whatslab.solvers.hand.net_losses import (U_MARGIN, AffineHandNet,
-                                              bone_loss, coverage_loss,
+from whatslab.solvers.hand.net_losses import (U_MARGIN, bone_loss,
+                                              coverage_loss,
                                               motion_loss_global, pinch_loss,
                                               orientation_loss, position_loss,
                                               posture_loss, saturation_loss,
@@ -226,10 +226,6 @@ def main():
     ap.add_argument("--layers", type=int, default=LAYERS)
     ap.add_argument("--act", default=ACT, choices=sorted(ACTS))
     ap.add_argument("--norm", default=NORM, choices=list(NORMS))
-    ap.add_argument("--no-affine", dest="affine", action="store_false",
-                    help="ResidualAffine 을 뺀다. 표현력은 같다 — 활성화 없는"
-                         " 선형층이라 바로 뒤 Linear 에 정확히 흡수된다"
-                         "(측정 8.9e-16). 재파라미터화 효과만 남는다")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -303,8 +299,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     ckpt = os.path.join(args.out, "last.pt")
-    net = (AffineHandNet(r.net, len(r.fingers)) if args.affine
-           else r.net).to(dtype=dt, device=dev)
+    net = r.net.to(dtype=dt, device=dev)
     net.train()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr,
                             weight_decay=args.weight_decay)
@@ -408,7 +403,7 @@ def main():
                         "config": args.config, "dropout": args.dropout,
                         "act": args.act, "norm": args.norm}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
-            snap = {"net": net.state_dict(), "affine": args.affine,
+            snap = {"net": net.state_dict(),
                     "u_margin": args.u_margin, "side": args.side,
                     "config": args.config, "dropout": args.dropout,
                     "act": args.act, "norm": args.norm}

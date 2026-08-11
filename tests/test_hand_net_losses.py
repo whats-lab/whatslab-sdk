@@ -3,32 +3,45 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from whatslab.solvers.hand.net_losses import (AffineHandNet, ResidualAffine,
-                                             bone_loss, chamfer_both,
-                                             coverage_loss, motion_loss_global,
-                                             pinch_loss, position_loss)
+from whatslab.solvers.hand.net_losses import (bone_loss, chamfer_both,
+                                             coverage_loss,
+                                             motion_loss_global, pinch_loss,
+                                             position_loss, posture_loss,
+                                             saturation_loss, unit_to_joint)
 
 
 def _kv(vals):
     return torch.tensor(np.asarray(vals, dtype=float))
 
 
-def test_residual_affine_starts_as_identity():
-    aff = ResidualAffine(5).double()
-    x = torch.randn(4, 5, 6, dtype=torch.float64)
-    assert torch.equal(aff(x), x)
+def test_unit_to_joint_matches_plain_linear_map_at_margin_one():
+    lo = np.array([-1.0, 0.0])
+    hi = np.array([1.0, 2.0])
+    u = np.array([-1.0, 0.5])
+    want = lo + (u + 1.0) * 0.5 * (hi - lo)
+    assert np.allclose(unit_to_joint(u, lo, hi, 1.0), want)
 
 
-def test_affine_wrapper_passes_through_at_init():
-    inner = torch.nn.Linear(6, 3).double()
+def test_unit_to_joint_reaches_limits_before_tanh_saturates():
+    lo = np.array([-1.0])
+    hi = np.array([1.0])
+    assert unit_to_joint(np.array([0.8]), lo, hi, 1.25)[0] == pytest.approx(1.0)
+    assert unit_to_joint(np.array([1.0]), lo, hi, 1.25)[0] <= hi[0] + 1e-2
 
-    class Wrap(torch.nn.Module):
-        def forward(self, x):
-            return inner(x[:, 0])
 
-    net = AffineHandNet(Wrap(), 5).double()
-    x = torch.randn(2, 5, 6, dtype=torch.float64)
-    assert torch.allclose(net(x), inner(x[:, 0]))
+def test_saturation_loss_only_penalises_beyond_knee():
+    assert float(saturation_loss(torch.zeros(4, 3, dtype=torch.float64))) == 0.0
+    assert float(saturation_loss(torch.full((4, 3), 0.89,
+                                            dtype=torch.float64))) == 0.0
+    assert float(saturation_loss(torch.full((4, 3), 1.0,
+                                            dtype=torch.float64))) > 0.0
+
+
+def test_posture_loss_ignores_spread_and_penalises_bias():
+    centred = torch.tensor([[-1.0], [1.0]], dtype=torch.float64)
+    assert float(posture_loss(centred)) == pytest.approx(0.0, abs=1e-18)
+    biased = torch.tensor([[0.5], [0.5]], dtype=torch.float64)
+    assert float(posture_loss(biased)) == pytest.approx(0.25)
 
 
 def test_position_loss_is_zero_on_match_and_grows_with_offset():

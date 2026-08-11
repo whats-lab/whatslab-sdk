@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -79,26 +77,3 @@ def pinch_loss(x: torch.Tensor, y: torch.Tensor, threshold: float) -> torch.Tens
         if bool(mask.any()):
             out = out + ((y[mask, 0, TIP] - y[mask, i, TIP]) ** 2).sum(-1).mean()
     return out
-
-
-class ResidualAffine(nn.Module):
-
-    def __init__(self, n_finger: int, dim: int = KV_DIM):
-        super().__init__()
-        self.weight = nn.Parameter(torch.zeros(n_finger, dim, dim))
-        self.bias = nn.Parameter(torch.zeros(n_finger, dim))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + torch.einsum("fij,bfj->bfi", self.weight, x) + self.bias
-
-
-class AffineHandNet(nn.Module):
-
-    def __init__(self, net: nn.Module, n_finger: int, dim: int = KV_DIM,
-                 affine: Optional[ResidualAffine] = None):
-        super().__init__()
-        self.net = net
-        self.affine = affine if affine is not None else ResidualAffine(n_finger, dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(self.affine(x))
