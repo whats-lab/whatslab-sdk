@@ -54,6 +54,40 @@ def load_poses(dump_path, profile_dir, steps, kinds=("pinch",)):
 LMC_MIN_MM = 0.5
 
 
+def local_frames(pts):
+    out = {}
+    for f in FINGERS:
+        z = pts[f][-1] - pts[f][-2]
+        nz = float(np.linalg.norm(z))
+        if nz < 1e-9:
+            raise ValueError("%s 마지막 뼈 길이가 0 이다" % f)
+        z = z / nz
+        x = np.cross(z, np.array([0.0, 1.0, 0.0]))
+        if float(np.linalg.norm(x)) < 1e-3:
+            x = np.cross(z, np.array([1.0, 0.0, 0.0]))
+        x = x / float(np.linalg.norm(x))
+        out[f] = np.column_stack([x, np.cross(z, x), z])
+    return out
+
+
+def motion_consistency(h_prev, h_cur, r_prev, r_cur, h_local, r_local):
+    gmc, lmc = [], []
+    for f in FINGERS:
+        u = h_cur[f] - h_prev[f]
+        if float(np.linalg.norm(u)) * 1e3 < LMC_MIN_MM:
+            continue
+        v = r_cur[f] - r_prev[f]
+        nv = float(np.linalg.norm(v))
+        if nv < 1e-9:
+            gmc.append(-1.0)
+            lmc.append(-1.0)
+            continue
+        un, vn = u / float(np.linalg.norm(u)), v / nv
+        gmc.append(float(un @ vn))
+        lmc.append(float((h_local[f].T @ un) @ (r_local[f].T @ vn)))
+    return gmc, lmc
+
+
 class Fair:
 
     def __init__(self, side):
@@ -65,6 +99,11 @@ class Fair:
         hp = self.fk.points(angles)
         o, R = self._h0
         return {f: R.T @ (hp[f][-1] - o) for f in FINGERS}
+
+    def chain_local(self, angles):
+        hp = self.fk.points(angles)
+        o, R = self._h0
+        return {f: np.array([R.T @ (p - o) for p in hp[f]]) for f in FINGERS}
 
     def score(self, angles, tips, bones, r_R, r_len):
         hp = self.fk.points(angles)
@@ -94,7 +133,8 @@ class Fair:
 def measure(engine, tips_of, bones_of, frame_of, side, trajs):
     fair = Fair(side)
     r_o, r_R, r_len = frame_of()
-    acc = {k: [] for k in ("shape", "spread", "dq", "ms", "pinch", "open", "lmc")}
+    acc = {k: [] for k in ("shape", "spread", "dq", "ms", "pinch", "open",
+                           "gmc", "lmc")}
     for f, traj in trajs.items():
         engine.reset()
         prev = prev_h = prev_r = None
@@ -106,31 +146,32 @@ def measure(engine, tips_of, bones_of, frame_of, side, trajs):
                 acc["dq"].append(float(np.abs(q - prev).max()))
             prev = q
             tips = tips_of()
-            sh, con, spr = fair.score(ang, tips, bones_of(), r_R, r_len)
+            bones = bones_of()
+            sh, con, spr = fair.score(ang, tips, bones, r_R, r_len)
             acc["shape"].append(sh)
             acc["spread"].append(spr)
-            cur_h = fair.local_tips(ang)
-            cur_r = {g: r_R.T @ (tips[g] - r_o) for g in FINGERS}
+            h_chain = fair.chain_local(ang)
+            r_chain = {g: np.array([r_R.T @ (p - r_o) for p in bones[g]])
+                       for g in FINGERS}
+            cur_h = {g: h_chain[g][-1] for g in FINGERS}
+            cur_r = {g: r_chain[g][-1] for g in FINGERS}
             if prev_h is not None:
-                for g in FINGERS:
-                    u = cur_h[g] - prev_h[g]
-                    if float(np.linalg.norm(u)) * 1e3 < LMC_MIN_MM:
-                        continue
-                    v = cur_r[g] - prev_r[g]
-                    nv = float(np.linalg.norm(v))
-                    if nv < 1e-9:
-                        acc["lmc"].append(-1.0)
-                        continue
-                    acc["lmc"].append(float(u @ v / (np.linalg.norm(u) * nv)))
+                g_, l_ = motion_consistency(prev_h, cur_h, prev_r, cur_r,
+                                            local_frames(h_chain),
+                                            local_frames(r_chain))
+                acc["gmc"] += g_
+                acc["lmc"] += l_
             prev_h, prev_r = cur_h, cur_r
             if f in FINGERS and i == len(traj) - 1:
                 acc["pinch"].append(abs(con[f]))
             if i == 0:
                 acc["open"].append(np.mean([abs(v) for v in con.values()]))
+    gmc = np.asarray(acc["gmc"])
     lmc = np.asarray(acc["lmc"])
     pinch = np.mean(acc["pinch"]) if acc["pinch"] else float("nan")
     return (np.mean(acc["shape"]), np.mean(acc["spread"]), pinch,
-            np.mean(acc["open"]), 100.0 * np.mean(lmc > 0.0), 100.0 * lmc.mean(),
+            np.mean(acc["open"]), 100.0 * gmc.mean(), 100.0 * lmc.mean(),
+            100.0 * (lmc.mean() - gmc.mean()),
             np.percentile(acc["dq"], 95), np.mean(acc["ms"]))
 
 
@@ -198,9 +239,9 @@ def main():
     side, trajs = load_poses(args.dump, args.profiles, args.steps, tuple(args.traj))
     print("side=%s  궤적 %s (%d개) x %d프레임" % (
         side, ",".join(args.traj), len(trajs), args.steps))
-    print("%-26s %8s %8s %10s %10s %7s %6s %8s %7s" % (
-        "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "LMC%", "cos", "|dq|p95",
-        "ms"))
+    print("%-26s %8s %8s %10s %10s %7s %7s %7s %8s %7s" % (
+        "설정", "형상°", "벌림mm", "핀치접촉", "펴짐접촉", "GMC", "LMC", "격차",
+        "|dq|p95", "ms"))
     for cfg in args.configs:
         for be in args.backends:
             if be == "kp":
@@ -209,8 +250,8 @@ def main():
             else:
                 eng, t, b, fr = dex_probe(cfg, side)
                 r = measure(eng, t, b, fr, side, trajs)
-            print("%-26s %8.1f %8.1f %10.1f %10.1f %7.1f %6.1f %8.3f %7.2f" % (
-                "%s %s" % (cfg, be), *r))
+            print("%-26s %8.1f %8.1f %10.1f %10.1f %7.1f %7.1f %+7.1f %8.3f %7.2f"
+                  % ("%s %s" % (cfg, be), *r))
 
 
 if __name__ == "__main__":
