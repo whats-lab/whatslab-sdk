@@ -39,92 +39,89 @@ def robot_bank(r, n, seed=0):
     return out
 
 
-def uniform_thetas(r, n, seed=0):
-    rng = np.random.default_rng(seed)
-    lo = r.fk.model.lowerPositionLimit
-    hi = r.fk.model.upperPositionLimit
-    idx = [r.fk._idx_q[n_] for n_ in r.fk.joint_names]
+def q_axes(r):
+    fk = r.fk
+    names = list(fk.joint_names)
+    iq = [fk._idx_q[n] for n in names]
+    lo = fk.model.lowerPositionLimit[iq].copy()
+    hi = fk.model.upperPositionLimit[iq].copy()
+    return names, np.asarray(iq), lo, hi
+
+
+def extension(r, iq, qv):
     q = pin.neutral(r.fk.model)
-    out = []
-    for _ in range(n):
-        for i in idx:
-            q[i] = rng.uniform(lo[i], hi[i])
-        out.append(r.hkv.encode(q))
-    return np.asarray(out)
+    q[iq] = qv
+    return float(np.linalg.norm(r.hkv.encode(q)[:, :3], axis=1).mean())
 
 
-def combo_thetas(real, blocks, n, seed=0):
-    rng = np.random.default_rng(seed)
-    out = np.empty((n, real.shape[1]))
-    for b in blocks.values():
-        pick = rng.integers(0, real.shape[0], n)
-        out[:, b] = real[pick][:, b]
+def flat_fist(r):
+    names, iq, lo, hi = q_axes(r)
+    flat = np.zeros(len(names))
+    fist = np.empty(len(names))
+    for j in range(len(names)):
+        a, b = flat.copy(), flat.copy()
+        a[j], b[j] = lo[j], hi[j]
+        fist[j] = lo[j] if extension(r, iq, a) <= extension(r, iq, b) else hi[j]
+    return flat, fist
+
+
+def joint_blocks(r):
+    out = {}
+    for j, n in enumerate(r.fk.joint_names):
+        for f in FINGERS:
+            if f in n:
+                out.setdefault(f, []).append(j)
+                break
     return out
 
 
-def synergy_thetas(real, blocks, n, seed=0, jitter=0.25, shared=True):
+def q_synergy(flat, fist, blocks, n, seed=0, shared=True, jitter=0.25):
     rng = np.random.default_rng(seed)
-    lo = real.min(axis=0)
-    hi = real.max(axis=0)
-    out = np.empty((n, real.shape[1]))
+    out = np.empty((n, flat.size))
     g = rng.uniform(0.0, 1.0, (n, 1)) if shared else None
     for b in blocks.values():
         s = g if shared else rng.uniform(0.0, 1.0, (n, 1))
         f = np.clip(s + rng.uniform(-jitter, jitter, (n, 1)), 0.0, 1.0)
         f = np.clip(f + rng.uniform(-0.05, 0.05, (n, len(b))), 0.0, 1.0)
-        out[:, b] = lo[b] + f * (hi[b] - lo[b])
+        out[:, b] = flat[b] + f * (fist[b] - flat[b])
     return out
 
 
-def human_samples(r, real, blocks, expand, n_random, mode, seed=0):
-    rows = [r.hkv.encode(r.fk.q_from_named(expand(th))) for th in real]
+def q_combo(real_q, blocks, n, seed=0):
+    rng = np.random.default_rng(seed)
+    out = np.empty((n, real_q.shape[1]))
+    for b in blocks.values():
+        out[:, b] = real_q[rng.integers(0, real_q.shape[0], n)][:, b]
+    return out
+
+
+def q_uniform(lo, hi, n, seed=0):
+    rng = np.random.default_rng(seed)
+    return rng.uniform(lo, hi, (n, lo.size))
+
+
+def human_samples(r, real_q, blocks, flat, fist, lo, hi, n_random, mode, seed=0):
+    iq = np.asarray([r.fk._idx_q[n] for n in r.fk.joint_names])
+    rows = list(real_q)
     n_real = len(rows)
     if n_random > 0:
         if mode == "uniform":
-            rows.extend(uniform_thetas(r, n_random, seed))
+            rows.extend(q_uniform(lo, hi, n_random, seed))
+        elif mode == "combo":
+            rows.extend(q_combo(real_q, blocks, n_random, seed))
+        elif mode == "synergy":
+            rows.extend(q_synergy(flat, fist, blocks, n_random, seed))
         else:
-            if mode == "combo":
-                th_all = combo_thetas(real, blocks, n_random, seed)
-            elif mode == "synergy":
-                th_all = synergy_thetas(real, blocks, n_random, seed)
-            else:
-                third = n_random // 3
-                th_all = np.concatenate([
-                    synergy_thetas(real, blocks, n_random - 2 * third, seed),
-                    synergy_thetas(real, blocks, third, seed + 1, shared=False),
-                    combo_thetas(real, blocks, third, seed + 2)])
-            for th in th_all:
-                rows.append(r.hkv.encode(r.fk.q_from_named(expand(th))))
-    return np.asarray(rows), n_real
-
-
-def bank_q(r, n, seed=0):
-    rng = np.random.default_rng(seed)
-    return rng.uniform(-1.0, 1.0, (n, len(r.joint_names)))
-
-
-def reach_extent(r, u):
-    q = pin.neutral(r.model)
-    q[r._iq] = r.to_joint(u)
-    kv = r.kv.encode(q)
-    return float(np.linalg.norm(kv[:, :3], axis=1).mean()), kv
-
-
-def robot_anchors(r, n, seed=0):
-    u = bank_q(r, n, seed)
-    ext = np.array([reach_extent(r, row)[0] for row in u])
-    return u[int(ext.argmax())], u[int(ext.argmin())]
-
-
-def anchor_pairs(r, thetas_lo, thetas_hi, expand, u_flat, u_fist, k):
-    xs, ys = [], []
-    q = pin.neutral(r.model)
-    for a in np.linspace(0.0, 1.0, k):
-        theta = thetas_lo + (thetas_hi - thetas_lo) * a
-        xs.append(r.hkv.encode(r.fk.q_from_named(expand(theta))))
-        q[r._iq] = r.to_joint(u_flat + (u_fist - u_flat) * a)
-        ys.append(r.kv.encode(q))
-    return np.asarray(xs), np.asarray(ys)
+            k = n_random // 3
+            rows.extend(q_synergy(flat, fist, blocks, n_random - 2 * k, seed))
+            rows.extend(q_synergy(flat, fist, blocks, k, seed + 1, shared=False))
+            rows.extend(q_combo(real_q, blocks, k, seed + 2))
+    q = pin.neutral(r.fk.model)
+    out = np.empty((len(rows), len(FINGERS), 6))
+    for i, qv in enumerate(rows):
+        q[iq] = qv
+        out[i] = r.hkv.encode(q)
+    return out, n_real
 
 
 def main():
@@ -141,8 +138,11 @@ def main():
     ap.add_argument("--random", type=int, default=6000)
     ap.add_argument("--random-mode", default="mix",
                     choices=["synergy", "combo", "uniform", "mix"],
-                    help="synergy=손가락별 굽힘정도 균등 / combo=실측 블록 조합"
-                         " / uniform=관절 독립균등 / mix=synergy+combo 반반")
+                    help="q 공간 생성. synergy=전역 굽힘스칼라 공유(펼침·주먹 커버)"
+                         " / combo=실측 q 를 손가락 블록별로 조합 / uniform=관절"
+                         " 독립균등(양 끝을 못 만든다) / mix=셋 1:1:1")
+    ap.add_argument("--real-npz", default=None,
+                    help="tools/record_glove_q.py 로 기록한 실측 q (실분포 정본)")
     ap.add_argument("--real-repeat", type=int, default=1,
                     help="실측 프레임 반복 횟수 (실분포 비중 조절)")
     ap.add_argument("--lr", type=float, default=1e-4)
@@ -179,17 +179,32 @@ def main():
                                ("pinch", "flex", "abd"))
     if side != args.side:
         ap.error("덤프 side=%s 와 --side %s 가 다르다" % (side, args.side))
-    expand, anchor_lo, anchor_hi = B.theta_expander(args.dump, args.profiles)
-    theta_names, real_th = B.real_thetas(args.dump, args.profiles, 20)
-    blocks = B.theta_blocks(theta_names)
-    real_th = np.repeat(real_th, args.real_repeat, axis=0)
+    names_h, iq_h, lo_h, hi_h = q_axes(r)
+    blocks = joint_blocks(r)
+    q_flat, q_fist = flat_fist(r)
+    if args.real_npz:
+        rec = np.load(args.real_npz, allow_pickle=False)
+        if list(rec["joint_names"]) != names_h:
+            raise SystemExit("--real-npz 의 관절 이름이 사람 URDF 와 다르다")
+        if str(rec["side"]) != args.side:
+            raise SystemExit("--real-npz side=%s 와 --side %s 가 다르다"
+                             % (rec["side"], args.side))
+        real_q = np.asarray(rec["q"], dtype=float)
+        print("실측 q %d 프레임 (%s)" % (real_q.shape[0], args.real_npz), flush=True)
+    else:
+        real_q = np.asarray([[r.fk.q_from_named(a)[i] for i in iq_h]
+                             for traj in trajs.values() for a in traj])
+    real_q = np.repeat(real_q, args.real_repeat, axis=0)
+    print("q 공간: 관절 %d, 블록 %s, 펼침지표 flat %.4f / fist %.4f"
+          % (len(names_h), {k: len(v) for k, v in blocks.items()},
+             extension(r, iq_h, q_flat), extension(r, iq_h, q_fist)), flush=True)
 
     if args.phase == 2:
         args.partial_chamfer = True
         args.local_motion = True
 
-    X, n_real = human_samples(r, real_th, blocks, expand, args.random,
-                              args.random_mode, args.seed)
+    X, n_real = human_samples(r, real_q, blocks, q_flat, q_fist, lo_h, hi_h,
+                              args.random, args.random_mode, args.seed)
     X = torch.as_tensor(X, dtype=dt, device=dev)
     bank = torch.as_tensor(robot_bank(r, args.bank, args.seed), dtype=dt, device=dev)
     lo = torch.as_tensor(r.lower, dtype=dt, device=dev)
@@ -211,8 +226,8 @@ def main():
     ax = ay = None
     if args.phase == 2 and args.w_align > 0.0:
         u_flat, u_fist = robot_anchors(r, args.bank, args.seed)
-        ax_np, ay_np = anchor_pairs(r, anchor_lo, anchor_hi, expand,
-                                    u_flat, u_fist, args.anchors)
+        ax_np, ay_np = anchor_pairs(r, q_flat, q_fist, iq_h, u_flat, u_fist,
+                                    args.anchors)
         ax = torch.as_tensor(ax_np, dtype=dt, device=dev)
         ay = torch.as_tensor(ay_np, dtype=dt, device=dev)
         print("앵커 %d 쌍 (flat↔fist 보간, 양쪽 다 물리 파라미터에서 생성)"
