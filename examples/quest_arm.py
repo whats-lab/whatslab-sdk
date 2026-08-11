@@ -5,7 +5,24 @@ import time
 
 import numpy as np
 
+from whatslab.solvers.hand import HandRetargetController
 from whatslab.teleop import GloveModel, QuestModel
+
+
+def _override_hand_backend(args, model):
+    if args.backend is None:
+        return
+    if args.backend == "net" and not args.net_checkpoint:
+        raise SystemExit("--hand-backend net 은 --net-checkpoint 가 필요합니다")
+    kw = {"checkpoint": args.net_checkpoint} if args.backend == "net" else {}
+    for side, m in model.sides.items():
+        if m.retarget is None:
+            continue
+        m.retarget = HandRetargetController(side, args.hand_config,
+                                            backend=args.backend, **kw)
+    print("[hand] backend=%s%s" % (args.backend,
+                                   "" if not args.net_checkpoint
+                                   else " ckpt=%s" % args.net_checkpoint))
 
 
 def _build_model(args, robot):
@@ -79,6 +96,10 @@ def main():
     ap.add_argument("--arm", default="controller", choices=["controller", "wrist"],
                     help="팔 소스: controller=Quest 컨트롤러(+글러브 손), wrist=Quest 핸드트래킹")
     ap.add_argument("--hand-config", default="orca_hand", help="손 리타게팅 config (hand 포함 rig)")
+    ap.add_argument("--backend", default=None, choices=["kp", "dex", "net"],
+                    help="rig 의 hand_solver.backend 를 덮어쓴다")
+    ap.add_argument("--net-checkpoint", default=None,
+                    help="--hand-backend net 의 학습 체크포인트")
     ap.add_argument("--rate", type=float, default=60.0, help="폴링/출력 주기 (Hz)")
     ap.add_argument("--viz", action="store_true", help="viser: 팔+손 메쉬 + 목표(/target)·EE(/ee) 프레임")
     ap.add_argument("--port", type=int, default=8080, help="viser 포트")
@@ -99,6 +120,7 @@ def main():
         ap.error(f"--side {args.side} 가 --sides {args.sides} 에 없습니다")
 
     model = _build_model(args, args.rig)
+    _override_hand_backend(args, model)
     robot = model.sides[args.side].robot
 
     print(f"[setup] sides={sorted(s for s, v in model.sides.items() if v.ik)} arm_joints={robot.arm_joint_names}")
