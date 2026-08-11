@@ -32,6 +32,12 @@ def coverage_loss(y: torch.Tensor, bank: torch.Tensor,
     return sum(fn(y[:, i, TIP], bank[:, i, TIP]) for i in range(y.shape[1]))
 
 
+def extension_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    dx = torch.norm(x[..., TIP], dim=-1)
+    dy = torch.norm(y[..., TIP], dim=-1)
+    return ((dy - dx) ** 2).mean()
+
+
 def distance_loss(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     n = x.shape[1]
     out = torch.zeros((), dtype=x.dtype, device=x.device)
