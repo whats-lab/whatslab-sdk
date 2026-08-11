@@ -105,7 +105,15 @@ python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # rig 
 
 python tools/align_frames.py robot --robot robots/nero.yaml              # 로봇을 정준 축에 정렬
 python tools/bench_arm_ik.py --traj fk                                   # 팔 IK: 정확도/연속성/비용
+python tools/bench_hand_retarget.py --dump … --profiles … --traj flex    # 손 리타게팅: 형상/GMC/LMC
+python tools/train_hand_net.py --config orca_hand --side left …          # net 백엔드 학습
+python tools/check_mirror.py                                             # 좌우 미러 게이트
 ```
+
+`bench_hand_retarget.py` 는 손 리타게팅을 손볼 때의 고정 기준선이다. `pinch` 만 보지 말고
+**`--traj flex`(굽힘 전용)로도 판정**한다 — 핀치 램프는 단조라서 순수 굽힘에서 드러나는
+좌우 흔들림을 가린다. 주 지표는 `LMC`(손가락별 로컬 프레임)이고 `GMC`(공유 프레임)를 병기하며,
+**두 값의 격차가 정렬 품질의 진단값**이다. 측정 전 `__pycache__` 를 비운다.
 
 `bench_arm_ik.py` 는 팔 IK 를 손볼 때의 고정 기준선이다. **정확도 판정은 `--traj fk`**
 (유효 관절각 → FK 로 목표를 만들어 오차 하한이 정확히 0)로 한다 — 좌표계로 합성한

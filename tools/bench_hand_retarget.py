@@ -7,10 +7,34 @@ import time
 import numpy as np
 
 from whatslab.solvers.hand import HandRetargeter, KPHandRetargeter
+from whatslab.solvers.hand.net_retargeter import NetHandRetargeter
 from whatslab.solvers.hand.hand_configs import CONFIG_REGISTRY
 from whatslab.solvers.hand.human_fk import FINGERS, HumanHandFK, palm_frame
 
 SPREAD_PAIRS = (("index", "middle"), ("middle", "ring"), ("ring", "pinky"))
+
+
+def theta_expander(dump_path, profile_dir):
+    d = json.load(open(dump_path))
+    side = d["hand_side"].lower()
+    prof = json.load(open("%s/%s/%s.json" % (profile_dir, side, d["profile"])))
+    names, scale = prof["theta"], d["finger_scale"]
+
+    def expand(theta):
+        th = {n: float(v) for n, v in zip(names, theta)}
+        out = {}
+        for c in prof["coupling"]:
+            s = scale.get(c["scale_key"], 1.0) if c["scale_key"] else 1.0
+            out[c["joint"]] = out.get(c["joint"], 0.0) + c["coeff"] * th[c["theta"]] * s
+        return out
+
+    flat = np.zeros(len(names))
+    fist = np.zeros(len(names))
+    hi = np.asarray(d["theta_hi"], dtype=float)
+    for i, n in enumerate(names):
+        if n.endswith("_flex"):
+            fist[i] = hi[i]
+    return expand, flat, fist
 
 
 def load_poses(dump_path, profile_dir, steps, kinds=("pinch",)):
@@ -195,6 +219,33 @@ def kp_probe(kp):
     return tips, bones, frame
 
 
+def net_probe(r):
+    import pinocchio as pin
+
+    def pos(fid):
+        return r.data.oMf[fid].translation.copy()
+
+    def fk():
+        pin.forwardKinematics(r.model, r.data, r._q)
+        pin.updateFramePlacements(r.model, r.data)
+
+    def tips():
+        fk()
+        return {f: pos(r.kv.fids[f][-1]) for f in FINGERS}
+
+    def bones():
+        fk()
+        return {f: np.array([pos(i) for i in r.kv.fids[f]]) for f in FINGERS}
+
+    def frame():
+        pin.forwardKinematics(r.model, r.data, pin.neutral(r.model))
+        pin.updateFramePlacements(r.model, r.data)
+        o, R = palm_frame({f: pos(r.kv.fids[f][0]) for f in FINGERS},
+                          pos(r.kv.dorsum))
+        return o, R, float(np.linalg.norm(R.T @ (pos(r.kv.fids["middle"][-1]) - o)))
+    return tips, bones, frame
+
+
 def dex_probe(cfg, side):
     dx = HandRetargeter(side, cfg)
     rob = dx._seq_stage1.optimizer.robot
@@ -229,7 +280,9 @@ def main():
     ap.add_argument("--dump", required=True, help="글러브 캘리브 덤프 json")
     ap.add_argument("--profiles", required=True, help="profiles/ 디렉토리")
     ap.add_argument("--configs", nargs="+", default=["orca_hand", "robotis_hx5_d20"])
-    ap.add_argument("--backends", nargs="+", default=["kp", "dex"])
+    ap.add_argument("--backends", nargs="+", default=["kp", "dex"],
+                    choices=["kp", "dex", "net"])
+    ap.add_argument("--net-checkpoint", default=None)
     ap.add_argument("--steps", type=int, default=20)
     ap.add_argument("--traj", nargs="+", default=["pinch"],
                     choices=["pinch", "flex", "abd"],
@@ -247,6 +300,11 @@ def main():
             if be == "kp":
                 kp = KPHandRetargeter(side, cfg)
                 r = measure(kp, *kp_probe(kp), side, trajs)
+            elif be == "net":
+                if args.net_checkpoint is None:
+                    ap.error("--backends net 은 --net-checkpoint 가 필요하다")
+                eng = NetHandRetargeter(side, cfg, checkpoint=args.net_checkpoint)
+                r = measure(eng, *net_probe(eng), side, trajs)
             else:
                 eng, t, b, fr = dex_probe(cfg, side)
                 r = measure(eng, t, b, fr, side, trajs)

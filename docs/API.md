@@ -106,10 +106,23 @@ from whatslab.solvers.hand import HandRetargetController
 | `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK. `points(angles)` = 손가락별 키포인트 4개 + `palm`, `positions(angles)` = `JOINT_INDEX` 배치의 (23,3). `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
 | `HandRetargeter` | `dex` 백엔드 엔진 — dex-retargeting 2단계(vector + position) IK, nlopt/torch 필요. |
 | `KPHandRetargeter(hand_type, config_name, keypoints=None, ...)` | `kp` 백엔드 엔진 — 팜상대 키포인트 결합 목적함수(가중 DLS + IRLS Huber), pin+numpy 만 사용. 팜 프레임 정렬 + 손길이 비율 스케일 + 중립 1회 구간별 방향 보정은 URDF 에서 자동 유도(키포인트는 `{side}_sensor_*` 우선, 없으면 사슬 추출, 아니면 `keypoints` 명시). 목적함수 = 팜상대 지문 위치 + 미터벡터 형상(`w_shape`, config `_KP_SHAPE_WEIGHT`) + 엄지쌍 상대벡터 램프 스냅(30mm 이하에서 목표→0, 가중 `w_pair`→`w_snap`) + 손가락간 최소분리 30mm. warm start 유상태 — side 마다 인스턴스 하나. `reset()` 으로 콜드 스타트 재개(orca 는 형상 전용 콜드 solve, `_KP_COLD_SHAPE`). |
+| `HandKeyvector(model, data, chains, dorsum_frame, frac=0.5)` | 전처리 — 원점 `dorsum`, 축은 손가락방향 유도, `prox` = 사슬 `frac` 지점(기본 50% 중앙), `L_ref = ‖dorsum−middle_distal‖` 를 q=0 에서 상수로 고정. `encode(q) -> (5,6)` = `v_dorsum→distal` + `v_dorsum→prox`(`v_prox→distal` 은 선형종속이라 제외). `jacobian(q, idx_v) -> (5,6,n)`. **강체 사슬은 뼈 길이가 q 에 무관하므로 `prox` 의 구간·보간비가 상수**여서 고정 아핀 조합이고 미분 가능하다. 데이터셋 통계 정규화를 쓰지 않으므로 체크포인트에 통계를 딸려보낼 필요가 없다. |
+| `chain_weights(seg_lengths, frac=0.5)` | 호길이 `frac` 지점의 `(구간, 보간비)`. |
+| `sensor_chains(model, side, n_links=3)` / `human_chains(fk)` / `finger_columns(model, tip_fids)` | 사슬·관절열 유도. `sensor_chains` 는 `KPHandRetargeter` 와 같은 규약(마지막 3링크 + 센서 팁)이라 팜 프레임이 일치한다. |
+| `KeyvectorFK(kv, idx_q, idx_v, q_template)` / `keyvector_fk(q_act, fk)` | pinocchio 정확 FK 를 `torch.autograd.Function` 으로. `∂L/∂q = (∂L/∂x)^T J`. 학습 전용(추론 경로에는 FK 가 없다). `idx_q`(형상)와 `idx_v`(속도)를 분리해서 받는다. |
+| `NetHandRetargeter(hand_type, config_name, checkpoint=None, ..., mirror_to=None)` | `net` 백엔드 엔진 — 사람 keyvector → 로봇 관절각. `compute(joint_angles) -> q` 는 `KPHandRetargeter` 와 같은 계약. forward 1회라 FK 가 없다. `mirror_to` 를 주면 입력 keyvector 의 z 성분을 반전해 좌우 통합 모델을 쓴다. |
+| `HandNet(in_dim, joint_counts, hidden=128)` | 손가락별 MLP `(in_dim, hidden, hidden, n_joints_i)` + `Tanh`. 출력 `[-1,1]` 을 `joint_roms` 로 선형 매핑한다. |
+| `AffineHandNet(net, n_finger, dim=6)` / `ResidualAffine(n_finger, dim=6)` | 손가락별 residual affine(`A=0`,`b=0` 초기화 → 항등). few-shot 앵커가 잡아야 하는 전역 정렬을 소수 파라미터로 흡수한다. |
+| `coverage_loss` / `distance_loss` / `motion_loss_global` / `motion_loss_local` / `align_loss` / `flatness_loss` / `pinch_loss` / `soft_pinch_loss` / `chamfer_both` / `chamfer_partial` | 학습 손실. `motion_loss_local` 은 두 섭동의 사잇각을 맞춰 회전에 불변하고, `motion_loss_global` 은 변위 방향을 직접 맞춘다. `coverage_loss(partial=True)` 는 단방향 Chamfer 로 로봇 여분 영역 왜곡을 피한다. |
 | `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
 
 rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp) + kp 가중치
 (`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
+
+`net` 백엔드는 학습이 필요하다 — `tools/train_hand_net.py`(Phase 1: GeoRT 5원칙 /
+Phase 2: 단방향 Chamfer + 거리보존 + 로컬모션 + few-shot 앵커 + residual affine),
+평가는 `tools/bench_hand_retarget.py --backends net --net-checkpoint …`.
+좌우 통합 모델의 수용 기준은 `tools/check_mirror.py`.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
