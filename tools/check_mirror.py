@@ -25,13 +25,17 @@ class Rig:
                       if model.joints[j].nq > 0]
         self.idx_q = {model.names[j]: int(model.joints[j].idx_q)
                       for j in range(1, model.njoints) if model.joints[j].nq > 0}
+        self.frame = palm_frame_from_fingers(self.points(pin.neutral(model)))
 
-    def local(self, q):
+    def points(self, q):
         pin.forwardKinematics(self.model, self.data, np.asarray(q, dtype=float))
         pin.updateFramePlacements(self.model, self.data)
-        pts = {f: np.array([self.data.oMf[i].translation.copy() for i in self.fids[f]])
-               for f in FINGERS}
-        o, rot = palm_frame_from_fingers(pts)
+        return {f: np.array([self.data.oMf[i].translation.copy()
+                             for i in self.fids[f]]) for f in FINGERS}
+
+    def local(self, q):
+        pts = self.points(q)
+        o, rot = self.frame
         return {f: np.array([rot.T @ (p - o) for p in pts[f]]) for f in FINGERS}
 
     def probe(self, name, deg):

@@ -7,6 +7,7 @@ from .hand import (CONFIG_REGISTRY, AffineHandNet, HandKeyvector, HandNet,
                    distance_loss, extension_loss, finger_columns, flatness_loss,
                    human_chains,
                    keyvector_fk, motion_loss_global, motion_loss_local, pinch_loss,
+                   position_loss,
                    sensor_chains, soft_pinch_loss)
 
 __all__ = ["ArmIK", "DiffArmIK", "backend_cls", "xyzrpy_to_mat",
@@ -16,4 +17,4 @@ __all__ = ["ArmIK", "DiffArmIK", "backend_cls", "xyzrpy_to_mat",
            "human_chains", "sensor_chains", "AffineHandNet", "ResidualAffine",
            "bone_loss", "chamfer_both", "chamfer_partial", "coverage_loss",
            "distance_loss", "extension_loss", "flatness_loss", "motion_loss_global",
-           "motion_loss_local", "pinch_loss", "soft_pinch_loss"]
+           "motion_loss_local", "pinch_loss", "position_loss", "soft_pinch_loss"]
