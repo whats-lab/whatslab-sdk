@@ -10,7 +10,7 @@ from .hand_configs import CONFIG_REGISTRY
 from .human_fk import FINGERS, HumanHandFK
 from .keyvector import (KV_DIM, MIRROR_Z, HandKeyvector, finger_columns,
                         human_chains, sensor_chains, sensor_prox)
-from .net_losses import AffineHandNet, unit_to_joint
+from .net_losses import unit_to_joint
 
 LIMIT_FALLBACK = 2.0
 ACTS = {"leaky": nn.LeakyReLU, "gelu": nn.GELU, "silu": nn.SiLU,
@@ -161,36 +161,29 @@ class NetHandRetargeter:
         if not (isinstance(sd, dict) and "dropout" in sd):
             inner = {LAYER_REMAP.get(k, k): v for k, v in inner.items()}
         self._rebuild_for(inner)
-        wrapped = any(k.startswith("affine.") for k in inner)
-        if wrapped and not isinstance(self.net, AffineHandNet):
-            self.net = AffineHandNet(self.net, len(self.fingers))
-        elif not wrapped and isinstance(self.net, AffineHandNet):
-            self.net = self.net.net
         want = next(iter(inner.values())).dtype
         self.net = self.net.to(dtype=want)
         self.net.load_state_dict(inner)
         self.net.eval()
 
     def _rebuild_for(self, inner) -> None:
-        pre = "net." if any(k.startswith("net.nets.") for k in inner) else ""
-        first = inner.get("%snets.0.0.weight" % pre)
+        pre = ""
+        first = inner.get("nets.0.0.weight")
         if first is None:
             return
         h = int(first.shape[0])
         lin = [k for k in inner if k.startswith("%snets.0." % pre)
                and k.endswith(".weight") and inner[k].dim() == 2]
         nl = len(lin) - 1
-        cur = self.net.net if isinstance(self.net, AffineHandNet) else self.net
+        cur = self.net
         act = getattr(self, "_want_act", cur.act)
         norm = getattr(self, "_want_norm", cur.norm)
         if (h == cur._hidden and nl == cur.layers and act == cur.act
                 and norm == cur.norm):
             return
-        rebuilt = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
-                          hidden=h, dropout=cur.dropout, layers=nl,
-                          act=act, norm=norm).double()
-        self.net = (AffineHandNet(rebuilt, len(self.fingers))
-                    if isinstance(self.net, AffineHandNet) else rebuilt)
+        self.net = HandNet(KV_DIM, [len(self._cols[f]) for f in self.fingers],
+                           hidden=h, dropout=cur.dropout, layers=nl,
+                           act=act, norm=norm).double()
 
     def state_dict(self):
         return self.net.state_dict()
