@@ -340,10 +340,12 @@ def main():
                             for n, s, t in dead)), flush=True)
             torch.save({"net": net.state_dict(), "opt": opt.state_dict(),
                         "epoch": epoch, "cfg": vars(args),
-                        "u_margin": args.u_margin}, ckpt + ".tmp")
+                        "u_margin": args.u_margin, "side": args.side,
+                        "config": args.config}, ckpt + ".tmp")
             os.replace(ckpt + ".tmp", ckpt)
             snap = {"net": net.state_dict(), "affine": True,
-                    "u_margin": args.u_margin}
+                    "u_margin": args.u_margin, "side": args.side,
+                    "config": args.config}
             torch.save(snap, os.path.join(args.out, "net.pt"))
             torch.save(snap, os.path.join(args.out, "ep%04d.pt" % (epoch + 1)))
     with open(os.path.join(args.out, "meta.json"), "w") as fh:
