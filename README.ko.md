@@ -41,9 +41,8 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 - 명확한 단방향 의존 구조 (`receiver → core`, `model → core·robot`)
 
 **리타게팅 중심**
-- 손: 글러브가 보낸 사람 손 URDF 관절각 → pinocchio FK → 리타게팅 IK.
-  `backend="dex"`(dex-retargeting 2단계 vector+position) 또는 `backend="kp"`
-  (키포인트 결합 목적함수 = 팜상대 지문 + 형상 + DexPilot 스타일 핀치 스냅, pin+numpy 만)
+- 손: 글러브가 보낸 사람 손 URDF 관절각 → 학습된 통합 ONNX 모델 한 번의 순전파.
+  프레임별 IK 최적화가 없어 CPU 1스레드로 900Hz+, 모든 로봇 손·좌우가 그래프 하나
 - 팔: pinocchio 해석 야코비안 + 감쇠 최소자승(DLS)
 - 출력은 그대로 발행 가능한 `{side: {joint_name: rad}}` 형태
 
@@ -126,7 +125,6 @@ python tools/bench_arm_ik.py --traj fk                                   # 팔 I
 
 whatslab 은 다음 오픈소스 위에서 만들어졌습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(강체 기구학/IK),
-[dex-retargeting](https://github.com/dexsuite/dex-retargeting)(손 리타게팅),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
 [LeRobot](https://github.com/huggingface/lerobot)(데이터셋 포맷).
 

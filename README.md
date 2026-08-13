@@ -41,10 +41,9 @@ downstream code never re-maps axes.
 - strict dependency direction (`receiver → core`, `model → core·robot`)
 
 **whatslab is retargeting-first:**
-- hand: human-hand URDF joint angles from the glove → pinocchio FK → retargeting IK.
-  `backend="dex"` (dex-retargeting two-stage vector+position) or `backend="kp"`
-  (combined keypoint objective: palm-relative fingertips + shape + DexPilot-style
-  pinch snap, pin+numpy only)
+- hand: human-hand URDF joint angles from the glove → one forward pass of a single
+  learned ONNX model. No per-frame IK — 900Hz+ on one CPU thread, every robot hand
+  and both sides share one graph
 - arm: pinocchio analytic Jacobian + damped least squares
 - output is `{side: {joint_name: rad}}`, ready to publish
 
@@ -126,7 +125,6 @@ Run the test suite with `pip install -e '.[all,dev]' && pytest`.
 
 whatslab builds on excellent open-source work:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio) (rigid-body kinematics/IK),
-[dex-retargeting](https://github.com/dexsuite/dex-retargeting) (hand retargeting),
 [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization), and
 [LeRobot](https://github.com/huggingface/lerobot) (dataset format).
 
