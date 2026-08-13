@@ -27,9 +27,11 @@ def main():
 
     viz_human = viz_robot = None
     if args.viz:
+        from whatslab.solvers.hand.human_fk import HumanHandFK
         from whatslab.viz import HumanHandViz, RobotHandViz
         eng = ctrl.engine
-        viz_human = HumanHandViz(eng.fk, offset=(0.0, -args.viz_gap, 0.0))
+        human_fk = HumanHandFK(args.side)
+        viz_human = HumanHandViz(human_fk, offset=(0.0, -args.viz_gap, 0.0))
         viz_human.start()
         viz_robot = RobotHandViz(eng)
         viz_robot.start()
@@ -54,7 +56,7 @@ def main():
                 angles = fingers.hand.joint_angles if fingers is not None else None
                 if angles:
                     viz_human.update(
-                        ctrl.engine.fk.q_from_named(angles), timestamp=now)
+                        human_fk.q_from_named(angles), timestamp=now)
                 viz_robot.update(qv, timestamp=now)
             if now - last_log > 0.2:
                 last_log = now

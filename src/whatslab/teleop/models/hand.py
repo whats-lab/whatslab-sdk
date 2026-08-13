@@ -11,8 +11,7 @@ from ..side import SideModel
 class HandModel(TeleopModel):
 
     def __init__(self, hand_config: str = "orca_hand", side: str = "right",
-                 urdf_root: str | None = None, hand_source=None,
-                 backend: str = "dex", **kwargs):
+                 urdf_root: str | None = None, hand_source=None, **kwargs):
         self._side = side
         self.hand_source = (hand_source if hand_source is not None
                             else GloveHumanAnglesReceiver())
@@ -20,7 +19,7 @@ class HandModel(TeleopModel):
         self.sides[side] = SideModel(
             side=side, robot=None,
             retarget=HandRetargetController(side, hand_config, urdf_root=urdf_root,
-                                            backend=backend, **kwargs))
+                                            **kwargs))
 
     def _get_raw_target(self):
         return {s: None for s in self.SIDES}

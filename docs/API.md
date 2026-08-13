@@ -97,19 +97,21 @@ from whatslab.solvers.hand import HandRetargetController
 ```
 
 입력은 **사람 손 URDF 관절각** 하나다 — `HandPose.joint_angles`(이름→rad). 글러브가
-`/{side}/joint_angles/get` 으로 보내는 값이고, 사람 FK 는 두 엔진이 `HumanHandFK` 를
-공유한다(평범한 pinocchio FK).
+`/{side}/joint_angles/get` 으로 보내는 값이다. 엔진은 학습된 통합 ONNX 모델 하나
+(`assets/uni_all.onnx`)로, 사람 FK·인코더·헤드·관절범위 역정규화가 전부 그래프
+안에 있다. 로봇 의존부(관절 기술자·범위·사이드 부호)는 `assets/uni_tables.npz`
+표에서 입력으로 들어간다 — 로봇이 늘어도 모델은 안 바뀐다.
 
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargetController(hand_type, config_name, backend="dex")` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. `backend`: `"dex"` / `"kp"`. |
+| `HandRetargetController(hand_type, config_name)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. |
 | `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK. `points(angles)` = 손가락별 키포인트 4개 + `palm`, `positions(angles)` = `JOINT_INDEX` 배치의 (23,3). `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
-| `HandRetargeter` | `dex` 백엔드 엔진 — dex-retargeting 2단계(vector + position) IK, nlopt/torch 필요. |
-| `KPHandRetargeter(hand_type, config_name, keypoints=None, ...)` | `kp` 백엔드 엔진 — 팜상대 키포인트 결합 목적함수(가중 DLS + IRLS Huber), pin+numpy 만 사용. 팜 프레임 정렬 + 손길이 비율 스케일 + 중립 1회 구간별 방향 보정은 URDF 에서 자동 유도(키포인트는 `{side}_sensor_*` 우선, 없으면 사슬 추출, 아니면 `keypoints` 명시). 목적함수 = 팜상대 지문 위치 + 미터벡터 형상(`w_shape`, config `_KP_SHAPE_WEIGHT`) + 엄지쌍 상대벡터 램프 스냅(30mm 이하에서 목표→0, 가중 `w_pair`→`w_snap`) + 손가락간 최소분리 30mm. warm start 유상태 — side 마다 인스턴스 하나. `reset()` 으로 콜드 스타트 재개(orca 는 형상 전용 콜드 solve, `_KP_COLD_SHAPE`). |
-| `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. |
+| `UniRetargeter(hand_type, config_name, threads=1)` | 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
+| `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부 (URDF 경로·체인 유도, viz 용). |
 
-rig `hand_solver:` 로 코드 수정 없이 고른다 — `backend`(dex|kp) + kp 가중치
-(`w_tip`/`w_shape`/`w_pair`/`w_snap`/`iters_per_call`).
+새 로봇 손 온보딩: retarget_net 의 `tools/onboard_urdf.py` 가 URDF 하나에서 표를
+뽑는다(센서 프레임 계약 필요). 학습에 없던 손은 표만으로는 성능이 안 나온다 —
+몇백 스텝 미세조정 후 그래프를 재수출한다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 

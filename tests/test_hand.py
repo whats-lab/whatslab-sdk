@@ -64,91 +64,59 @@ def test_palm_link_is_derived_not_configured():
         assert palm and "_sensor_" not in palm, f"{name}: 팜 링크 유도 실패 {palm!r}"
         assert all(f.links[0] == palm for f in cfg._get_fingers("right"))
 
+def test_uni_retargeter_end_to_end():
+    pytest.importorskip("onnxruntime")
+    from whatslab.solvers.hand import UniRetargeter
 
-def test_hand_retarget_end_to_end():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
-    from whatslab.solvers.hand import HandRetargeter
-
-    _derivable("orca_hand", "right")
-    r = HandRetargeter("right", "orca_hand")
-    assert r.joint_names
-    assert r.tip_human_indices
-    assert len(r.human_joint_names) > 0
-    qpos = r.compute({n: 0.0 for n in r.human_joint_names})
-    assert qpos.shape == (len(r.joint_names),)
-    assert np.all(np.isfinite(qpos))
-    # 팜 원점 기준으로 센터링하므로 너클 4개의 평균이 원점 근처다
-    from whatslab.core.types import JOINT_INDEX
-    knuckles = [JOINT_INDEX[f"{f}_mcp"] for f in ("index", "middle", "ring", "pinky")]
-    assert np.linalg.norm(r.last_human_positions[knuckles].mean(axis=0)) < 0.02
-    R = r._coord_transform
-    assert np.abs(R.T @ R - np.eye(3)).max() < 1e-9, "유도된 회전이 직교가 아니다"
-    assert np.linalg.det(R) > 0
+    for robot in ("orca", "allegro", "tesollo", "robotis", "human"):
+        for side in ("left", "right"):
+            r = UniRetargeter(side, robot)
+            assert r.joint_names, f"{robot}/{side}"
+            neutral = {n: 0.0 for n in r.human_joint_names}
+            q = r.compute(neutral)
+            assert q.shape == (len(r.joint_names),)
+            assert np.all(np.isfinite(q))
+            lo, hi = r._feed["lo"], r._feed["hi"]
+            slack = 0.02 * (hi - lo)
+            assert np.all(q >= lo - slack) and np.all(q <= hi + slack)
 
 
-def test_kp_retargeter_end_to_end():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
-    from whatslab.solvers.hand import KPHandRetargeter
+def test_uni_retargeter_responds_to_input():
+    pytest.importorskip("onnxruntime")
+    from whatslab.solvers.hand import UniRetargeter
 
-    r = KPHandRetargeter("right", "orca_hand")
-    assert r.scale > 0
-    assert set(r.keypoints) == {"thumb", "index", "middle", "ring", "pinky"}
-    neutral = {n: 0.0 for n in r.human_joint_names}
-    q = r.compute(neutral)
-    assert q.shape == (len(r.joint_names),)
-    assert np.all(np.isfinite(q))
-    # 정지 입력에서 단조 수렴한다 (드리프트하지 않는다)
-    for _ in range(60):
-        q = r.compute(neutral)
-    q2 = r.compute(neutral)
-    assert np.abs(q2 - q).max() < 1e-3
-    r.reset()
-    assert r._cold
+    r = UniRetargeter("left", "orca")
+    q0 = r.compute({n: 0.0 for n in r.human_joint_names})
+    q1 = r.compute({n: 0.4 for n in r.human_joint_names})
+    assert np.abs(q1 - q0).max() > 0.05, "입력에 무반응 — 그래프가 상수화됐다"
 
 
-def test_kp_retargeter_tracks_tips():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
-    from whatslab.solvers.hand import KPHandRetargeter
+def test_uni_retargeter_config_alias():
+    pytest.importorskip("onnxruntime")
+    from whatslab.solvers.hand import UniRetargeter
 
-    r = KPHandRetargeter("right", "robotis_hx5_d20")
-    curled = {n: (0.6 if "index" in n else 0.15) for n in r.human_joint_names}
-    for _ in range(20):
-        r.compute(curled)
-    T = r._targets(r._human_points(curled))
-    r._fk_robot(r._q)
-    err = np.mean([np.linalg.norm(r._pos(r._fids[f][-1]) - T[f][-1])
-                   for f in T])
-    assert err < 0.05
+    a = UniRetargeter("left", "orca_hand")
+    b = UniRetargeter("left", "orca")
+    assert a.joint_names == b.joint_names
+    with pytest.raises(ValueError, match="표에 없는"):
+        UniRetargeter("left", "nope_hand")
 
 
+def test_uni_retargeter_accepts_unprefixed_names():
+    pytest.importorskip("onnxruntime")
+    from whatslab.solvers.hand import UniRetargeter
 
-def test_kp_controller_backend():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
-    from whatslab.core.types import HandPose, InputSample
-    from whatslab.solvers.hand import HandRetargetController, KPHandRetargeter
-
-    ctrl = HandRetargetController("right", "orca_hand", backend="kp")
-    assert isinstance(ctrl.engine, KPHandRetargeter)
-    angles = {n: 0.0 for n in ctrl.engine.human_joint_names}
-    hand = HandPose(joint_angles=angles, tracked=True)
-    cmd = ctrl.compute(InputSample(hand=hand, tracked=True))
-    assert cmd.joint_names == ctrl.joint_names
-    assert np.all(np.isfinite(cmd.joint_angles))
-    with pytest.raises(ValueError):
-        HandRetargetController("right", "orca_hand", backend="nope")
+    r = UniRetargeter("left", "tesollo")
+    full = {n: 0.3 for n in r.human_joint_names}
+    bare = {n.split("_", 1)[1]: 0.3 for n in r.human_joint_names}
+    assert np.allclose(r.compute(full), r.compute(bare))
 
 
 def test_hand_controller_from_input_sample():
-    pytest.importorskip("dex_retargeting")
-    pytest.importorskip("pinocchio")
+    pytest.importorskip("onnxruntime")
     from whatslab.core.types import HandPose, InputSample
     from whatslab.solvers.hand import HandRetargetController
 
-    _derivable("orca_hand", "right")
     ctrl = HandRetargetController("right", "orca_hand")
     angles = {n: 0.0 for n in ctrl.engine.human_joint_names}
     hand = HandPose(joint_angles=angles, tracked=True)

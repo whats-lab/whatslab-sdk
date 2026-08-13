@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 새 환경이면 `pip install -e '.[all,dev]'`. extras: `receiver`(python-osc) / `hand`
-(dex-retargeting·pin·nlopt·torch) / `arm`(pin) / `viz`(viser·trimesh) / `data`
+(onnxruntime·pin) / `arm`(pin) / `viz`(viser·trimesh) / `data`
 (pyarrow·imageio) / `all` / `dev`(pytest). URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)가 제공한다.
 
@@ -34,7 +34,7 @@ $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 `-rs` 를 항상 붙인다. **skip 6개는 URDF 자체가 없는 손**(allegro/schunk/tesollo/
 ability)이다. 동봉 `dexhand_description` 은 센서 프레임이 없어 손 config 유도가 막히고
 skip 이 14개로 는다 — 손 쪽을 만질 때는 `WHATSLAB_MODELS_ROOT` 로 센서 프레임이 있는
-models root 를 가리켜야 실제로 검증된다. 무거운 deps 는 `pytest.importorskip`(pinocchio, dex_retargeting,
+models root 를 가리켜야 실제로 검증된다. 무거운 deps 는 `pytest.importorskip`(pinocchio, onnxruntime,
 viser, trimesh, lerobot)으로 게이팅되어 있어, extras 가 빠진 env 에서는 "통과"가 실제로는
 skip 이다. 린터 설정은 pyproject 에 없다(강제 린트 없음).
 
@@ -63,7 +63,7 @@ scripts/install_quest_app.sh [PoseDataTracker*.apk]   # adb 로 Quest 앱 설치
 **레이어 규칙** — `core ← receiver`, `core·paths ← solvers`, `core·robot·solvers·receiver
 ← teleop`. 즉 `teleop` 만 위쪽이고 나머지는 서로를 모른다:
 - `solvers/` = **수치 해법만**. 팔 IK(`arm/arm_ik.py` DLS)·손 리타게팅
-  (`hand/retargeter.py` nlopt). 리시버도 rig 도 모른다.
+  (`hand/uni_retargeter.py` ONNX 순전파). 리시버도 rig 도 모른다.
 - `teleop/` = 파이프라인(`base.py`) + 전처리(`calibration.py`) + 장치별 조립
   (`models/quest.py`·`glove.py`·`hand.py`). **리시버를 하드와이어하는 곳은 여기뿐**이다.
 - `robot/` = rig config 또는 yaml 경로 → `RobotModel`(정의 + 기하 + 솔버 소유) +
@@ -188,31 +188,26 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 
 **손 리타게팅** — 입력은 **사람 손 URDF 관절각**(`HandPose.joint_angles`, 이름→rad)
 하나뿐이다. 글러브(Spine)가 `/{side}/joint_angles/get` 으로 (이름, rad) 쌍을 보내고
-`GloveHumanAnglesReceiver` 가 받는다. 사람 FK 는 `solvers/hand/human_fk.py`
-`HumanHandFK` **한 곳**이고 평범한 pinocchio FK 다 — 두 엔진(dex/kp)이 같은 FK 를
-공유한다. 로봇 손 추가는 `solvers/hand/hand_configs/` 에 config 를 등록하는 방식.
-추적이 끊기면 직전 명령을 유지한다(급변 방지).
-- **구면관절 FK(`spherical_fk.py`)는 제거했다.** 글러브가 quat 을 보낼 때
-  17슬롯 배열을 볼조인트 모델에 밀어넣던 경로였다(`_correct_quat`·`sensor_to_jid`·
-  `PINKY_CMC_OFFSET`·`AGA_SKIP_JOINT`). q 가 오는 지금은 URDF 를 그대로 FK 하면
-  되므로 되살리지 말 것. 대가로 **Quest 핸드트래킹 리타게팅은 지원하지 않는다**
-  (Quest 컨트롤러 → 팔 IK 경로는 그대로다).
-- **URDF 는 관절명이 아니라 링크명으로 참조한다.** Visualizer 규칙이
-  "링크 = 뼈 이름, 관절 = 운동 이름"이고 관절명은 개명된 적이 있다
-  (`thumb_cmc0`→`thumb_cmc_flex`, `{f}_mcp_z`→`{f}_mcp_flex`). 링크는 불변이다.
-  사람 손 손끝은 `{side}_sensor_{finger}_distal`(실제 센서 장착점) → 없으면
-  `{side}_{finger}_tip` 순으로 찾는다. **로봇 손 config 는 손가락 사슬·팁·팜 링크를
-  URDF 센서 프레임에서 유도한다** — `hand_configs/*.py` 에 남는 건 URDF 로 알 수 없는
-  사람-관절 짝짓기(`_HUMAN_CHAIN`) 뿐이다. 로봇 관절 수가 사람과 다를 때 어느 사람
-  관절을 공유할지는 손별 판단이라 유도할 수 없다. 길이가 안 맞으면 유도된 사슬을
-  그대로 찍어주는 에러가 난다. **사람→로봇 회전도 유도한다**(`r_frame @ h_frame.T`)
-  — 전에는 config 의 손 튜닝 3x3(`_COORD_TRANSFORM`)이었는데 옛 구면 FK 프레임에
-  맞춰져 있어 dex 가 스켈레톤을 못 따라갔다(실측 지문추종 46~71 → 15~23mm).
-- **팜 프레임의 y 축은 `너클평균 − 팜기준점`이다.** 전에 `중지너클 − 너클평균`
-  (너클 아치 볼록량)을 썼는데 4~7mm 뿐이라 직교화하면 거의 특이하고, 사람 손에서는
-  방향이 손바닥 법선으로 뒤집혀 사람↔로봇 매핑이 90° 돌아갔다(실측 지문오차
-  51mm). 팜기준점은 `{side}_sensor_dorsum` → 손가락 공통 조상 → 베이스 링크 순으로
-  찾는다. 조건수 3.9 → 46~130mm.
+`GloveHumanAnglesReceiver` 가 받는다. 엔진은 **학습된 통합 ONNX 모델 하나**
+(`solvers/hand/uni_retargeter.py` + `assets/uni_all.onnx`)다 — 사람 FK·인코더·
+통합 헤드·관절범위 역정규화가 전부 그래프 안이고, 로봇 의존부(관절 기술자 19D·
+관절범위·사이드 부호)는 `assets/uni_tables.npz` 에서 **입력**으로 들어간다.
+로봇이 늘어도 그래프는 안 바뀐다. 추적이 끊기면 직전 명령을 유지한다(급변 방지).
+- **dex(dex_retargeting 2단계 IK)·kp(키포인트 IK) 백엔드는 제거했다.** 프레임별
+  최적화 없이 순전파 한 번(CPU 1스레드 약 1.1ms, 900Hz+)으로 대체됐고 좌우·5개
+  손(orca/allegro/tesollo/robotis/human)이 그래프 하나를 쓴다. `backend=` 인자는
+  하위호환으로 무시된다. 모델·표·학습 설정의 정본은 retarget_net 저장소다.
+- **새 로봇 손 온보딩**: retarget_net `tools/onboard_urdf.py` 가 URDF 하나에서 표를
+  뽑는다(센서 프레임 계약: `{side}_sensor_dorsum` + 손가락마다 `_proximal`/`_distal`.
+  손가락 체인 밖 활성 관절은 손목으로 보고 자동 고정 — orca 손목이 이 경우).
+  표는 모델을 돌게 할 뿐이라, 학습에 없던 손은 몇백 스텝 미세조정 후 그래프를
+  재수출해야 성능이 나온다.
+- `hand_configs/`(URDF 경로·체인 유도)와 `human_fk.py`(pinocchio FK)는 리타게팅
+  엔진이 아니라 viz·테스트용으로 남아 있다. `UniRetargeter.urdf_path` 는 pinocchio
+  없이 경로만 계산한다.
+- **구면관절 FK(`spherical_fk.py`)는 제거했다.** 글러브가 quat 을 보낼 때의
+  경로였고 q 가 오는 지금은 필요 없다. 대가로 **Quest 핸드트래킹 리타게팅은
+  지원하지 않는다** (Quest 컨트롤러 → 팔 IK 경로는 그대로다).
 
 **자산 경로** (`paths.py`) — `models_root()`: `WHATSLAB_MODELS_ROOT` > `dexhand_description`
 패키지 share. `configs_root()`: `WHATSLAB_CONFIGS_ROOT` > 동봉 `whatslab/configs`.
@@ -226,7 +221,7 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **pip 전용 스택 유지.** casadi/IPOPT·conda-forge pinocchio 를 도입하지 않는다(팔 IK 가
   해석 야코비안 + DLS 인 이유). 손·팔·viz 가 pip `pin` 하나를 공유한다.
 - **lazy import 금지.** 함수 안에서 import 하지 않는다 — 전부 모듈 최상단이다.
-  결과로 `import whatslab.teleop` 이 pinocchio·dex_retargeting·torch·nlopt·python-osc
+  결과로 `import whatslab.teleop` 이 pinocchio·onnxruntime·python-osc
   를 전부 끌어온다(약 0.9초). extra 를 나눠 설치하는 소비자는 `[all]` 을 써야 한다.
   예외는 둘이다. `paths.models_root()` 의 `dexhand_description`(= `WHATSLAB_MODELS_ROOT`
   로 덮어쓰면 패키지 없이 동작해야 한다), `hand_configs/_base.py` 의
