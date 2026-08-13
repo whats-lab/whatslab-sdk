@@ -1,6 +1,5 @@
 from .arm import ArmIK, DiffArmIK, backend_cls, xyzrpy_to_mat
-from .hand import CONFIG_REGISTRY, HandRetargetController, HandRetargeter, KPHandRetargeter
+from .hand import CONFIG_REGISTRY, HandRetargetController, UniRetargeter
 
 __all__ = ["ArmIK", "DiffArmIK", "backend_cls", "xyzrpy_to_mat",
-           "HandRetargeter", "KPHandRetargeter", "HandRetargetController",
-           "CONFIG_REGISTRY"]
+           "UniRetargeter", "HandRetargetController", "CONFIG_REGISTRY"]

@@ -29,9 +29,10 @@ dependencies = [
 # 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
 receiver = ["python-osc"]
-# dex-retargeting 0.5+ 는 torch 를 런타임에 요구(직접 선언 안 함) → 명시.
-# GPU 불필요: CPU 휠로 충분(`pip install torch --index-url .../cpu` 로 경량 설치 가능).
-hand     = ["dex-retargeting", "pin", "nlopt", "torch",
+# 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 추론은 onnxruntime 뿐이다.
+# pin·dexhand-description 은 hand_configs(URDF 경로·체인 유도)와 human_fk(viz)용.
+# dex-retargeting / nlopt / torch 의존은 제거됐다.
+hand     = ["onnxruntime", "pin",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
@@ -54,7 +55,7 @@ include = ["whatslab*"]
 # configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
 # 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
 [tool.setuptools.package-data]
-whatslab = ["configs/**"]
+whatslab = ["configs/**", "solvers/hand/assets/*.onnx", "solvers/hand/assets/*.npz"]
 
 [tool.setuptools.exclude-package-data]
 whatslab = ["**/__pycache__/**", "**/*.py[cod]"]

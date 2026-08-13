@@ -1,3 +1,20 @@
+## [Unreleased]
+
+### Changed
+- 손 리타게팅 엔진을 **학습된 통합 ONNX 모델 하나**(`UniRetargeter`)로 교체.
+  사람 FK·인코더·통합 헤드·관절범위 역정규화가 그래프(`assets/uni_all.onnx`) 안에
+  있고, 로봇 의존부(관절 기술자·범위·사이드 부호)는 `assets/uni_tables.npz` 에서
+  입력으로 들어간다 — 로봇 추가 시 그래프 불변, 표만 는다.
+  CPU 1스레드 프레임당 약 1.1ms(900Hz+), 좌우·5개 손(orca/allegro/tesollo/
+  robotis/human) 공용. `hand` extra 는 `onnxruntime`·`pin` 으로 축소
+  (dex-retargeting / nlopt / torch 제거).
+
+### Removed
+- dex(dex_retargeting 2단계 IK)·kp(키포인트 IK) 백엔드 (`retargeter.py`,
+  `kp_retargeter.py`), `KPHandViz`, `examples/glove_hand_verify.py`,
+  `tools/bench_hand_retarget.py`. `HandRetargetController(backend=...)` 인자는
+  하위호환으로 무시된다.
+
 # Changelog
 
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.

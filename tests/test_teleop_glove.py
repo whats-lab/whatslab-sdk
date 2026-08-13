@@ -371,7 +371,7 @@ def test_teleop_model_still_accepts_duck_typed_robot():
 def test_every_exported_preset_is_instantiable():
     require_sensor_urdf("orca_hand")
     pytest.importorskip("pinocchio")
-    pytest.importorskip("dex_retargeting")
+    pytest.importorskip("onnxruntime")
     import whatslab.teleop as T
 
     from whatslab.receiver.glove.human_hand import GloveHumanHandReceiver
