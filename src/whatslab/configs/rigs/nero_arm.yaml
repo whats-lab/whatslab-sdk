@@ -1,0 +1,16 @@
+# nero 팔 단독 rig (손 없음) — quest_arm 예제/백엔드 테스트용
+name: nero_arm
+robots:
+  arm: robots/nero.yaml
+
+mount: {xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 3.14159265]}
+lock_joints: []
+
+solver:
+  backend: diff
+  w_pos: 20.0
+  w_ori: 10.0
+
+calibration:
+  enabled: true
+  input_reach: null      # 사람 손 최대 도달반경 (calibrate.py 로 측정 — uniform reach 스케일)
