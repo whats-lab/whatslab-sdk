@@ -40,14 +40,14 @@ class UniRetargeter:
         onnx_path = onnx_path or os.path.join(_ASSETS, "uni_all.onnx")
         t = np.load(tables_path, allow_pickle=False)
         k = f"{self.robot}:{self.hand_type}"
-        if f"{k}:jfeat" not in t:
+        if f"{k}:qtok" not in t:
             have = sorted({x.rsplit(":", 2)[0] for x in t.files
-                           if ":jfeat" in x})
+                           if ":qtok" in x})
             raise ValueError(f"표에 없는 손: {k!r}. 가능한 로봇: {have}. "
                              f"새 손은 onboard_urdf.py 로 표를 만들어라")
         self._feed = {
             "sgn": t[f"{k}:sgn"].astype(np.float32),
-            "jfeat": t[f"{k}:jfeat"].astype(np.float32),
+            "qtok": t[f"{k}:qtok"].astype(np.float32),
             "lo": t[f"{k}:lo"].astype(np.float32),
             "hi": t[f"{k}:hi"].astype(np.float32),
         }
