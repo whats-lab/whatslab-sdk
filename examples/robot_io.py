@@ -219,7 +219,6 @@ class RobotBridge:
         self.model, self.robot, self.args = model, robot, args
         self.arm = self.hand = None
         self.sending = False
-        self.status = None
         self.dropped = 0
         self.sent = 0
         self._latest = None
@@ -300,83 +299,17 @@ class RobotBridge:
                 except Exception as e:
                     self.sending = False
                     self._pumping = False
-                    if self.status is not None:
-                        self.status.content = f"**전송 오류 → 송신 중단**: `{e}`"
                     print(f"[robot] 전송 오류 → 송신 중단: {e}", flush=True)
                     return
             self.sent += 1
 
 
-def build_robot_panel(model, robot, args) -> RobotBridge:
-    from whatslab.viz import get_server
-
+def connect_robot(model, robot, args) -> RobotBridge:
     bridge = RobotBridge(model, robot, args)
-    srv = get_server(args.port)
-    with srv.gui.add_folder("실물 로봇"):
-        bridge.status = srv.gui.add_markdown("미연결")
-        b_arm = srv.gui.add_button("팔 연결 (nero)")
-        b_hand = srv.gui.add_button("손 연결 (orca)")
-        cb_send = srv.gui.add_checkbox("송신", initial_value=False)
-        b_wrist = srv.gui.add_button("손 명령값 보기")
-        b_rate = srv.gui.add_button("전송 통계")
-        b_stop = srv.gui.add_button("E-STOP", color="red")
-        b_off = srv.gui.add_button("전체 해제")
-
-    def _say(msg):
-        bridge.status.content = msg
-        print(f"[robot] {msg}", flush=True)
-
-    @b_arm.on_click
-    def _(_e):
-        try:
-            _say(bridge.connect_arm())
-        except Exception as e:
-            _say(f"**팔 연결 실패**: `{e}`")
-
-    @b_hand.on_click
-    def _(_e):
-        try:
-            _say(bridge.connect_hand())
-        except Exception as e:
-            _say(f"**손 연결 실패**: `{e}`")
-
-    @b_rate.on_click
-    def _(_e):
-        _say(f"송신 {bridge.sent}회 / 드롭 {bridge.dropped}회 "
-             f"(드롭 = 하드웨어가 루프 속도를 못 따라간 프레임)")
-
-    @b_wrist.on_click
-    def _(_e):
-        h = bridge.hand
-        if h is None or not h.last_sent:
-            _say("손 미연결 또는 아직 전송 없음")
-            return
-        w = h.last_sent.get("wrist")
-        th = {k: round(v, 1) for k, v in h.last_sent.items() if k.startswith("thumb")}
-        _say(f"wrist `{w:+.1f}°` / thumb `{th}`" if w is not None
-             else f"wrist 미전송 / thumb `{th}`")
-
-    @cb_send.on_update
-    def _(_e):
-        if cb_send.value and bridge.arm is None and bridge.hand is None:
-            cb_send.value = False
-            _say("**먼저 연결하세요**")
-            return
-        bridge.sending = bool(cb_send.value)
-        _say("송신 중" if bridge.sending else "송신 정지")
-
-    @b_stop.on_click
-    def _(_e):
-        bridge.estop()
-        cb_send.value = False
-        _say("**E-STOP** — 해제 후 재연결")
-
-    @b_off.on_click
-    def _(_e):
-        bridge.disconnect()
-        cb_send.value = False
-        _say("미연결")
-
+    print("[robot] " + bridge.connect_arm(), flush=True)
+    print("[robot] " + bridge.connect_hand(), flush=True)
+    bridge.sending = True
+    print("[robot] 송신 시작 — Ctrl-C 로 종료(해제까지 수행)", flush=True)
     return bridge
 
 

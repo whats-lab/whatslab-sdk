@@ -26,20 +26,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
+# 전 extra 가 순수 pip 설치 가능. pip pinocchio(double `pin`) 는 팔 IK 가 쓴다.
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
 receiver = ["python-osc"]
-# 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 추론은 onnxruntime 뿐이다.
-# pin·dexhand-description 은 human_fk(viz)와 실물 관절 매핑(examples/robot_io)용.
-# dex-retargeting / nlopt / torch 의존은 제거됐다.
+# 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 SDK 추론 경로는 onnxruntime 뿐이고
+# whatslab.solvers.hand 는 pinocchio 를 아예 import 하지 않는다. pin 은 실물 orca
+# 관절 매핑(examples/robot_io) 용, dexhand-description 은 URDF 경로 해석용이다.
 hand     = ["onnxruntime", "pin",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
-viz      = ["viser", "trimesh", "pin"]           # 3D 씬 viz + 정렬 튜너 (viser, pinocchio FK)
 # lerobot 라이브러리 없이 v2.1 데이터셋을 기록하는 경량 sink (isaacsim numpy1.26 env 비오염 목적).
 data     = ["pyarrow>=14", "imageio[ffmpeg]>=2.30"]
-all      = ["whatslab-sdk[receiver,hand,arm,viz]"]
+all      = ["whatslab-sdk[receiver,hand,arm]"]
 dev      = ["pytest"]
 
 [tool.setuptools]

@@ -56,8 +56,8 @@ downstream code never re-maps axes.
 Publicly available under a source-available license (not published on PyPI — install from source).
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm + viz
-pip install '.[hand]'     # partial: hand / arm / receiver / viz / data
+pip install '.[all]'      # receiver + hand + arm
+pip install '.[hand]'     # partial: hand / arm / receiver / data
 pip install -e '.[all]'   # editable, for development
 ```
 
@@ -102,7 +102,6 @@ python examples/quest_arm.py --rig rigs/nero_orca_right.yaml            # contro
 python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist  # Quest hand-tracking
 python examples/verify_rig.py --rig rigs/nero_orca_right.yaml           # inspect rig kinematics
 
-python tools/align_frames.py robot --robot robots/nero.yaml            # align a robot to canonical axes
 python tools/bench_arm_ik.py --traj fk                                 # arm IK: accuracy / continuity / cost
 ```
 
@@ -125,7 +124,6 @@ Run the test suite with `pip install -e '.[all,dev]' && pytest`.
 
 whatslab builds on excellent open-source work:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio) (rigid-body kinematics/IK),
-[viser](https://github.com/nerfstudio-project/viser) (web 3D visualization), and
 [LeRobot](https://github.com/huggingface/lerobot) (dataset format).
 
 ## License
