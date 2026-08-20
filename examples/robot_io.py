@@ -15,11 +15,13 @@ ORCA_SIGN: Dict[str, float] = {}
 def _finger_links(side: str) -> Dict[str, List[str]]:
     import pinocchio as pin
 
+    from whatslab.paths import models_root
     from whatslab.solvers.hand.uni_retargeter import UniRetargeter
 
     urdf = UniRetargeter(side, "orca_hand").urdf_path
     if urdf is None:
-        raise FileNotFoundError(f"orca_hand/{side} URDF 를 못 찾았다")
+        raise FileNotFoundError(f"orca_hand/{side} URDF 를 못 찾았다 (models_root"
+                                f"={models_root()})")
     m = pin.buildModelFromUrdf(urdf)
 
     def body(joint: int) -> Optional[str]:
@@ -33,7 +35,11 @@ def _finger_links(side: str) -> Dict[str, List[str]]:
     for f in _FINGER_ORDER:
         tip = f"{side}_sensor_{f}_distal"
         if not m.existFrame(tip, pin.FrameType.BODY):
-            raise ValueError(f"{urdf}: 센서 프레임 {tip} 없음")
+            raise ValueError(
+                f"{urdf}: 센서 프레임 {tip} 없음 — 실물 관절 매핑은 센서 프레임에서"
+                " 유도한다. 동봉 dexhand_description 패키지 URDF 에는 센서 프레임이"
+                " 하나도 없으니 WHATSLAB_MODELS_ROOT 로 센서 프레임이 있는 models"
+                " root 를 가리켜라 (리타게팅 자체는 표를 쓰므로 이것 없이도 돈다)")
         jid = int(m.frames[m.getFrameId(tip, pin.FrameType.BODY)].parent)
         tips[f] = tip
         chains[f] = [int(j) for j in m.supports[jid] if j > 0]
