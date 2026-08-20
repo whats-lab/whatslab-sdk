@@ -50,6 +50,7 @@ class UniRetargeter:
             "qtok": t[f"{k}:qtok"].astype(np.float32),
             "lo": t[f"{k}:lo"].astype(np.float32),
             "hi": t[f"{k}:hi"].astype(np.float32),
+            "cmask": t[f"{k}:cmask"].astype(np.float32),
         }
         self.joint_names: List[str] = [str(n) for n in t[f"{k}:joints"]]
         hk = f"human:{self.hand_type}:joints"
