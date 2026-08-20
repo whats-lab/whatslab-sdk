@@ -84,10 +84,6 @@ class SafetyFilter:
     def seed(self, positions: Dict[str, float]) -> None:
         self._last = dict(positions)
 
-    @property
-    def holding(self) -> bool:
-        return self._estopped or not self._enabled
-
     def step(self, desired: Optional[Dict[str, float]],
              dt: Optional[float] = None) -> Dict[str, float]:
         if self._estopped or not self._enabled or desired is None:

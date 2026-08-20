@@ -414,12 +414,6 @@ def test_get_data_publishes_raw_target():
 
 
 def test_two_arm_iks_on_one_robot_do_not_interfere():
-    """같은 RobotModel 로 만든 두 RobotArmIK 가 서로의 warm-start 를 침범하면 안 된다.
-
-    단일 rig 를 TeleopModel 에 주면 양쪽 side 가 같은 RobotModel(= 같은 solver)을
-    공유한다. 솔버가 history_data 를 들고 있으므로, 두 side 가 번갈아 solve 하면
-    서로를 밀어낸다(실측: 오른쪽만 2.6mm → 양쪽 347mm).
-    """
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
