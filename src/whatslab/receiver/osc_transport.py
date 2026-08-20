@@ -25,7 +25,6 @@ class SharedOscServer:
         self._server: osc_server.ThreadingOSCUDPServer | None = None
         self._thread: threading.Thread | None = None
 
-    # --------------------------------------------------------------- registry
     @classmethod
     def get(cls, port: int, listen_ip: str = "0.0.0.0") -> "SharedOscServer":
         with _registry_lock:
@@ -35,11 +34,9 @@ class SharedOscServer:
                 _registry[port] = srv
             return srv
 
-    # ---------------------------------------------------------------- handler
     def add_handler(self, address: str, fn: Callable[..., Any], *args: Any) -> None:
         self.dispatcher.map(address, fn, *args)
 
-    # ------------------------------------------------------------- lifecycle
     @property
     def is_running(self) -> bool:
         with self._lock:
@@ -50,8 +47,6 @@ class SharedOscServer:
             self._refcount += 1
             if self._server is not None:
                 return
-            # SO_REUSEADDR — 직전 서버 소켓 TIME_WAIT 중에도 같은 포트 재바인드 허용
-            # (빠른 stop→start 재시작/테스트에서 "Address already in use" 방지).
             osc_server.ThreadingOSCUDPServer.allow_reuse_address = True
             self._server = osc_server.ThreadingOSCUDPServer(
                 (self._listen_ip, self._port), self.dispatcher

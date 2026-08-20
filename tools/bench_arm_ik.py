@@ -21,6 +21,16 @@ IK 를 손볼 때마다 임시 스크립트로 재면 비교가 안 된다. 이 
 
 **도달 불가 구간 주의** — 추종 오차가 크다고 솔버 탓이 아닐 수 있다. `--floor` 를
 주면 최악 프레임에서 무차별 재시작으로 '도달 가능 하한'을 구해 판정까지 낸다.
+
+궤적(--traj)
+------------
+fk        도달 가능이 보장된 궤적 — 유효 q 를 매끄럽게 흔들고 FK 로 목표를 만든다.
+          오차 하한이 0 이라 남는 오차가 전부 솔버 탓이다. **정확도는 이걸로만 판정.**
+wave      도달범위 안에서 매끄럽게 움직이되 자세는 임의로 굴린다(컨트롤러 유사).
+reach     reach_max 밖까지 뻗어 클램프가 지속되는 구간(사람이 팔을 뻗는 상황).
+slow      느린 위치 이동 + 고정 자세 — 솔버의 정상상태 정확도만 본다.
+overshoot A → (도달 한계 밖) → B → 되돌아오기. 클램프 진입/이탈의 연속성 검사.
+walk      SO(3) 랜덤워크 — 시드별로 흩어지므로 --seeds 와 함께 쓴다.
 """
 from __future__ import annotations
 
@@ -36,7 +46,6 @@ JUMP_TOL = 0.6                   # [rad] 이 이상 튀면 순간이동으로 �
 
 # ------------------------------------------------------------------ 궤적
 def traj_wave(n: int):
-    """도달범위 안에서 매끄럽게 움직이되 **자세는 임의로** 굴린다(컨트롤러 유사)."""
     for i in range(n):
         t = i / n
         T = np.eye(4)
@@ -49,7 +58,6 @@ def traj_wave(n: int):
 
 
 def traj_reach(n: int):
-    """reach_max 밖까지 뻗어 클램프가 지속되는 구간(사람이 팔을 뻗는 상황)."""
     for i, T in enumerate(traj_wave(n)):
         T = T.copy()
         T[:3, 3] *= 1.0 + 1.2 * max(0.0, (i / n) - 0.4)
@@ -57,7 +65,6 @@ def traj_reach(n: int):
 
 
 def traj_slow(n: int):
-    """느린 위치 이동 + 고정 자세 — 솔버의 정상상태 정확도만 본다."""
     T0 = np.eye(4)
     T0[:3, :3] = Rotation.from_euler("xyz", [0.0, -np.pi / 2, 0.0]).as_matrix()
     for i in range(n):
@@ -68,12 +75,6 @@ def traj_slow(n: int):
 
 
 def traj_fk(n: int, robot=None):
-    """**도달 가능이 보장된** 궤적 — 유효 q 를 매끄럽게 흔들고 FK 로 목표를 만든다.
-
-    오차 하한이 정확히 0 이므로, 남는 오차는 전부 솔버 탓이다. 합성 좌표로 만든
-    궤적(wave/slow)은 도달 불가 구간을 지나 솔버 품질과 도달성을 섞어버린다 —
-    **정확도 판정은 이 궤적으로 한다.**
-    """
     s = robot.solver
     lo, hi = s._lo, s._hi
     mid = 0.5 * (lo + hi)
@@ -86,12 +87,6 @@ def traj_fk(n: int, robot=None):
 
 
 def traj_overshoot(n: int, robot=None):
-    """A → (도달 한계 밖) → B → 되돌아오기. 클램프 진입/이탈에서의 연속성 검사.
-
-    사람이 팔을 너무 멀리 뻗었다 당기는 상황. 목표가 워크스페이스를 벗어나는 구간에서는
-    reach 클램프가 방향만 남기므로, 진입·이탈 순간에 해가 튈 수 있다(불연속 취약점).
-    A/B 는 도달 가능하도록 FK 로 잡고, 중간을 한계 밖으로 밀어낸다.
-    """
     s = robot.solver
     rm = robot.rig.solver.reach_max or 1.0
     lo, hi = s._lo, s._hi
@@ -114,12 +109,6 @@ def traj_overshoot(n: int, robot=None):
 
 
 def traj_walk(n: int, robot=None, seed: int = 0):
-    """사람 손목 유사 랜덤워크 — 위치·자세를 독립적으로 흔든다.
-
-    시드마다 완전히 다른 궤적이 나오고 평균 오차가 3~150mm 로 흩어진다.
-    **단일 시드로는 판정 불가** → `--seeds 40` 의 평균±표준오차로 비교하고,
-    두 설정 비교는 시드를 맞춘 대응차(paired)로 본다.
-    """
     rm = (robot.rig.solver.reach_max or 0.5) if robot is not None else 0.5
     rng = np.random.default_rng(seed)
     p = np.array([0.35, -0.20, 0.10])
@@ -181,7 +170,6 @@ def report(label, qs, ts, pes, oes):
 
 
 def report_multi(label, runs, dump=None):
-    """시드별 결과를 평균±표준오차로 집계 — 단일 시드 판정을 막는 것이 목적이다."""
     pos = np.array([r["pos"] for r in runs]) * 1000.0
     ori = np.degrees(np.array([r["ori"] for r in runs]))
     jump = np.array([r["jump"] for r in runs])
@@ -209,7 +197,6 @@ def report_multi(label, runs, dump=None):
 
 
 def floor_check(robot, targets, pes, restarts=200, k=5):
-    """최악 프레임의 도달 가능 하한 — 솔버 실패인가 도달 불가인가."""
     s = robot.solver
     lo = np.where(np.isfinite(s.model.lowerPositionLimit), s.model.lowerPositionLimit, -np.pi)
     hi = np.where(np.isfinite(s.model.upperPositionLimit), s.model.upperPositionLimit, np.pi)
@@ -249,8 +236,7 @@ def main():
     ap.add_argument("--floor", action="store_true", help="최악 프레임 도달 하한까지 판정")
     args = ap.parse_args()
 
-    from whatslab.model.ik import RobotArmIK
-    from whatslab.robot import RobotModel, load_rig
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
     rig = load_rig(args.rig)
     for kv in args.set:                       # solver.backend=dls 같은 점표기 덮어쓰기

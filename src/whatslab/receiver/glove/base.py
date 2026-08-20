@@ -11,10 +11,14 @@ from ..osc_transport import SharedOscServer
 
 _log = logging.getLogger(__name__)
 
-GLOVE_OSC_PORT = 4040       # AGA 글러브 → PC OSC 수신 포트. 기존 airglove.OSC_SERVER_PORT 와 동일 값.
-GLOVE_CLIENT_PORT = 4042    # PC → 글러브 (하트비트/햅틱) 송신 포트. 기존 airglove.OSC_CLIENT_PORT 와 동일 값.
+GLOVE_OSC_PORT = 4040
+GLOVE_CLIENT_PORT = 4042
 GLOVE_TARGET_IP = "127.0.0.1"
 HEARTBEAT_INTERVAL_SEC = 1.0
+
+OSC_ADDR_HAPT = {"left": "/left/hapt/set", "right": "/right/hapt/set"}
+OSC_MSG_TYPE_HAPT = {"left": "9", "right": "10"}
+AGA_FINGER_COUNT = 5
 
 
 class GloveReceiverBase:
@@ -28,20 +32,18 @@ class GloveReceiverBase:
     ):
         self._srv = SharedOscServer.get(glove_port, listen_ip)
         self._lock = threading.Lock()
-        # 서브클래스가 자유롭게 필드를 채우는 side 별 상태 컨테이너.
         self._state: Dict[str, dict] = {"left": {}, "right": {}}
         self._connected: Dict[str, bool] = {"left": False, "right": False}
 
         self._target_ip = target_ip
         self._client_port = client_port
-        self._udp_client: Optional[SimpleUDPClient] = None  # start() 에서 lazy 생성
+        self._udp_client: Optional[SimpleUDPClient] = None
 
         self._running = False
         self._heartbeat_thread: Optional[threading.Thread] = None
 
         self._srv.add_handler("/device/status/get", self._on_device_status)
 
-    # ---------------------------------------------------------------- public
     def start(self) -> None:
         if self._udp_client is None:
             self._udp_client = SimpleUDPClient(self._target_ip, self._client_port)
@@ -61,7 +63,19 @@ class GloveReceiverBase:
         with self._lock:
             return self._connected[side]
 
-    # ----------------------------------------------------------- OSC handlers
+    def send_haptic(self, side: str, values: list) -> bool:
+        if self._udp_client is None or not self.connected(side):
+            return False
+        packet: list = [OSC_MSG_TYPE_HAPT[side]]
+        for i, v in enumerate(values[:AGA_FINGER_COUNT]):
+            packet.extend([i, int(v)])
+        try:
+            self._udp_client.send_message(OSC_ADDR_HAPT[side], packet)
+            return True
+        except Exception as e:
+            _log.warning("햅틱 전송 실패 (%s): %s", OSC_ADDR_HAPT[side], e)
+            return False
+
     def _on_device_status(self, address, *args):
         if len(args) < 3:
             return
