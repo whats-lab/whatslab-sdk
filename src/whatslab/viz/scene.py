@@ -14,7 +14,6 @@ from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
 
-_AXIS_RGB = ((230, 60, 60), (60, 200, 60), (70, 130, 240))
 _servers: Dict[int, "object"] = {}
 
 
@@ -25,7 +24,7 @@ def get_server(port: int = 8080):
         srv.scene.add_frame("/canonical", show_axes=True,
                             axes_length=0.2, axes_radius=0.006)
         _servers[port] = srv
-        print(f"[viz] viser: http://localhost:{port}")
+        print(f"[viz] viser: http://localhost:{srv.get_port()}")
     return srv
 
 
