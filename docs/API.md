@@ -156,7 +156,7 @@ from whatslab.data import LeRobotRecorder
 | `JointLimit` | 관절 pos/vel 한계. |
 | `load_limits_from_urdf(urdf_xml)` | URDF → `{joint: JointLimit}`. |
 | `tighten(base, ...)` | 한계를 보수적으로 조임. |
-| `SafetyFilter` | clamp + rate-limit + hold/estop 상태기. `step(desired, dt=None)`, `trip`, `reset`, `estopped`, `enabled`, `set_enabled`, `seed`, `holding`, `clone`. **상태(`_last`)를 들고 있으므로 side 마다 하나씩 필요하다** — `clone()` 으로 복제한다. |
+| `SafetyFilter` | clamp + rate-limit + hold/estop 상태기. `step(desired, dt=None)`, `trip`, `reset`, `estopped`, `enabled`, `set_enabled`, `seed`, `clone`. **상태(`_last`)를 들고 있으므로 side 마다 하나씩 필요하다** — `clone()` 으로 복제한다. |
 
 ## 알려진 결합·제약
 
