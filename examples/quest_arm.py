@@ -108,8 +108,10 @@ def main():
             if m.calib is not None:
                 m.calib.enabled = False
 
-    print(f"[setup] sides={sorted(s for s, v in model.sides.items() if v.ik)} arm_joints={robot.arm_joint_names}")
-    print("[setup] calib=%s" % ("off(raw)" if args.no_calib else "on(W+scale+p0)"))
+    print(f"[setup] sides={sorted(s for s, v in model.sides.items() if v.ik)}"
+          f" arm_joints={robot.arm_joint_names}", flush=True)
+    print("[setup] calib=%s" % ("off(raw)" if args.no_calib else "on(W+scale+p0)"),
+          flush=True)
 
     if not args.no_safety:
         from robot_io import attach_safety
@@ -126,7 +128,6 @@ def main():
         if args.robot:
             from robot_io import build_robot_panel
             bridge = build_robot_panel(model, robot, args)
-        print(f"[viz] viser: http://localhost:{args.port}")
     elif args.robot:
         print("[robot] --robot 은 --viz 와 함께 써야 합니다(연결 버튼이 viser 패널에 있음)")
 
@@ -144,7 +145,8 @@ def main():
                 print("[calib] yaw " + ("완료(머리연동)" if ok else "실패 — HMD/자세 신호 확인"),
                       flush=True)
     threading.Thread(target=_calib_loop, daemon=True, name="calib").start()
-    print("[calib] 기준 자세로 Enter → yaw 캘리브 | 'r'+Enter → reach 캘리브. Ctrl-C 종료.")
+    print("[calib] 기준 자세로 Enter → yaw 캘리브 | 'r'+Enter → reach 캘리브."
+          " Ctrl-C 종료.", flush=True)
 
     period, last = 1.0 / args.rate, 0.0
     next_t = time.monotonic()
