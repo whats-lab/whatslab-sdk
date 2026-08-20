@@ -1,4 +1,61 @@
-## [Unreleased]
+# Changelog
+
+이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
+1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
+
+## [0.3.0] — 2026-08-20
+
+### 호환 없는 변경 — 저장소에서 빠진 것
+
+- **`CLAUDE.md` 와 `tools/bench_arm_ik.py` 는 더 이상 저장소에 포함하지 않는다**
+  (`.gitignore`). 팔 IK 판정 방법론은 `docs/GUIDE.md` 에 서술로 남겼다.
+- **`hand_configs/` 패키지와 `CONFIG_REGISTRY` 제거.** dex/kp 시절 손별 설정
+  등록부였고 리타게팅은 `uni_tables.npz` 를 쓴다. 남아 있던 기능(URDF 경로 해석,
+  센서 프레임 사슬 유도)의 유일한 실사용처였던 실물 orca 관절 매핑은
+  `examples/robot_io.py:_finger_links` 가 URDF 에서 직접 유도한다.
+- **`core.JOINT_INDEX` 제거.** `HumanHandFK.positions` 와 함께 소비자가 없어졌다.
+  `HUMAN_HAND`·`SENSED_JOINTS` 는 남는다.
+- **`HandRetargetController(backend=…)` 인자 제거**, `HandSolverCfg` 는
+  `onnx_path`/`tables_path`/`threads` 만 받는다. rig 에 `hand_solver.backend` 가
+  남아 있으면 조용히 무시하지 않고 에러를 낸다.
+- **viz 의 손 클래스를 `HandViz` 하나로 합쳤다.** `_UrdfHandViz` 상속과
+  `RobotHandViz`/`HumanHandViz` 가 사라졌다 — 루트 자세는 호출자가
+  `upright_root`/`human_upright_root` 로 만들어 `root_pose` 로 넘긴다.
+  `HandSkeletonViz` 는 없는 `_bone_pairs()` 를 부르던 깨진 클래스라 제거.
+- **`SafetyFilter.holding` 제거** (`estopped or not enabled` 의 중복).
+
+### 수정
+
+- **오른손이 전혀 움직이지 않던 문제.** `UniRetargeter` 가 사람 관절 이름을
+  `human:joints`(= 왼손 목록)로만 인덱싱하고 별칭도 `left_` 하나만 벗겨서,
+  오른손 입력이 전부 미스 → `q_human` 이 0 벡터로 남고 ONNX 출력이 상수였다
+  (실측: 오른손 이름적중 0/12, `|Δq|` 0.00rad). 표에 있는 `human:{side}:joints`
+  를 쓰고 별칭은 양쪽 접두사를 벗긴다.
+- **글러브 손목 quat 변환 3단계 제거**(`unpack_wrist` → `spine_lh_xyzw` →
+  `wrist_to_canonical`). 프로토콜 문서에서 유도한 값이고 실기 검증이 없었으며
+  실제로 손목이 틀어졌다. 이제 4개 float 을 Spine 프레임 그대로 커밋하고, 프레임
+  정렬이 필요하면 소비자(`teleop/models/glove.py`)가 한다. **`--arm controller`
+  경로의 팔 EE 방위가 이전과 달라진다.**
+- **팔 IK 널스페이스 투영자를 SVD rank 절단으로**(`solver.proj_rcond`). 감쇠
+  유사역으로 만든 `N = I − J⁺J` 는 멱등이 아니라 널스페이스 항이 주태스크로 새어
+  들어간다(`‖N²−N‖` 최대 0.38). 관절가중이 있으므로 가중 좌표계에서 투영하고
+  되돌린다. `dtheta_max`·`k_limit`·`limit_margin` 을 rig `solver:` 로 노출.
+- **`calibration.enabled` 가 캘리브를 통째로 게이트한다** — off 면 리시버 좌표를
+  그대로 목표로 쓴다(스케일도 yaw `W` 도 없음). `quest_arm.py --no-calib` 로 A/B.
+  캘리브 원점 `p0` 도입: `target = scale·(p0 + W(p − p0))`.
+
+### 추가
+
+- **`examples/run_retarget.py --viz`** — 글러브 없이 합성 동작(curl→spread→thumb)
+  을 흘려 사람 손 URDF 와 로봇 손을 나란히 띄운다. `--viz` 없으면 지연 측정
+  (orca 0.13ms / 7.8kHz, CPU 1스레드).
+
+### 기타
+
+- 저장소 규칙대로 `src`·`tools`·`examples`·`tests` 의 주석·독스트링을 전부 제거
+  (예외: `tools/` 4개 파일의 `argparse(description=__doc__)` 모듈 독스트링).
+- `[viz]` extra 유지. `whatslab.solvers.hand` 는 pinocchio 를 import 하지 않는다 —
+  손 추론은 onnxruntime 하나로 돈다.
 
 ### Changed
 - 손 리타게팅 엔진을 **학습된 통합 ONNX 모델 하나**(`UniRetargeter`)로 교체.
@@ -14,13 +71,6 @@
   `kp_retargeter.py`), `KPHandViz`, `examples/glove_hand_verify.py`,
   `tools/bench_hand_retarget.py`. `HandRetargetController(backend=...)` 인자는
   하위호환으로 무시된다.
-
-# Changelog
-
-이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
-1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
-
-## [Unreleased]
 
 ### 호환 없는 변경 — 사람 손 FK 를 pinocchio FK 하나로 통일
 
