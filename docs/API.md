@@ -105,6 +105,7 @@ from whatslab.solvers.hand import HandRetargetController
 | 심볼 | 설명 |
 |---|---|
 | `HandRetargetController(hand_type, config_name)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. |
+| `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK — 지금은 **viz 전용**이다(추론 경로에 FK 가 없다). `points(angles)` = 손가락별 키포인트 4개 + `palm`, `neutral_points()`, `q_from_named(이름→rad)`. `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
 | `UniRetargeter(hand_type, config_name, threads=1)` | 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
 
 새 로봇 손 온보딩: retarget_net 의 `tools/onboard_urdf.py` 가 URDF 하나에서 표를
@@ -134,6 +135,17 @@ from whatslab.data import LeRobotRecorder
 | `add_frame(state, action, images, replay, task)` | 한 프레임 누적. |
 | `save_episode()` | 현재 에피소드를 v2.1 parquet 로 저장. |
 | `finalize()` | 데이터셋 메타 마감. |
+
+## whatslab.viz — viser 웹 3D 시각화 (`whatslab-sdk[viz]`)
+
+`get_server(port=8080)` 로 포트당 서버 공유(여러 viz 공존). `http://localhost:8080`.
+
+| 클래스 | 내용 |
+|---|---|
+| `URDFScene` | URDF 하나를 메쉬(STL)/스켈레톤 자동 판별 렌더 + 관절 구동. `set_root`, `q_from_named`, `fk`, `frame_pose`. |
+| `RobotArmViz` | 팔+손 URDF 메쉬를 solver q 로 구동 + 목표 EE 프레임. `start`, `update`. |
+| `HandViz(urdf, joint_names, root_pose=None)` | 손 URDF 하나를 q 로 구동. 사람 손이든 로봇 손이든 같은 클래스다(상속 없음) — 손을 세우려면 `root_pose` 에 `upright_root`/`human_upright_root` 결과를 넘긴다. |
+| `upright_root(palm_origin, palm_R)` / `human_upright_root(fk, offset=None)` | 팜 프레임을 화면 기준으로 세우는 루트 4x4. `offset` 으로 옆에 띄운다. |
 
 ## whatslab.safety — 운동학 안전 유틸 (dep-light)
 

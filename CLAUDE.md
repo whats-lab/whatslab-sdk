@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 새 환경이면 `pip install -e '.[all,dev]'`. extras: `receiver`(python-osc) / `hand`
-(onnxruntime·pin) / `arm`(pin) / `data`
+(onnxruntime·pin) / `arm`(pin) / `viz`(viser·trimesh) / `data`
 (pyarrow·imageio) / `all` / `dev`(pytest). URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)가 제공한다.
 
@@ -35,12 +35,13 @@ $PY -m pytest tests/test_arm.py::test_x -x -q   # 단일 테스트
 ability)이다. 동봉 `dexhand_description` 은 센서 프레임이 없어 손 config 유도가 막히고
 skip 이 14개로 는다 — 손 쪽을 만질 때는 `WHATSLAB_MODELS_ROOT` 로 센서 프레임이 있는
 models root 를 가리켜야 실제로 검증된다. 무거운 deps 는 `pytest.importorskip`(pinocchio, onnxruntime,
-lerobot)으로 게이팅되어 있어, extras 가 빠진 env 에서는 "통과"가 실제로는
+viser, trimesh, lerobot)으로 게이팅되어 있어, extras 가 빠진 env 에서는 "통과"가 실제로는
 skip 이다. 린터 설정은 pyproject 에 없다(강제 린트 없음).
 
 ```bash
-$PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml [--arm controller|wrist] [--robot]
+$PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml [--arm controller|wrist] [--viz]
 $PY examples/verify_rig.py --rig rigs/nero_orca_right.yaml [--write]   # reach_max 샘플링/기록
+$PY tools/align_frames.py robot|attach|ee ...   # viser 정렬 튜너 (아래 3단계 워크플로우)
 $PY tools/bench_arm_ik.py --traj fk|wave|reach|slow|walk|overshoot [--floor]
                           [--seeds 40] [--dump out.json] [--set solver.backend=dls]
                                                 # 팔 IK 고정 기준선 (정확도/연속성/비용)
@@ -191,10 +192,7 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - `rigs/*.yaml` = 조립·설치 — robots 참조 + `mount`/`attach`/`lock_joints`/`solver`/
   `calibration`. arm·hand 둘 다 optional(부분 조립).
 - 회전값은 전부 config(URDF origin 관례)에 있다 — 코드에 하드코딩 회전을 넣지 않는다.
-  **값을 튜닝할 도구는 지금 없다** — viser 정렬 튜너(`tools/align_frames.py`)가
-  viz 와 함께 제거됐다. 지금 있는 값은 그 튜너로 확정한 것이고, 새 로봇을 올릴
-  때는 튜너를 되살리거나(`git show cbc6625:tools/align_frames.py`) 다른 방법이
-  필요하다.
+  값은 `tools/align_frames.py` 3단계(robot→attach→ee)로 튜닝해 확정한다.
 - 캘리브 결과는 rig yaml 에 역기록된다(`robot/config.py` 의 `save_calibration`,
   `save_reach_max`) → 커밋 diff 에 `input_reach`/`reach_max` 만 바뀐 게 정상.
   쓰기는 임시파일 + `os.replace` 로 원자적이다 — 텔레옵이 도는 중에 다른
@@ -231,13 +229,17 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
   `examples/robot_io.py:_finger_links` 가 URDF 에서 직접 유도한다(소비자 쪽에
   두는 게 층 규칙에도 맞는다 — SDK 는 그 매핑을 모른다). `CONFIG_REGISTRY` 도
   같이 사라졌다. rig 의 `retarget:` 값은 이제 `UniRetargeter` 의 로봇 이름이다.
-- **`human_fk.py`(사람 손 pinocchio FK)도 제거했다.** 사람 FK 는 ONNX 그래프
-  안에 있어서 추론 경로가 쓰지 않았고, 남은 소비자는 viz 뿐이었다.
-- **`whatslab.viz` 패키지를 제거했다.** viser·trimesh 의존, `URDFScene`/
-  `RobotArmViz`/`HandViz`, 정렬 튜너(`tools/align_frames.py`), 실물 전송 GUI
-  패널이 전부 사라졌다. `examples/quest_arm.py --robot` 은 패널의 연결 버튼
-  대신 `robot_io.connect_robot` 으로 헤드리스 연결·송신한다. `[viz]` extra 도
-  없어졌다(`[all]` = receiver+hand+arm).
+- `human_fk.py`(pinocchio FK)는 리타게팅 엔진이 아니라 **viz 전용**이다.
+  `UniRetargeter.urdf_path` 는 pinocchio 없이 경로만 계산한다.
+- **viz 의 손 클래스는 하나다**(`viz.HandViz`). 전에는 `_UrdfHandViz` 를
+  `RobotHandViz`/`HumanHandViz` 가 상속했는데, 두 서브클래스의 차이는 루트 자세를
+  어디서 얻느냐뿐이었고 `RobotHandViz` 쪽 경로(`_r_origin`/`_r_frame`)는
+  `UniRetargeter` 에 그 속성이 없어 죽은 코드였다. 지금은 `root_pose` 를 호출자가
+  `upright_root`/`human_upright_root` 로 만들어 넘긴다. `HandSkeletonViz` 는
+  없는 `_bone_pairs()` 를 부르던 깨진 클래스라 지웠다.
+- **구면관절 FK(`spherical_fk.py`)는 제거했다.** 글러브가 quat 을 보낼 때의
+  경로였고 q 가 오는 지금은 필요 없다. 대가로 **Quest 핸드트래킹 리타게팅은
+  지원하지 않는다** (Quest 컨트롤러 → 팔 IK 경로는 그대로다).
 
 **자산 경로** (`paths.py`) — `models_root()`: `WHATSLAB_MODELS_ROOT` > `dexhand_description`
 패키지 share. `configs_root()`: `WHATSLAB_CONFIGS_ROOT` > 동봉 `whatslab/configs`.
@@ -249,7 +251,7 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **`numpy>=1.24,<2` 상한 유지.** 공유 SDK 라 소비자 스택(dex-retargeting, Isaac Sim 5.1)에
   맞춘 의도적 핀이다. 상한을 풀면 소비자 env 가 오염된다.
 - **pip 전용 스택 유지.** casadi/IPOPT·conda-forge pinocchio 를 도입하지 않는다(팔 IK 가
-  해석 야코비안 + DLS 인 이유). 팔 IK 와 실물 관절 매핑이 pip `pin` 하나를 공유한다.
+  해석 야코비안 + DLS 인 이유). 손·팔·viz 가 pip `pin` 하나를 공유한다.
 - **lazy import 금지.** 함수 안에서 import 하지 않는다 — 전부 모듈 최상단이다.
   결과로 `import whatslab.teleop` 이 pinocchio·onnxruntime·python-osc
   를 전부 끌어온다(약 0.9초). extra 를 나눠 설치하는 소비자는 `[all]` 을 써야 한다.

@@ -56,8 +56,8 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 설치합니다.
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm
-pip install '.[hand]'     # 부분 설치: hand / arm / receiver / data
+pip install '.[all]'      # receiver + hand + arm + viz
+pip install '.[hand]'     # 부분 설치: hand / arm / receiver / viz / data
 pip install -e '.[all]'   # 개발용 editable
 ```
 
@@ -102,6 +102,7 @@ python examples/quest_arm.py --rig rigs/nero_orca_right.yaml              # 컨�
 python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist  # Quest 핸드트래킹
 python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # rig 기구학 점검
 
+python tools/align_frames.py robot --robot robots/nero.yaml              # 로봇을 정준 축에 정렬
 python tools/bench_arm_ik.py --traj fk                                   # 팔 IK: 정확도/연속성/비용
 ```
 
@@ -124,6 +125,7 @@ python tools/bench_arm_ik.py --traj fk                                   # 팔 I
 
 whatslab 은 다음 오픈소스 위에서 만들어졌습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(강체 기구학/IK),
+[viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
 [LeRobot](https://github.com/huggingface/lerobot)(데이터셋 포맷).
 
 ## 라이선스
