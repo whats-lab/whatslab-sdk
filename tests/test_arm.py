@@ -278,7 +278,7 @@ def test_calib_disabled_passes_receiver_pose_through():
     assert T[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())
 
 
-def test_calib_enabled_uses_captured_origin():
+def test_calib_captures_origin_for_diagnostics_only():
     from whatslab.teleop.calibration import ArmCalibration
 
     cal = ArmCalibration(reach_max=0.9, input_reach=0.9)
@@ -291,7 +291,7 @@ def test_calib_enabled_uses_captured_origin():
     assert T[:3, 3] == pytest.approx(np.array(p0) + [0.1, 0.0, 0.0])
 
 
-def test_calib_origin_rotates_only_the_displacement():
+def test_calib_does_not_rotate_the_position():
     from scipy.spatial.transform import Rotation
 
     from whatslab.teleop.calibration import ArmCalibration
@@ -303,7 +303,8 @@ def test_calib_origin_rotates_only_the_displacement():
     cal.capture({"arm_pose": _cal_pose(p0, q)})
     d = np.array([0.10, 0.05, 0.0])
     T = cal.apply({"arm_pose": _cal_pose(p0 + d, q)})["arm_target"]
-    assert T[:3, 3] == pytest.approx(p0 + Rotation.from_euler("z", -yaw).as_matrix() @ d)
+    assert T[:3, 3] == pytest.approx(p0 + d)
+    assert T[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
 
 
 def test_calib_before_capture_is_scale_only():

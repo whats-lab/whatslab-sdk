@@ -52,11 +52,7 @@ class ArmCalibration:
             data["arm_target"] = T
             return data
         W = self._W
-        if self._p0 is not None:
-            d = p - self._p0
-            T[:3, 3] = self.scale * (self._p0 + (W @ d if W is not None else d))
-        else:
-            T[:3, 3] = self.scale * p
+        T[:3, 3] = self.scale * p
         T[:3, :3] = (W @ G) if W is not None else G
         data["arm_target"] = T
         return data
