@@ -28,3 +28,7 @@ examples/vive_smoke.py
 # 리타게팅 비교 렌더 (진단용)
 hand_retarget_compare*.png
 hand_retarget_compare*.mp4
+
+# 저장소에 두지 않는 내부 문서·도구 (로컬에는 남는다)
+CLAUDE.md
+tools/bench_arm_ik.py
