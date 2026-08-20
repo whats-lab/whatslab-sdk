@@ -42,7 +42,14 @@
   되돌린다. `dtheta_max`·`k_limit`·`limit_margin` 을 rig `solver:` 로 노출.
 - **`calibration.enabled` 가 캘리브를 통째로 게이트한다** — off 면 리시버 좌표를
   그대로 목표로 쓴다(스케일도 yaw `W` 도 없음). `quest_arm.py --no-calib` 로 A/B.
-  캘리브 원점 `p0` 도입: `target = scale·(p0 + W(p − p0))`.
+- **목표 위치는 캘리브 yaw 로 회전하지 않는다** (`target = scale·p`, `W` 는 회전
+  에만). 위치를 `scale·(p0 + W·d)` 로 매핑했더니 `W = Rz(-yaw(G))` 의 `G` 가
+  컨트롤러 회전이라 조작자의 "앞"과 무관해서, yaw 가 90° 어긋나면 앞으로 미는
+  동작이 좌우 이동으로 나왔다. `p0 + (p − p0) = p` 이므로 `W` 없이는 앵커가 위치에
+  영향이 없다 — 캡처는 진단용으로만 남는다.
+- **실물 손 연결 실패 메시지**에 원인(`WHATSLAB_MODELS_ROOT` 미설정 → 동봉
+  `dexhand_description` URDF 에 센서 프레임 0개)과 해결을 적었다. 리타게팅은 표를
+  쓰므로 센서 프레임 없이도 돌아서, 텔레옵은 정상인데 실물 매핑만 죽는다.
 
 ### 추가
 
