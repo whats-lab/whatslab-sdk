@@ -311,23 +311,16 @@ def test_glove_robot_hand_on_update_callback_fires():
     assert calls == ["right"]
 
 
-def test_glove_robot_hand_wrist_becomes_canonical_hand_pose():
-    from whatslab.receiver.glove.human_hand import wrist_to_canonical
-    from whatslab.receiver.glove.robot_hand import spine_lh_xyzw, unpack_wrist
-
+def test_glove_robot_hand_wrist_is_committed_untransformed():
     recv = GloveRobotHandReceiver(glove_port=4846)
-    raw_wxyz = np.array([0.5, 0.5, 0.5, 0.5])
-    w, x, y, z = raw_wxyz
-    wire = [y, x, z, -w]
+    wire = [0.1, 0.2, 0.3, -0.4]
     _send(recv._srv.dispatcher, "/right/wrist/get", "19", *(float(v) for v in wire))
 
     sample = recv.get("right")
     assert sample.hand is not None
     assert sample.hand.tracked is False
     assert sample.joint_q is None
-    expected = wrist_to_canonical(spine_lh_xyzw(unpack_wrist(wire)))
-    assert sample.hand.wrist.quat == pytest.approx(expected)
-    assert unpack_wrist(wire) == pytest.approx(raw_wxyz)
+    assert sample.hand.wrist.quat == pytest.approx(wire)
 
 
 def test_glove_robot_hand_wrist_rejects_degenerate_quat():
