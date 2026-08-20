@@ -7,7 +7,7 @@ from typing import Dict, List, Mapping, Optional, Sequence
 import numpy as np
 import pinocchio as pin
 
-from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
+from whatslab.core.types import HUMAN_HAND
 from whatslab.paths import models_root
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,6 @@ PALM_LINKS = ("sensor_dorsum", "wrist")
 _LINK_ALIAS = {"pinky0": "pinky_cmc"}
 
 
-def rot_between(u: np.ndarray, v: np.ndarray) -> np.ndarray:
-    u = u / max(np.linalg.norm(u), 1e-12)
-    v = v / max(np.linalg.norm(v), 1e-12)
-    c = np.cross(u, v)
-    d = float(u @ v)
-    if np.linalg.norm(c) < 1e-12:
-        return np.eye(3) if d > 0 else -np.eye(3)
-    K = np.array([[0, -c[2], c[1]], [c[2], 0, -c[0]], [-c[1], c[0], 0]])
-    return np.eye(3) + K + K @ K * ((1 - d) / (np.linalg.norm(c) ** 2))
-
-
 def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
     o = np.mean([base_pts[f] for f in ("index", "middle", "ring", "pinky")], axis=0)
     x = base_pts["index"] - base_pts["pinky"]
@@ -49,22 +38,7 @@ def palm_frame(base_pts: Dict[str, np.ndarray], palm_pt: np.ndarray):
     return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
 
 
-def palm_frame_from_fingers(pts: Dict[str, np.ndarray]):
-    o = np.mean([pts[f][0] for f in ("index", "middle", "ring", "pinky")], axis=0)
-    x = pts["index"][0] - pts["pinky"][0]
-    x = x / np.linalg.norm(x)
-    y = np.mean([pts[f][-1] - pts[f][0]
-                 for f in ("index", "middle", "ring", "pinky")], axis=0)
-    y = y - x * (y @ x)
-    ny = float(np.linalg.norm(y))
-    if ny < 1e-3:
-        raise ValueError(
-            f"팜 프레임 y 축이 특이하다(|y|={ny * 1e3:.2f}mm) — 중립에서 손가락이"
-            " 너클선과 나란하다")
-    return o, np.column_stack([x, y / ny, np.cross(x, y / ny)])
-
-
-def link_candidates(side: str, joint_name: str) -> Sequence[str]:
+def _link_candidates(side: str, joint_name: str) -> Sequence[str]:
     pfx = side + "_"
     if joint_name.endswith("_tip"):
         return (pfx + f"sensor_{joint_name[:-4]}_distal", pfx + joint_name)
@@ -90,7 +64,7 @@ class HumanHandFK:
 
         self.links: Dict[str, str] = {}
         for spec in HUMAN_HAND:
-            for cand in link_candidates(self.side, spec.name):
+            for cand in _link_candidates(self.side, spec.name):
                 if self._has(cand):
                     self.links[spec.name] = cand
                     break
@@ -105,7 +79,6 @@ class HumanHandFK:
             raise ValueError(
                 f"{urdf_path}: 팜 기준 링크 없음 ({self.side}_ + {PALM_LINKS})")
 
-        self.keypoints = {f: [self.links[n] for n in BONE_LINKS[f]] for f in FINGERS}
         self._fids = {name: self.model.getFrameId(link, pin.FrameType.BODY)
                       for name, link in self.links.items()}
         self._palm_fid = self.model.getFrameId(self.palm_link, pin.FrameType.BODY)
@@ -150,13 +123,6 @@ class HumanHandFK:
         out = {f: np.array([self._pos(self._fids[n]) for n in BONE_LINKS[f]])
                for f in FINGERS}
         out["palm"] = self._pos(self._palm_fid)
-        return out
-
-    def positions(self, angles) -> np.ndarray:
-        self._fk(angles)
-        out = np.zeros((len(HUMAN_HAND), 3), dtype=float)
-        for spec in HUMAN_HAND:
-            out[JOINT_INDEX[spec.name]] = self._pos(self._fids[spec.name])
         return out
 
     def neutral_points(self) -> Dict[str, np.ndarray]:

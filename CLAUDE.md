@@ -211,15 +211,31 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **dex(dex_retargeting 2단계 IK)·kp(키포인트 IK) 백엔드는 제거했다.** 프레임별
   최적화 없이 순전파 한 번(CPU 1스레드 약 1.1ms, 900Hz+)으로 대체됐고 좌우·5개
   손(orca/allegro/tesollo/robotis/human)이 그래프 하나를 쓴다. `backend=` 인자는
-  하위호환으로 무시된다. 모델·표·학습 설정의 정본은 retarget_net 저장소다.
+  받지 않는다(rig 에 `backend:` 가 남아 있으면 에러). 모델·표·학습 설정의 정본은
+  retarget_net 저장소다.
 - **새 로봇 손 온보딩**: retarget_net `tools/onboard_urdf.py` 가 URDF 하나에서 표를
   뽑는다(센서 프레임 계약: `{side}_sensor_dorsum` + 손가락마다 `_proximal`/`_distal`.
   손가락 체인 밖 활성 관절은 손목으로 보고 자동 고정 — orca 손목이 이 경우).
   표는 모델을 돌게 할 뿐이라, 학습에 없던 손은 몇백 스텝 미세조정 후 그래프를
   재수출해야 성능이 나온다.
-- `hand_configs/`(URDF 경로·체인 유도)와 `human_fk.py`(pinocchio FK)는 리타게팅
-  엔진이 아니라 viz·테스트용으로 남아 있다. `UniRetargeter.urdf_path` 는 pinocchio
-  없이 경로만 계산한다.
+- **사람 관절 이름은 반드시 그 side 의 이름으로 인덱싱한다.** 표에는
+  `human:left:joints`/`human:right:joints` 가 따로 있다. 왼손 목록(`human:joints`)
+  으로만 `_hidx` 를 만들면 오른손 입력이 전부 미스 → `q_human` 이 0 벡터로 남고
+  ONNX 출력이 상수다(실측: 오른손 이름적중 0/12, `|Δq|` 0.00rad — 손이 아예
+  움직이지 않는다). 별칭은 `left_`/`right_` 양쪽을 벗겨 넣는다.
+- `hand_configs/`(URDF 경로 해석 + 센서 프레임 사슬 유도)와 `human_fk.py`
+  (pinocchio FK)는 리타게팅 엔진이 아니라 **실물 관절 매핑(`examples/robot_io.py`)
+  과 viz 전용**이다. `UniRetargeter.urdf_path` 는 pinocchio 없이 경로만 계산한다.
+  dex/kp 시절의 잔재(`get_two_stage_config`·`_SCALE_FACTOR`·`_KP_*`·
+  `_TARGET_JOINT_NAMES`·`_FIXED_JOINTS`·`_HUMAN_CHAIN` 의 사람관절 짝짓기·
+  `FingerChain`·`rot_between`·`palm_frame_from_fingers`·`HumanHandFK.positions`)는
+  전부 지웠다 — 손별 선언은 `_CHAIN_LEN`(손가락 → 사슬 길이) 하나다.
+- **viz 의 손 클래스는 하나다**(`viz.HandViz`). 전에는 `_UrdfHandViz` 를
+  `RobotHandViz`/`HumanHandViz` 가 상속했는데, 두 서브클래스의 차이는 루트 자세를
+  어디서 얻느냐뿐이었고 `RobotHandViz` 쪽 경로(`_r_origin`/`_r_frame`)는
+  `UniRetargeter` 에 그 속성이 없어 죽은 코드였다. 지금은 `root_pose` 를 호출자가
+  `upright_root`/`human_upright_root` 로 만들어 넘긴다. `HandSkeletonViz` 는
+  없는 `_bone_pairs()` 를 부르던 깨진 클래스라 지웠다.
 - **구면관절 FK(`spherical_fk.py`)는 제거했다.** 글러브가 quat 을 보낼 때의
   경로였고 q 가 오는 지금은 필요 없다. 대가로 **Quest 핸드트래킹 리타게팅은
   지원하지 않는다** (Quest 컨트롤러 → 팔 IK 경로는 그대로다).

@@ -9,9 +9,7 @@ import pinocchio as pin
 import trimesh
 import viser
 
-from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
-from whatslab.solvers.hand.human_fk import FINGERS as _HFING
-from whatslab.solvers.hand.human_fk import palm_frame as _hpf
+from whatslab.solvers.hand.human_fk import FINGERS, palm_frame
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
@@ -171,10 +169,6 @@ class RobotArmViz:
         self._ee.wxyz = _wxyz(T_ee[:3, :3])
 
 
-def _human_palm_frame(hp):
-    return _hpf({f: hp[f][0] for f in _HFING}, hp["palm"])
-
-
 _PALM_TO_WORLD = np.array([[1.0, 0.0, 0.0],
                            [0.0, 0.0, -1.0],
                            [0.0, 1.0, 0.0]])
@@ -188,10 +182,22 @@ def upright_root(palm_origin, palm_frame_R) -> np.ndarray:
     return T
 
 
-class _UrdfHandViz:
+def human_upright_root(fk, offset=None) -> np.ndarray:
+    hp = fk.neutral_points()
+    T = upright_root(*palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"]))
+    if offset is None:
+        return T
+    shift = np.eye(4)
+    shift[:3, 3] = np.asarray(offset, dtype=float)
+    return shift @ T
+
+
+class HandViz:
 
     def __init__(self, urdf: str, joint_names, port: int = 8080,
                  root_path: str = "/hand", root_pose=None):
+        if not urdf:
+            raise ValueError("HandViz: urdf 경로가 없다 — 메쉬를 못 띄운다")
         self.urdf = urdf
         self.joint_names = list(joint_names)
         self.port = port
@@ -215,66 +221,3 @@ class _UrdfHandViz:
     @property
     def mesh_mode(self) -> bool:
         return bool(self._scene is not None and self._scene.mesh_mode)
-
-
-class RobotHandViz(_UrdfHandViz):
-
-    def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand",
-                 root_pose=None, upright: bool = True):
-        urdf = getattr(retargeter, "urdf_path", None)
-        if urdf is None:
-            raise ValueError(
-                f"{type(retargeter).__name__} 에 urdf_path 가 없다 — 메쉬를 못 띄운다")
-        if root_pose is None and upright:
-            o = getattr(retargeter, "_r_origin", None)
-            R = getattr(retargeter, "_r_frame", None)
-            if o is not None and R is not None:
-                root_pose = upright_root(o, R)
-        super().__init__(urdf, retargeter.joint_names, port, root_path, root_pose)
-
-
-class HumanHandViz(_UrdfHandViz):
-
-    def __init__(self, fk, port: int = 8080, root_path: str = "/human_hand",
-                 root_pose=None, upright: bool = True, offset=None):
-        if root_pose is None and upright:
-            hp = fk.neutral_points()
-            o, R = _human_palm_frame(hp)
-            root_pose = upright_root(o, R)
-        if offset is not None and root_pose is not None:
-            shift = np.eye(4)
-            shift[:3, 3] = np.asarray(offset, dtype=float)
-            root_pose = shift @ root_pose
-        super().__init__(fk.urdf_path, fk.joint_names, port, root_path, root_pose)
-
-
-class HandSkeletonViz:
-
-    def __init__(self, port: int = 8080, root_path: str = "/human_hand"):
-        self._port = port
-        self._root_path = root_path
-        self._bones_idx = _bone_pairs()
-        self._pts = None
-
-    def start(self) -> None:
-        srv = get_server(self._port)
-        ball = trimesh.creation.icosphere(radius=0.004)
-        ball.visual.face_colors = [80, 200, 210, 255]
-        self._pts = [srv.scene.add_mesh_trimesh(f"{self._root_path}/p{i}",
-                                                ball.copy())
-                     for i in range(len(HUMAN_HAND))]
-        self._lines = srv.scene.add_line_segments(
-            f"{self._root_path}/bones",
-            points=np.zeros((max(len(self._bones_idx), 1), 2, 3)),
-            colors=(150, 150, 160), line_width=2.0)
-
-    def update(self, positions_23: np.ndarray, timestamp: Optional[float] = None) -> None:
-        if self._pts is None:
-            self.start()
-        _ = timestamp
-        p = np.asarray(positions_23, dtype=float)
-        for i, h in enumerate(self._pts):
-            h.position = tuple(p[i])
-        segs = [[p[a], p[b]] for a, b in self._bones_idx]
-        if segs:
-            self._lines.points = np.asarray(segs)

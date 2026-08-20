@@ -28,12 +28,16 @@ def main():
     viz_human = viz_robot = None
     if args.viz:
         from whatslab.solvers.hand.human_fk import HumanHandFK
-        from whatslab.viz import HumanHandViz, RobotHandViz
+        from whatslab.viz import HandViz, human_upright_root
         eng = ctrl.engine
         human_fk = HumanHandFK(args.side)
-        viz_human = HumanHandViz(human_fk, offset=(0.0, -args.viz_gap, 0.0))
+        viz_human = HandViz(
+            human_fk.urdf_path, human_fk.joint_names, root_path="/human_hand",
+            root_pose=human_upright_root(human_fk,
+                                         offset=(0.0, -args.viz_gap, 0.0)))
         viz_human.start()
-        viz_robot = RobotHandViz(eng)
+        viz_robot = HandViz(eng.urdf_path, eng.joint_names,
+                            root_path="/robot_hand")
         viz_robot.start()
         print("[viz] viser: 왼쪽=사람 손 URDF, 오른쪽=로봇 손 (메쉬 %s / %s)" % (
             "O" if viz_human.mesh_mode else "X",
