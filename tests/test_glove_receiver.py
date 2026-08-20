@@ -4,7 +4,7 @@ from pythonosc.osc_message_builder import OscMessageBuilder
 from whatslab.core.interfaces import Receiver
 from whatslab.core.types import InputSample
 from whatslab.receiver import GloveHumanHandReceiver
-from whatslab.receiver.glove.human_hand import parse_aga_raw, wrist_to_canonical
+from whatslab.receiver.glove.human_hand import parse_aga_raw
 
 
 def _packet(address: str, *args) -> bytes:
@@ -77,8 +77,7 @@ def test_equivalent_to_old_parse_aga_raw():
 
     got = sample.hand.to_sensor_array()
     assert np.allclose(got[1:], expected_quats[1:])
-    assert np.allclose(sample.hand.wrist.quat, wrist_to_canonical(expected_quats[0]))
-    assert not np.allclose(sample.hand.wrist.quat, expected_quats[0])
+    assert np.allclose(sample.hand.wrist.quat, expected_quats[0])
     assert np.allclose(sample.hand.wrist.pos, np.zeros(3))
 
 

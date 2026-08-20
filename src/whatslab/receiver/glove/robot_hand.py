@@ -8,19 +8,8 @@ import numpy as np
 
 from whatslab.core.types import HandPose, InputSample, Pose
 from .base import GLOVE_CLIENT_PORT, GLOVE_OSC_PORT, GLOVE_TARGET_IP, GloveReceiverBase
-from .human_hand import wrist_to_canonical
 
 logger = logging.getLogger(__name__)
-
-
-def unpack_wrist(args) -> np.ndarray:
-    y, x, z, nw = (float(v) for v in args[:4])
-    return np.array([-nw, x, y, z])
-
-
-def spine_lh_xyzw(q_wxyz) -> np.ndarray:
-    w, x, y, z = (float(v) for v in q_wxyz)
-    return np.array([-x, y, -z, w])
 
 
 class GloveRobotHandReceiver(GloveReceiverBase):
@@ -95,12 +84,12 @@ class GloveRobotHandReceiver(GloveReceiverBase):
         if len(quat) < 4:
             return
         try:
-            raw = unpack_wrist(quat)
+            raw = np.array([float(v) for v in quat[:4]])
         except (TypeError, ValueError):
             return
         if not np.all(np.isfinite(raw)) or np.linalg.norm(raw) < 1e-9:
             return
-        self._commit(side, "wrist", wrist_to_canonical(spine_lh_xyzw(raw)))
+        self._commit(side, "wrist", raw)
 
     def _commit(self, side: str, key: str, value) -> None:
         with self._lock:
