@@ -1,12 +1,11 @@
 from .scene import (
-    HandSkeletonViz,
-    HumanHandViz,
-
+    HandViz,
     RobotArmViz,
-    RobotHandViz,
     URDFScene,
     get_server,
+    human_upright_root,
+    upright_root,
 )
 
-__all__ = ["URDFScene", "get_server", "HandSkeletonViz", "RobotHandViz",
-           "RobotArmViz", "HumanHandViz"]
+__all__ = ["URDFScene", "get_server", "HandViz", "RobotArmViz",
+           "upright_root", "human_upright_root"]

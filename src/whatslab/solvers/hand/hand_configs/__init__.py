@@ -1,6 +1,6 @@
 from typing import Dict, Type
 
-from ._base import FingerChain, HandConfig
+from ._base import HandConfig
 from .base_hand import BaseHandConfig
 from .orca_hand import OrcaHandConfig
 from .robotis_hx5_d20 import RobotisHX5Config
@@ -21,7 +21,6 @@ CONFIG_REGISTRY: Dict[str, Type[HandConfig]] = {
 
 __all__ = [
     "HandConfig",
-    "FingerChain",
     "CONFIG_REGISTRY",
     "BaseHandConfig",
     "OrcaHandConfig",

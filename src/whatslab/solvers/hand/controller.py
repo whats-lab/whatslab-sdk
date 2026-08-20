@@ -12,7 +12,6 @@ class HandRetargetController:
 
     def __init__(self, hand_type: str, config_name: str = "base_hand",
                  urdf_root=None, **kwargs):
-        kwargs.pop("backend", None)
         self._engine = UniRetargeter(hand_type, config_name,
                                      urdf_root=urdf_root, **kwargs)
         self._last = np.zeros(len(self._engine.joint_names))
