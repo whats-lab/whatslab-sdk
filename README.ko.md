@@ -103,13 +103,12 @@ python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist  # Ques
 python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # rig 기구학 점검
 
 python tools/align_frames.py robot --robot robots/nero.yaml              # 로봇을 정준 축에 정렬
-python tools/bench_arm_ik.py --traj fk                                   # 팔 IK: 정확도/연속성/비용
 ```
 
-`bench_arm_ik.py` 는 팔 IK 를 손볼 때의 고정 기준선이다. **정확도 판정은 `--traj fk`**
-(유효 관절각 → FK 로 목표를 만들어 오차 하한이 정확히 0)로 한다 — 좌표계로 합성한
-궤적은 도달 불가 구간을 지나 솔버 품질과 도달성을 섞는다. `--floor` 는 최악 프레임의
-도달 가능 하한을 구해 "솔버 실패 / 도달 불가"를 판정한다.
+팔 IK 의 **정확도는 유효 관절각 → FK 로 만든 목표**로만 판정한다 — 오차 하한이
+정확히 0 이라 남는 오차가 전부 솔버 탓이다. 좌표계로 합성한 궤적은 도달 불가
+구간을 지나 솔버 품질과 도달성을 섞는다. (고정 기준선 벤치는 내부 도구이고 이
+저장소에 포함하지 않는다.)
 
 테스트: `pip install -e '.[all,dev]' && pytest`
 
