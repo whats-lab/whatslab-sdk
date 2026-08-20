@@ -52,14 +52,14 @@ class UniRetargeter:
             "hi": t[f"{k}:hi"].astype(np.float32),
         }
         self.joint_names: List[str] = [str(n) for n in t[f"{k}:joints"]]
-        self._human_names: List[str] = [str(n) for n in t["human:joints"]]
-        print(t)
-        print(self._human_names)
+        hk = f"human:{self.hand_type}:joints"
+        self._human_names: List[str] = [
+            str(n) for n in t[hk if hk in t else "human:joints"]]
         self._hidx = {n: i for i, n in enumerate(self._human_names)}
-        pfx = self._human_names[0].split("_", 1)[0] + "_"
         for i, n in enumerate(self._human_names):
-            if n.startswith(pfx):
-                self._hidx.setdefault(n[len(pfx):], i)
+            for pfx in ("left_", "right_"):
+                if n.startswith(pfx):
+                    self._hidx.setdefault(n[len(pfx):], i)
 
         so = ort.SessionOptions()
         so.intra_op_num_threads = threads
