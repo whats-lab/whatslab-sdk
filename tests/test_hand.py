@@ -125,3 +125,26 @@ def test_hand_controller_from_input_sample():
     assert cmd.joint_angles.shape == (len(ctrl.joint_names),)
     cmd2 = ctrl.compute(InputSample(hand=None, tracked=False))
     assert np.allclose(cmd2.joint_angles, cmd.joint_angles)
+
+
+def test_uni_retargeter_reads_the_side_it_was_asked_for():
+    pytest.importorskip("onnxruntime")
+    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
+
+    for side in ("left", "right"):
+        r = UniRetargeter(side, "orca_hand")
+        assert all(n.startswith(side + "_") for n in r.human_joint_names)
+
+
+def test_uni_retargeter_responds_to_both_sides():
+    pytest.importorskip("onnxruntime")
+    import numpy as np
+
+    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
+
+    for side in ("left", "right"):
+        r = UniRetargeter(side, "orca_hand")
+        flat = {n: 0.0 for n in r.human_joint_names}
+        curl = {n: (0.8 if n.endswith(("_mcp_flex", "_pip")) else 0.0)
+                for n in r.human_joint_names}
+        assert np.abs(r.compute(curl) - r.compute(flat)).max() > 0.1, side
