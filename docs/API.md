@@ -107,7 +107,6 @@ from whatslab.solvers.hand import HandRetargetController
 | `HandRetargetController(hand_type, config_name)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. |
 | `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK — 지금은 **viz 전용**이다(추론 경로에 FK 가 없다). `points(angles)` = 손가락별 키포인트 4개 + `palm`, `neutral_points()`, `q_from_named(이름→rad)`. `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
 | `UniRetargeter(hand_type, config_name, threads=1)` | 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
-| `CONFIG_REGISTRY` | `{config_name: HandConfig}` — 로봇 손 등록부. 하는 일은 URDF 경로 해석(`_get_urdf_path`)과 센서 프레임에서의 손가락 사슬 유도(`_get_fingers` → 링크명 리스트, `get_wrist_link_name` → 팜 링크)뿐이다. 선언은 손별 `_CHAIN_LEN`(손가락 → 사슬 길이) 하나로, 유도된 길이가 다르면 에러. 리타게팅은 이 표를 쓰지 않는다 — 실물 관절 매핑(`examples/robot_io.py`)과 viz 용이다. |
 
 새 로봇 손 온보딩: retarget_net 의 `tools/onboard_urdf.py` 가 URDF 하나에서 표를
 뽑는다(센서 프레임 계약 필요). 학습에 없던 손은 표만으로는 성능이 안 나온다 —

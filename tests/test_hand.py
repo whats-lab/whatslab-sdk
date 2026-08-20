@@ -1,64 +1,6 @@
 import numpy as np
 import pytest
 
-from whatslab.solvers.hand.hand_configs import CONFIG_REGISTRY
-
-
-EXPECTED_HANDS = {
-    "base_hand", "orca_hand", "robotis_hx5_d20",
-    "allegro_hand", "schunk_hand", "tesollo_dg5f", "ability_hand",
-}
-
-
-def test_registry_has_expected_hands():
-    assert EXPECTED_HANDS.issubset(set(CONFIG_REGISTRY))
-
-
-def _derivable(name, side):
-    pytest.importorskip("pinocchio")
-    try:
-        CONFIG_REGISTRY[name]()._get_fingers(side)
-    except (FileNotFoundError, ValueError) as e:
-        pytest.skip(f"{name}/{side}: 센서 프레임 URDF 없음 ({e})")
-
-
-@pytest.mark.parametrize("name", sorted(EXPECTED_HANDS))
-def test_configs_derive_sensor_tipped_chains(name):
-    for side in ("left", "right"):
-        _derivable(name, side)
-        fingers = CONFIG_REGISTRY[name]()._get_fingers(side)
-        assert fingers, f"{name}/{side}: 사슬이 비었다"
-        for links in fingers:
-            assert "_sensor_" in links[-1], \
-                f"{name}/{side}: 팁이 센서 프레임이 아니다 {links[-1]!r}"
-
-
-def test_chain_len_declares_every_finger():
-    for name, C in CONFIG_REGISTRY.items():
-        assert C._CHAIN_LEN, f"{name}: _CHAIN_LEN 이 비어 있다"
-        assert all(n >= 2 for n in C._CHAIN_LEN.values()), \
-            f"{name}: 사슬 길이가 2 미만 {C._CHAIN_LEN}"
-
-
-def test_derived_chain_length_matches_declaration():
-    for name in sorted(EXPECTED_HANDS):
-        for side in ("left", "right"):
-            _derivable(name, side)
-            C = CONFIG_REGISTRY[name]
-            for finger, links in zip(
-                    [x for x in ("thumb", "index", "middle", "ring", "pinky")
-                     if x in C._CHAIN_LEN], C()._get_fingers(side)):
-                assert len(links) == C._CHAIN_LEN[finger], \
-                    f"{name}/{side}/{finger}: {links}"
-
-
-def test_palm_link_is_derived_not_configured():
-    for name in sorted(EXPECTED_HANDS):
-        _derivable(name, "right")
-        cfg = CONFIG_REGISTRY[name]()
-        palm = cfg.get_wrist_link_name("right")
-        assert palm and "_sensor_" not in palm, f"{name}: 팜 링크 유도 실패 {palm!r}"
-        assert all(links[0] == palm for links in cfg._get_fingers("right"))
 
 def test_uni_retargeter_end_to_end():
     pytest.importorskip("onnxruntime")

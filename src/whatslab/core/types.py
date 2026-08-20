@@ -62,7 +62,6 @@ HUMAN_HAND: Tuple[JointSpec, ...] = (
 )
 
 SENSED_JOINTS: List[str] = [j.name for j in HUMAN_HAND if j.sensed]
-JOINT_INDEX: Dict[str, int] = {j.name: i for i, j in enumerate(HUMAN_HAND)}
 
 
 @dataclass

@@ -223,13 +223,14 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
   으로만 `_hidx` 를 만들면 오른손 입력이 전부 미스 → `q_human` 이 0 벡터로 남고
   ONNX 출력이 상수다(실측: 오른손 이름적중 0/12, `|Δq|` 0.00rad — 손이 아예
   움직이지 않는다). 별칭은 `left_`/`right_` 양쪽을 벗겨 넣는다.
-- `hand_configs/`(URDF 경로 해석 + 센서 프레임 사슬 유도)와 `human_fk.py`
-  (pinocchio FK)는 리타게팅 엔진이 아니라 **실물 관절 매핑(`examples/robot_io.py`)
-  과 viz 전용**이다. `UniRetargeter.urdf_path` 는 pinocchio 없이 경로만 계산한다.
-  dex/kp 시절의 잔재(`get_two_stage_config`·`_SCALE_FACTOR`·`_KP_*`·
-  `_TARGET_JOINT_NAMES`·`_FIXED_JOINTS`·`_HUMAN_CHAIN` 의 사람관절 짝짓기·
-  `FingerChain`·`rot_between`·`palm_frame_from_fingers`·`HumanHandFK.positions`)는
-  전부 지웠다 — 손별 선언은 `_CHAIN_LEN`(손가락 → 사슬 길이) 하나다.
+- **`hand_configs/` 는 통째로 지웠다.** dex/kp 시절 손별 설정 등록부였고, 마지막에
+  남은 기능은 URDF 경로 해석과 센서 프레임 사슬 유도뿐이었다. 리타게팅은 표를
+  쓰므로 필요 없고, 유일한 소비자였던 실물 orca 관절 매핑은
+  `examples/robot_io.py:_finger_links` 가 URDF 에서 직접 유도한다(소비자 쪽에
+  두는 게 층 규칙에도 맞는다 — SDK 는 그 매핑을 모른다). `CONFIG_REGISTRY` 도
+  같이 사라졌다. rig 의 `retarget:` 값은 이제 `UniRetargeter` 의 로봇 이름이다.
+- `human_fk.py`(pinocchio FK)는 리타게팅 엔진이 아니라 **viz 전용**이다.
+  `UniRetargeter.urdf_path` 는 pinocchio 없이 경로만 계산한다.
 - **viz 의 손 클래스는 하나다**(`viz.HandViz`). 전에는 `_UrdfHandViz` 를
   `RobotHandViz`/`HumanHandViz` 가 상속했는데, 두 서브클래스의 차이는 루트 자세를
   어디서 얻느냐뿐이었고 `RobotHandViz` 쪽 경로(`_r_origin`/`_r_frame`)는
@@ -254,9 +255,8 @@ side 는 `robot=None`). `SideModel` 은 그 side 의 `robot`·`ik`·`retarget`·
 - **lazy import 금지.** 함수 안에서 import 하지 않는다 — 전부 모듈 최상단이다.
   결과로 `import whatslab.teleop` 이 pinocchio·onnxruntime·python-osc
   를 전부 끌어온다(약 0.9초). extra 를 나눠 설치하는 소비자는 `[all]` 을 써야 한다.
-  예외는 둘이다. `paths.models_root()` 의 `dexhand_description`(= `WHATSLAB_MODELS_ROOT`
-  로 덮어쓰면 패키지 없이 동작해야 한다), `hand_configs/_base.py` 의
-  `xml.etree`(URDF 링크 존재 확인용, 표준 라이브러리라 무게가 없다).
+  예외는 `paths.models_root()` 의 `dexhand_description` 하나다
+  (`WHATSLAB_MODELS_ROOT` 로 덮어쓰면 패키지 없이 동작해야 한다).
 - 기본 OSC 포트: Quest 9000(`receiver/quest_base.py`), 글러브 수신 4040 / 송신 4042
   (`receiver/glove_base.py`). 포트별 서버는 `osc_transport._registry` 싱글턴을 공유하므로,
   테스트는 `tests/conftest.py` 의 autouse 픽스처가 매번 레지스트리를 비운다.
