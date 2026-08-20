@@ -12,11 +12,44 @@ _FINGER_ORDER = ["thumb", "index", "middle", "ring", "pinky"]
 ORCA_SIGN: Dict[str, float] = {}
 
 
+def _finger_links(side: str) -> Dict[str, List[str]]:
+    import pinocchio as pin
+
+    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
+
+    urdf = UniRetargeter(side, "orca_hand").urdf_path
+    if urdf is None:
+        raise FileNotFoundError(f"orca_hand/{side} URDF 를 못 찾았다")
+    m = pin.buildModelFromUrdf(urdf)
+
+    def body(joint: int) -> Optional[str]:
+        for fr in m.frames:
+            if (fr.type == pin.FrameType.BODY and int(fr.parent) == joint
+                    and "_sensor_" not in fr.name):
+                return fr.name
+        return None
+
+    tips, chains = {}, {}
+    for f in _FINGER_ORDER:
+        tip = f"{side}_sensor_{f}_distal"
+        if not m.existFrame(tip, pin.FrameType.BODY):
+            raise ValueError(f"{urdf}: 센서 프레임 {tip} 없음")
+        jid = int(m.frames[m.getFrameId(tip, pin.FrameType.BODY)].parent)
+        tips[f] = tip
+        chains[f] = [int(j) for j in m.supports[jid] if j > 0]
+    shared = set.intersection(*[set(v) for v in chains.values()])
+    palm = body(max(shared) if shared else 0)
+    return {f: ([palm]
+                + [n for n in (body(j) for j in chains[f] if j not in shared)
+                   if n is not None]
+                + [tips[f]]) for f in _FINGER_ORDER}
+
+
 def orca_joint_map(side: str = "right") -> Dict[str, str]:
-    from whatslab.solvers.hand.hand_configs import OrcaHandConfig
-    cfg = OrcaHandConfig()
+    links_by_finger = _finger_links(side)
     out: Dict[str, str] = {}
-    for finger, links in zip(_FINGER_ORDER, cfg._get_fingers(side)):
+    for finger in _FINGER_ORDER:
+        links = links_by_finger[finger]
         ids = _ORCA_LEVELS.get(finger) or [s.format(f=finger) for s in _DEFAULT_LEVELS]
         for k, oid in enumerate(ids):
             out[f"{links[k + 1]}_to_{links[k]}"] = oid

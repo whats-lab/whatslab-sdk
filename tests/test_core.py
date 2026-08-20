@@ -2,7 +2,6 @@ import numpy as np
 
 from whatslab.core.types import (
     HUMAN_HAND,
-    JOINT_INDEX,
     SENSED_JOINTS,
     HandCommand,
     HandPose,
@@ -46,7 +45,6 @@ def test_skeleton_consistency():
     names = {j.name for j in HUMAN_HAND}
     for j in HUMAN_HAND:
         assert j.parent is None or j.parent in names
-    assert JOINT_INDEX["wrist"] == 0 and JOINT_INDEX["pinky_tip"] == 22
 
 
 def test_handpose_sensor_array_roundtrip():

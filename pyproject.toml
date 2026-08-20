@@ -30,7 +30,7 @@ dependencies = [
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
 receiver = ["python-osc"]
 # 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 추론은 onnxruntime 뿐이다.
-# pin·dexhand-description 은 hand_configs(URDF 경로·체인 유도)와 human_fk(viz)용.
+# pin·dexhand-description 은 human_fk(viz)와 실물 관절 매핑(examples/robot_io)용.
 # dex-retargeting / nlopt / torch 의존은 제거됐다.
 hand     = ["onnxruntime", "pin",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
