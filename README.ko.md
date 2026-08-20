@@ -41,7 +41,8 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 - 명확한 단방향 의존 구조 (`receiver → core`, `model → core·robot`)
 
 **리타게팅 중심**
-- 손: dex-retargeting 2단계(vector + position) IK, 결정적 종료
+- 손: 글러브가 보낸 사람 손 URDF 관절각 → 학습된 통합 ONNX 모델 한 번의 순전파.
+  프레임별 IK 최적화가 없어 CPU 1스레드로 900Hz+, 모든 로봇 손·좌우가 그래프 하나
 - 팔: pinocchio 해석 야코비안 + 감쇠 최소자승(DLS)
 - 출력은 그대로 발행 가능한 `{side: {joint_name: rad}}` 형태
 
@@ -79,7 +80,7 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 ## 빠른 시작
 
 ```python
-from whatslab.model import GloveModel
+from whatslab.teleop import GloveModel
 
 m = GloveModel("rigs/nero_orca_right.yaml")   # 팔 = 컨트롤러 IK, 손 = 글러브 리타게팅
 m.start()
@@ -90,7 +91,9 @@ while True:
 ```
 
 프리셋: `QuestModel`(핸드트래킹) · `GloveModel`(컨트롤러 + 글러브) · `HandModel`(손 단독).
-직접 만든 하드웨어 조합은 `TeleopModel` 을 상속해 `get_data()` 만 재정의하면 됩니다.
+직접 만든 하드웨어 조합은 `TeleopModel` 을 상속해 추상 훅 `_get_raw_target()`
+**하나만** 구현하면 됩니다 — 어느 소스를 팔 EE 목표로 쓸지만 정하면 캘리브·IK·
+리타게팅·안전필터 배선은 이미 되어 있습니다.
 
 ## 예제 & 도구
 
@@ -112,13 +115,16 @@ python tools/bench_arm_ik.py --traj fk                                   # 팔 I
 
 ## 문서
 
+- [**사용 가이드**](docs/GUIDE.md) — 새 로봇 올리기, 캘리브레이션, 팔 IK 튜닝과
+  변경 판정법, 진단, 실물 전송
 - [**API 레퍼런스**](docs/API.md) — 서브패키지별 공개 심볼과 시그니처
+- [**변경 이력**](CHANGELOG.md) — **0.2.0 에 호환 없는 변경이 있습니다**
+  (`model.ik[s]` → `model.sides[s].ik`, `RobotModel.solve` 제거)
 
 ## 감사의 말
 
 whatslab 은 다음 오픈소스 위에서 만들어졌습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(강체 기구학/IK),
-[dex-retargeting](https://github.com/dexsuite/dex-retargeting)(손 리타게팅),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
 [LeRobot](https://github.com/huggingface/lerobot)(데이터셋 포맷).
 

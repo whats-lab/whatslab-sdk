@@ -7,23 +7,20 @@ from typing import Optional
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from whatslab.core.types import HandPose, InputSample
-from .base import GLOVE_OSC_PORT, GLOVE_TARGET_IP, GLOVE_CLIENT_PORT, GloveReceiverBase
+from whatslab.core.types import HandPose, InputSample, Pose
+from .base import (GLOVE_CLIENT_PORT, GLOVE_OSC_PORT, GLOVE_TARGET_IP,
+                   OSC_ADDR_HAPT, OSC_MSG_TYPE_HAPT, GloveReceiverBase)
 
 logger = logging.getLogger(__name__)
 
 
-# ── AGA OSC 프로토콜 상수 (atlas_hand_core/config.py 계승) ──
-OSC_ADDR_LEFT_HAPT      = "/left/hapt/set"
-OSC_ADDR_RIGHT_HAPT     = "/right/hapt/set"
-OSC_MSG_TYPE_LEFT_HAPT  = "9"
-OSC_MSG_TYPE_RIGHT_HAPT = "10"
-AGA_FINGER_COUNT    = 5
+OSC_ADDR_LEFT_HAPT      = OSC_ADDR_HAPT["left"]
+OSC_ADDR_RIGHT_HAPT     = OSC_ADDR_HAPT["right"]
+OSC_MSG_TYPE_LEFT_HAPT  = OSC_MSG_TYPE_HAPT["left"]
+OSC_MSG_TYPE_RIGHT_HAPT = OSC_MSG_TYPE_HAPT["right"]
 AGA_RAW_FLOAT_COUNT = 72
-AGA_SKIP_JOINT      = 14   # pinky_0 — FK 에서 제외
+AGA_SKIP_JOINT      = 14
 
-# 글러브(y-up) 손목 프레임 → 정준(x=앞, z=위, 오른손) 변환. y↔z 스왑.
-# Quest 의 QuestReceiverBase._M 과 같은 역할이나 글러브 기기 프레임에 맞는 별도 상수다.
 _CANONICAL_M = np.array([[1.0, 0.0, 0.0],
                          [0.0, 0.0, 1.0],
                          [0.0, 1.0, 0.0]])
@@ -46,7 +43,6 @@ def _neutral() -> np.ndarray:
 
 
 class GloveHumanHandReceiver(GloveReceiverBase):
-
     def __init__(
         self,
         glove_port: int = GLOVE_OSC_PORT,
@@ -58,7 +54,6 @@ class GloveHumanHandReceiver(GloveReceiverBase):
     ):
         super().__init__(glove_port, listen_ip, target_ip, client_port)
         self._stale_timeout = stale_timeout
-        # 새 프레임 수신 시 호출되는 콜백(side) — 이벤트 구동 소비자용(폴링 불필요)
         self._on_update = on_update
 
         for side in ("left", "right"):
@@ -67,7 +62,6 @@ class GloveHumanHandReceiver(GloveReceiverBase):
             s["timestamp"] = 0.0
             self._srv.add_handler(f"/{side}/quat/get", self._h_quat, side)
 
-    # ---------------------------------------------------------------- public
     def get(self, side: str) -> InputSample:
         with self._lock:
             s = self._state[side]
@@ -76,31 +70,11 @@ class GloveHumanHandReceiver(GloveReceiverBase):
             conn = self._connected[side]
         age = time.monotonic() - ts
         tracked = conn and not (self._stale_timeout > 0 and age > self._stale_timeout)
-        # 손목 회전(q[0])만 글러브 → 정준 변환(팔 EE 방향으로 쓰임). 손가락 관절은 raw.
         q[0] = wrist_to_canonical(q[0])
-        # 글러브는 손가락 회전만: wrist.pos 없음(회전 q[0]만), controller 없음
         hand = HandPose.from_sensor_array(q, wrist_pos=None, tracked=tracked, timestamp=ts)
         return InputSample(controller=None, hand=hand, tracked=tracked, timestamp=ts)
 
-    def send_haptic(self, side: str, values: list) -> bool:
-        if self._udp_client is None or not self.connected(side):
-            return False
-        address = OSC_ADDR_LEFT_HAPT if side == "left" else OSC_ADDR_RIGHT_HAPT
-        msg_type = OSC_MSG_TYPE_LEFT_HAPT if side == "left" else OSC_MSG_TYPE_RIGHT_HAPT
-        packet: list = [msg_type]
-        for i, v in enumerate(values[:AGA_FINGER_COUNT]):
-            packet.extend([i, int(v)])
-        try:
-            self._udp_client.send_message(address, packet)
-            return True
-        except Exception as e:
-            logger.warning("햅틱 전송 실패 (%s): %s", address, e)
-            return False
-
-    # ----------------------------------------------------------- OSC handlers
     def _h_quat(self, address, *args):
-        # dispatcher.map(address, self._h_quat, side) 로 등록 — args[0]=side(주입값),
-        # args[1:]=실제 OSC 메시지 인자([msg_type, *72 floats]).
         side = args[0]
         if isinstance(side, (list, tuple)):
             side = side[0]
@@ -118,11 +92,97 @@ class GloveHumanHandReceiver(GloveReceiverBase):
 
     @staticmethod
     def _parse_floats(args, count) -> Optional[np.ndarray]:
-        # OSC 메시지 첫 값 args[0] 은 메시지 타입 헤더(예: '1') → 건너뛰고 count 개.
-        # (atlas AtlasGloveSource._parse_floats 와 동일: args[1:count+1])
         if len(args) < count + 1:
             return None
         try:
             return np.array(args[1:count + 1], dtype=np.float32)
         except (TypeError, ValueError):
             return None
+
+
+def parse_joint_angle_pairs(pairs) -> Optional[dict]:
+    if len(pairs) < 2:
+        return None
+    out = {}
+    for i in range(0, len(pairs) - 1, 2):
+        name, val = pairs[i], pairs[i + 1]
+        if not isinstance(name, str):
+            return None
+        try:
+            out[name] = float(val)
+        except (TypeError, ValueError):
+            return None
+    return out or None
+
+
+class GloveHumanAnglesReceiver(GloveReceiverBase):
+
+    def __init__(
+        self,
+        glove_port: int = GLOVE_OSC_PORT,
+        listen_ip: str = "0.0.0.0",
+        target_ip: str = GLOVE_TARGET_IP,
+        client_port: int = GLOVE_CLIENT_PORT,
+        stale_timeout: float = 0.0,
+        on_update: Optional[callable] = None,
+    ):
+        super().__init__(glove_port, listen_ip, target_ip, client_port)
+        self._stale_timeout = stale_timeout
+        self._on_update = on_update
+
+        for side in ("left", "right"):
+            s = self._state[side]
+            s["angles"] = {}
+            s["wrist"] = None
+            s["timestamp"] = 0.0
+            self._srv.add_handler(f"/{side}/joint_angles/get", self._h_angles, side)
+            self._srv.add_handler(f"/{side}/wrist/get", self._h_wrist, side)
+
+    def get(self, side: str) -> InputSample:
+        with self._lock:
+            s = self._state[side]
+            angles = dict(s["angles"])
+            wrist = s["wrist"]
+            wrist = None if wrist is None else wrist.copy()
+            ts = s["timestamp"]
+            conn = self._connected[side]
+        age = time.monotonic() - ts
+        tracked = bool(angles) and conn and not (
+            self._stale_timeout > 0 and age > self._stale_timeout)
+        hand = HandPose(wrist=None if wrist is None else Pose(quat=wrist),
+                        joint_angles=angles, tracked=tracked, timestamp=ts)
+        return InputSample(hand=hand, tracked=tracked, timestamp=ts)
+
+    def _h_angles(self, address, *args):
+        side, rest = self._split(args)
+        angles = parse_joint_angle_pairs(rest[1:])
+        if angles is None:
+            return
+        self._commit(side, "angles", angles)
+
+    def _h_wrist(self, address, *args):
+        side, rest = self._split(args)
+        quat = rest[1:]
+        if len(quat) < 4:
+            return
+        try:
+            raw = np.array([-float(quat[3]), float(quat[1]),
+                            float(quat[0]), float(quat[2])])
+        except (TypeError, ValueError):
+            return
+        if not np.all(np.isfinite(raw)) or np.linalg.norm(raw) < 1e-9:
+            return
+        w, x, y, z = raw
+        self._commit(side, "wrist",
+                     wrist_to_canonical(np.array([-x, y, -z, w])))
+
+    def _commit(self, side: str, key: str, value) -> None:
+        with self._lock:
+            s = self._state.get(side)
+            if s is None:
+                return
+            s[key] = value
+            s["timestamp"] = time.monotonic()
+            self._connected[side] = True
+        if self._on_update is not None:
+            self._on_update(side)

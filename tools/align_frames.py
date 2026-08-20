@@ -37,11 +37,11 @@ import viser
 from whatslab.paths import models_root
 from whatslab.robot import load_rig, load_robot
 from whatslab.robot.config import origin_to_T
-from whatslab.viz.scene import URDFScene       # 메쉬/스켈레톤 렌더 (중복 제거 — 단일 출처)
+from whatslab.viz.scene import URDFScene
 
 
 def _wxyz_from_mat(R: np.ndarray):
-    q = pin.Quaternion(np.asarray(R, dtype=float))     # SVD 없는 변환
+    q = pin.Quaternion(np.asarray(R, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
 
 
@@ -84,9 +84,7 @@ def _sl_rpy(gui, v):
             for a, x in zip(("roll", "pitch", "yaw"), v)]
 
 
-# ─────────────────────────── 1단계: robot 정준 정렬 ───────────────────────────
 def mode_robot(args):
-    # --robot(config) 이면 URDF·현재 axis_align 을 config 에서 가져와 초기값으로.
     init_xyz, init_rpy = np.zeros(3), np.zeros(3)
     if args.robot:
         spec = load_robot(args.robot)
@@ -127,13 +125,12 @@ def mode_robot(args):
         print(_snippet())
 
 
-# ─────────────────────────── 2단계: attach 보정 ──────────────────────────────
 def mode_attach(args):
     init_eeo_xyz = np.zeros(3)
     init_eeo_rpy = np.zeros(3)
     init_at_xyz = np.zeros(3)
     init_at_rpy = np.zeros(3)
-    T_arm_align = np.eye(4)          # 1단계 확정 axis_align (xyz+rpy 전체)
+    T_arm_align = np.eye(4)
     T_hand_align = np.eye(4)
     ee_parent = args.ee_parent
     if args.rig:
@@ -143,14 +140,13 @@ def mode_attach(args):
         arm_urdf = rig.arm.urdf_abspath()
         hand_urdf = rig.hand.urdf_abspath()
         ee_parent = rig.arm.ee_parent
-        T_arm_align = rig.arm.axis_align.T           # xyz+rpy 전체 반영
+        T_arm_align = rig.arm.axis_align.T
         T_hand_align = rig.hand.axis_align.T
         init_eeo_xyz = np.array(rig.arm.ee_origin.xyz, dtype=float)
         init_eeo_rpy = np.array(rig.arm.ee_origin.rpy, dtype=float)
         init_at_xyz = np.array(rig.attach.xyz, dtype=float)
         init_at_rpy = np.array(rig.attach.rpy, dtype=float)
     else:
-        # rig 없이 개별 robot config(권장) 또는 raw URDF 도 허용
         if args.arm_robot and args.hand_robot:
             arm_spec, hand_spec = load_robot(args.arm_robot), load_robot(args.hand_robot)
             arm_urdf, hand_urdf = arm_spec.urdf_abspath(), hand_spec.urdf_abspath()
@@ -194,24 +190,20 @@ def mode_attach(args):
 
     try:
         while True:
-            arm.set_root(T_arm_align)                # 1단계 확정 axis_align (고정)
+            arm.set_root(T_arm_align)
             arm.fk(np.zeros(arm.model.nq))
-            # 손 루트(팔베이스 기준) = FK(ee.parent) ∘ ee.origin ∘ attach ∘ 손 axis_align
             T_h = (arm.frame_pose(ee_parent)
                    @ origin_to_T(_v(s_eo_x), _v(s_eo_r, 1 / DEG))
                    @ origin_to_T(_v(s_at_x), _v(s_at_r, 1 / DEG))
                    @ T_hand_align)
-            hand.set_root(T_h)                        # /robot 자식 → 팔 정렬 상속
+            hand.set_root(T_h)
             hand.fk(np.zeros(hand.model.nq))
             time.sleep(0.05)
     except KeyboardInterrupt:
         print(_snippet())
 
 
-# ─────────────────── 3단계: target_ee 프레임 정렬 (ee_align) ───────────────────
 def mode_ee(args):
-    """팔+손을 확정 config 로 고정 렌더하고, target_ee(IK 제어) 프레임 축만
-    rpy 슬라이더로 회전 → hand yaml ee_align 확정. 메쉬는 움직이지 않는다."""
     rig = load_rig(args.rig)
     if rig.arm is None or rig.hand is None:
         raise SystemExit("[ee] rig 에 arm+hand 둘 다 필요")
@@ -229,7 +221,6 @@ def mode_ee(args):
     server = _setup_server(args.port)
     arm = URDFScene(server, arm_urdf, mesh_dir, "/robot")
     hand = URDFScene(server, hand_urdf, mesh_dir, "/robot/hand")
-    # target_ee(IK 제어) 프레임 축 — 굵게. 정준축(원점)과 방향 비교.
     ee_frame = server.scene.add_frame("/target_ee", show_axes=True,
                                       axes_length=0.15, axes_radius=0.008)
     print(f"[ee] arm={arm_urdf}")
@@ -253,11 +244,9 @@ def mode_ee(args):
         while True:
             arm.set_root(T_arm_align)
             arm.fk(np.zeros(arm.model.nq))
-            # 손 루트(팔베이스 기준) = FK(ee.parent) ∘ ee.origin ∘ attach ∘ 손 axis_align
             T_h = arm.frame_pose(ee_parent) @ T_eeo @ T_at @ T_hand_align
             hand.set_root(T_h)
             hand.fk(np.zeros(hand.model.nq))
-            # target_ee(제어 프레임) 정준 pose = 팔정렬 ∘ 손루트 ∘ FK(target_ee) ∘ ee_align
             T_ee = (T_arm_align @ T_h @ hand.frame_pose(target_ee)
                     @ origin_to_T(np.zeros(3), _v(s_rpy, 1 / DEG)))
             ee_frame.position = tuple(T_ee[:3, 3])
