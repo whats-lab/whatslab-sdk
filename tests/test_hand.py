@@ -23,37 +23,33 @@ def _derivable(name, side):
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED_HANDS))
-def test_configs_construct_and_two_stage(name):
+def test_configs_derive_sensor_tipped_chains(name):
     for side in ("left", "right"):
         _derivable(name, side)
-        cfg = CONFIG_REGISTRY[name]()
-        s1, s2 = cfg.get_two_stage_config(side)
-        assert s1["target_origin_link_names"], f"{name}/{side} stage1 빈 체인"
-        assert s2["target_link_names"], f"{name}/{side} stage2 빈 팁"
-        assert all("_sensor_" in n for n in s2["target_link_names"]), \
-            f"{name}/{side} 팁이 센서 프레임이 아니다: {s2['target_link_names']}"
+        fingers = CONFIG_REGISTRY[name]()._get_fingers(side)
+        assert fingers, f"{name}/{side}: 사슬이 비었다"
+        for links in fingers:
+            assert "_sensor_" in links[-1], \
+                f"{name}/{side}: 팁이 센서 프레임이 아니다 {links[-1]!r}"
 
 
-def test_config_human_are_skeleton_names():
-    from whatslab.core.types import JOINT_INDEX
-
+def test_chain_len_declares_every_finger():
     for name, C in CONFIG_REGISTRY.items():
-        assert C._HUMAN_CHAIN, f"{name}: _HUMAN_CHAIN 이 비어 있다"
-        for finger, chain in C._HUMAN_CHAIN.items():
-            assert chain[0] == "wrist", f"{name}/{finger}: wrist 에서 시작해야: {chain}"
-            for h in chain:
-                assert h in JOINT_INDEX, f"{name}/{finger}: 알 수 없는 관절명 {h!r}"
+        assert C._CHAIN_LEN, f"{name}: _CHAIN_LEN 이 비어 있다"
+        assert all(n >= 2 for n in C._CHAIN_LEN.values()), \
+            f"{name}: 사슬 길이가 2 미만 {C._CHAIN_LEN}"
 
 
-def test_finger_chain_consistency():
+def test_derived_chain_length_matches_declaration():
     for name in sorted(EXPECTED_HANDS):
         for side in ("left", "right"):
             _derivable(name, side)
-            fingers = CONFIG_REGISTRY[name]()._get_fingers(side)
-            for f in fingers:
-                assert len(f.links) == len(f.human), f"{name}/{side} 길이 불일치: {f.links}"
-                assert len(f.links) >= 2, f"{name}/{side} 체인 너무 짧음: {f.links}"
-                assert f.human[0] == 0, f"{name}/{side} 손가락은 wrist(0)에서 시작해야: {f.human}"
+            C = CONFIG_REGISTRY[name]
+            for finger, links in zip(
+                    [x for x in ("thumb", "index", "middle", "ring", "pinky")
+                     if x in C._CHAIN_LEN], C()._get_fingers(side)):
+                assert len(links) == C._CHAIN_LEN[finger], \
+                    f"{name}/{side}/{finger}: {links}"
 
 
 def test_palm_link_is_derived_not_configured():
@@ -62,7 +58,7 @@ def test_palm_link_is_derived_not_configured():
         cfg = CONFIG_REGISTRY[name]()
         palm = cfg.get_wrist_link_name("right")
         assert palm and "_sensor_" not in palm, f"{name}: 팜 링크 유도 실패 {palm!r}"
-        assert all(f.links[0] == palm for f in cfg._get_fingers("right"))
+        assert all(links[0] == palm for links in cfg._get_fingers("right"))
 
 def test_uni_retargeter_end_to_end():
     pytest.importorskip("onnxruntime")

@@ -16,10 +16,10 @@ def orca_joint_map(side: str = "right") -> Dict[str, str]:
     from whatslab.solvers.hand.hand_configs import OrcaHandConfig
     cfg = OrcaHandConfig()
     out: Dict[str, str] = {}
-    for finger, chain in zip(_FINGER_ORDER, cfg._get_fingers(side)):
+    for finger, links in zip(_FINGER_ORDER, cfg._get_fingers(side)):
         ids = _ORCA_LEVELS.get(finger) or [s.format(f=finger) for s in _DEFAULT_LEVELS]
         for k, oid in enumerate(ids):
-            out[f"{chain.links[k + 1]}_to_{chain.links[k]}"] = oid
+            out[f"{links[k + 1]}_to_{links[k]}"] = oid
     return out
 
 
