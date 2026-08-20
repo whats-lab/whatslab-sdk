@@ -21,7 +21,6 @@ import argparse
 import os
 import tempfile
 
-# Isaac Sim 앱 런치 (다른 isaac 모듈 import 보다 먼저). isaac 환경에서만 가능.
 try:
     from isaaclab.app import AppLauncher
 except ImportError:
@@ -89,12 +88,6 @@ simulation_app = app_launcher.app
 
 
 def sanitize_inertia(usd_path: str, max_r: float, fix_r: float):
-    """물리적으로 불가능한 링크 관성(부풀린 SolidWorks 값)을 등방으로 클램프.
-
-    바디별 대각 관성의 최대 성분이 mass*max_r^2 를 넘으면(그만한 관성이 나오려면
-    링크 반경이 max_r 보다 커야 함 → 손 링크엔 불가능) mass*fix_r^2 로 리셋한다.
-    이름을 하드코딩하지 않아 어떤 핸드에도 적용되고, 정상인 팔 링크는 건드리지
-    않는다(관성이 임계 이하라 통과). 값은 top layer override 로 저장."""
     from pxr import Usd, UsdPhysics, Gf
     stage = Usd.Stage.Open(usd_path)
     fixed = []
@@ -118,8 +111,6 @@ def sanitize_inertia(usd_path: str, max_r: float, fix_r: float):
 
 
 def cap_link_mass(usd_path: str, mass_max: float, mass_cap: float):
-    """비현실적으로 무거운 링크 질량(SolidWorks 단위 오류)을 mass_cap 으로 클램프.
-    mass > mass_max 인 바디만 대상(정상 링크는 통과). 관성도 질량비로 함께 축소."""
     from pxr import Usd, UsdPhysics, Gf
     stage = Usd.Stage.Open(usd_path)
     capped = []
@@ -142,10 +133,6 @@ def cap_link_mass(usd_path: str, mass_max: float, mass_cap: float):
 
 
 def apply_sdf_colliders(usd_path: str, resolution: int):
-    """Switch every mesh collider to SDF approximation — near-exact mesh
-    collision that PhysX supports on DYNAMIC bodies (raw triangle mesh is
-    static-only). Needed for precise finger↔object contact. Cost scales with
-    sdf-resolution; drop to convex_decomposition if it stutters."""
     from pxr import Usd, UsdGeom, UsdPhysics
     try:
         from pxr import PhysxSchema
@@ -168,8 +155,6 @@ def apply_sdf_colliders(usd_path: str, resolution: int):
 
 
 def bind_grip_material(usd_path: str, hand_link_keys, static: float, dynamic: float):
-    """손 링크 콜라이더에 고마찰 그립 재질 바인딩(combine=max) — 물체 미끄러짐 방지.
-    flat USD 는 /Hand 그룹이 없어 hand_link_keys 로 손 링크를 골라 개별 바인딩."""
     from pxr import Usd, UsdPhysics, UsdShade
     try:
         from pxr import PhysxSchema
@@ -201,13 +186,11 @@ def bind_grip_material(usd_path: str, hand_link_keys, static: float, dynamic: fl
 def main():
     from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
-    # export_combined_urdf.py 는 같은 examples/ 디렉토리 (스크립트 실행 시 sys.path[0])
     from export_combined_urdf import export_combined_urdf
 
     out = os.path.abspath(os.path.expanduser(args_cli.out))
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
-    # 1) 결합 URDF (절대경로/USD-safe 메쉬, joint rename) → 임시 파일
     rename = None
     if args_cli.rename_map:
         import json
@@ -216,22 +199,13 @@ def main():
     tmp_urdf = os.path.join(tempfile.gettempdir(), "whatslab_combined.urdf")
     export_combined_urdf(args_cli.rig, tmp_urdf, abs_meshes=True, rename=rename)
 
-    # 2) URDF → USD (IsaacLab UrdfConverter)
     cfg = UrdfConverterCfg(
         asset_path=tmp_urdf,
         usd_dir=os.path.dirname(out),
         usd_file_name=os.path.basename(out),
         fix_base=not args_cli.free_base,
         merge_fixed_joints=args_cli.merge_joints,
-        # Collision from the VISUAL meshes: the OrcaHand collision <mesh> tags
-        # reference .dae files not bundled here, which the URDF mesh-fixer
-        # drops -> the robot ended up with ZERO colliders and fingers tunnelled
-        # through objects. Generating colliders from the (present) visual meshes
-        # gives every link a real mesh-based collider. convex_decomposition =
-        # close fit (needed so fingers actually grip, not a loose hull).
         collision_from_visuals=not args_cli.no_collision,
-        # UrdfConverter only makes convex colliders; for --collider-type sdf we
-        # create convex_decomposition prims here then switch them to SDF below.
         collider_type=("convex_decomposition"
                        if args_cli.collider_type == "sdf"
                        else args_cli.collider_type),
@@ -246,7 +220,6 @@ def main():
     conv = UrdfConverter(cfg)
     print(f"[export-usd] USD 생성 완료 → {conv.usd_path}")
 
-    # 3) 물리 보정: SDF 콜라이더 → 관성 클램프 → 질량 캡 → 그립 재질
     if args_cli.collider_type == "sdf" and not args_cli.no_collision:
         apply_sdf_colliders(conv.usd_path, args_cli.sdf_resolution)
     if not args_cli.no_sanitize_inertia:
@@ -259,8 +232,6 @@ def main():
     if gs > 0 or gd > 0:
         bind_grip_material(conv.usd_path, args_cli.hand_link_keys, gs, gd)
 
-    # 생성된 USD 의 prim 트리(링크/바디·조인트) 출력 — 카메라/센서 prim_path
-    # 정합용(다운스트림이 /Robot/<link> 평면 구조를 알아야 함).
     try:
         from pxr import Usd, UsdPhysics
         stage = Usd.Stage.Open(conv.usd_path)

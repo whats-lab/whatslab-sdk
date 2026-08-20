@@ -7,7 +7,7 @@ def models_root() -> str:
     root = os.environ.get("WHATSLAB_MODELS_ROOT")
     if root:
         return root
-    import dexhand_description          # lazy — 실제 자산 해석 시에만 필요
+    import dexhand_description
     return dexhand_description.get_share()
 
 

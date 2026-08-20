@@ -26,12 +26,10 @@ import json
 import shutil
 from pathlib import Path
 
-# GR00T annotation 기본 키 — "사람이 준 task 지시문" 주석 슬롯 (source.type 규약).
 DEFAULT_ANNOTATION_KEY = "human.task_description"
 
 
 def _default_video_map(features: dict) -> dict:
-    """observation.images.<cam> -> {"<cam>": {"original_key": "observation.images.<cam>"}}."""
     video = {}
     for key, spec in features.items():
         if spec.get("dtype") != "video":
@@ -49,13 +47,6 @@ def build_modality(
     video_map: dict | None = None,
     annotation: dict | None = None,
 ) -> dict:
-    """GR00T `meta/modality.json` 구조를 만든다.
-
-    `features` 는 v2.1 `meta/info.json["features"]` 딕셔너리(dtype/shape 포함).
-    기본값은 `observation.state`/`action` 전체를 각각 단일 필드로 매핑한다
-    (`{"start": 0, "end": J}`) — 팔/손 분리 등 커스텀 분할은 `state_layout`/
-    `action_layout` 로 오버라이드한다 (호출자가 임의 필드 레이아웃을 넘길 수 있게).
-    """
     if "observation.state" not in features:
         raise KeyError("features에 'observation.state'가 없음 — v2.1 info.json을 확인하라")
     if "action" not in features:
@@ -82,7 +73,6 @@ def build_modality(
 
 
 def export_groot(input_dir, modality_config: str | Path | dict | None = None) -> Path:
-    """v2.1 데이터셋 옆에 `meta/modality.json` 을 쓴다. v2.1 파일은 건드리지 않는다."""
     input_dir = Path(input_dir)
     info_path = input_dir / "meta" / "info.json"
     info = json.loads(info_path.read_text())
@@ -110,12 +100,6 @@ def export_groot(input_dir, modality_config: str | Path | dict | None = None) ->
 
 
 def export_v30(input_dir, out_dir=None) -> Path:
-    """v2.1 데이터셋을 복사한 뒤 lerobot의 `convert_dataset_v21_to_v30` 로 그 사본을
-    v3.0 으로 변환한다 (원본 `input_dir` 는 절대 수정하지 않음).
-
-    lerobot 은 in-place 변환만 지원(`root/repo_id` 규약, task-1b-report.md 확인)
-    하므로, 여기서는 먼저 사본을 만들고 그 사본 경로에 대해 in-place 변환을 돌린다.
-    """
     from lerobot.datasets.v30.convert_dataset_v21_to_v30 import convert_dataset
 
     input_dir = Path(input_dir).resolve()

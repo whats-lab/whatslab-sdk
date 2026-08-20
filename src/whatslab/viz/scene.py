@@ -5,17 +5,18 @@ import os
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pinocchio as pin       # viz 모듈 — 시각화 deps 필수(없으면 명확히 ImportError)
+import pinocchio as pin
 import trimesh
 import viser
 
 from whatslab.core.types import HUMAN_HAND, JOINT_INDEX
+from whatslab.solvers.hand.human_fk import FINGERS as _HFING
+from whatslab.solvers.hand.human_fk import palm_frame as _hpf
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
 
-# viser/trimesh/pinocchio (`whatslab-sdk[viz]`) 는 이 모듈의 필수 의존 — 최상단 import.
-_AXIS_RGB = ((230, 60, 60), (60, 200, 60), (70, 130, 240))   # x,y,z = R,G,B
+_AXIS_RGB = ((230, 60, 60), (60, 200, 60), (70, 130, 240))
 _servers: Dict[int, "object"] = {}
 
 
@@ -31,7 +32,7 @@ def get_server(port: int = 8080):
 
 
 def _wxyz(R: np.ndarray) -> Tuple[float, float, float, float]:
-    q = pin.Quaternion(np.asarray(R, dtype=float))       # SVD 없는 변환
+    q = pin.Quaternion(np.asarray(R, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
 
 
@@ -46,9 +47,6 @@ class URDFScene:
                        for j in range(1, self.model.njoints)}
         self.handles: List = []
         self.gmodel = None
-        # package:// 해석: URDF 가 `package://dexhand_description/...` 로 참조하면
-        # pkg_dir 아래에서 dexhand_description/... 를 찾으므로 mesh_dir 의 **부모**가
-        # 필요하다. 상대 경로 메쉬 대비 mesh_dir 도 함께 준다.
         pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
         try:
             for gtype in (pin.GeometryType.COLLISION, pin.GeometryType.VISUAL):
@@ -137,8 +135,6 @@ class RobotArmViz:
         srv = get_server(self.port)
         mesh_dir = models_root()
         self._arm = URDFScene(srv, rig.arm.urdf_abspath(), mesh_dir, "/arm")
-        # 팔 베이스를 정준 프레임에 배치(M = mount∘axis_align) → rig 의 rpy 반영.
-        # /arm 자식(메쉬·손)이 모두 이 변환을 상속한다.
         self._arm.set_root(self.model.to_canonical(np.eye(4)))
         if self.model.has_hand:
             self._hand = URDFScene(srv, rig.hand.urdf_abspath(), mesh_dir,
@@ -148,7 +144,6 @@ class RobotArmViz:
         self._target = srv.scene.add_frame("/target", show_axes=True,
                                            axes_length=self.axis_len,
                                            axes_radius=0.005)
-        # 실제 로봇 EE(target_ee) 프레임 — 목표(/target)와 비교용. 더 짧고 굵게.
         self._ee = srv.scene.add_frame("/ee", show_axes=True,
                                        axes_length=self.axis_len * 0.7,
                                        axes_radius=0.008)
@@ -157,13 +152,13 @@ class RobotArmViz:
                timestamp: Optional[float] = None) -> None:
         if self._arm is None:
             self.start()
-        _ = timestamp                                   # viser 는 라이브 뷰만
+        _ = timestamp
         arm_named = dict(zip(self.model.arm_joint_names, np.asarray(q, dtype=float)))
-        self._arm.fk(self._arm.q_from_named(arm_named))  # 팔 (베이스 기준)
+        self._arm.fk(self._arm.q_from_named(arm_named))
         if self._hand is not None:
             T_h = self._arm.frame_pose(self.model.rig.arm.ee_parent) @ self._aMb
-            self._hand.set_root(T_h)                    # /arm 자식 → 팔 상속
-            hand_named = dict(arm_named)                # 카펄 등 지지체인은 팔 q
+            self._hand.set_root(T_h)
+            hand_named = dict(arm_named)
             if hand_q is not None and hand_names is not None:
                 hand_named.update(zip(hand_names, np.asarray(hand_q, dtype=float)))
             self._hand.fk(self._hand.q_from_named(hand_named))
@@ -171,56 +166,86 @@ class RobotArmViz:
             T = np.asarray(target_pose, dtype=float)
             self._target.position = tuple(T[:3, 3])
             self._target.wxyz = _wxyz(T[:3, :3])
-        # 실제 로봇 EE(target_ee) 정준 pose — solver q 로 FK
         T_ee = self.model.ee_pose(np.asarray(q, dtype=float))
         self._ee.position = tuple(T_ee[:3, 3])
         self._ee.wxyz = _wxyz(T_ee[:3, :3])
 
 
-class RobotHandViz:
+def _human_palm_frame(hp):
+    return _hpf({f: hp[f][0] for f in _HFING}, hp["palm"])
 
-    def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand"):
-        self._robot = retargeter._seq_stage1.optimizer.robot
-        self._port = port
-        self._root_path = root_path
-        self._joints = None
+
+_PALM_TO_WORLD = np.array([[1.0, 0.0, 0.0],
+                           [0.0, 0.0, -1.0],
+                           [0.0, 1.0, 0.0]])
+
+
+def upright_root(palm_origin, palm_frame_R) -> np.ndarray:
+    A = _PALM_TO_WORLD @ np.asarray(palm_frame_R, dtype=float).T
+    T = np.eye(4)
+    T[:3, :3] = A
+    T[:3, 3] = -A @ np.asarray(palm_origin, dtype=float)
+    return T
+
+
+class _UrdfHandViz:
+
+    def __init__(self, urdf: str, joint_names, port: int = 8080,
+                 root_path: str = "/hand", root_pose=None):
+        self.urdf = urdf
+        self.joint_names = list(joint_names)
+        self.port = port
+        self.root_path = root_path
+        self.root_pose = root_pose
+        self._scene = None
 
     def start(self) -> None:
-        srv = get_server(self._port)
-        m = self._robot.model
-        ball = trimesh.creation.icosphere(radius=0.005)
-        ball.visual.face_colors = [250, 200, 90, 255]
-        self._joints = [srv.scene.add_mesh_trimesh(f"{self._root_path}/j{j}",
-                                                   ball.copy())
-                        for j in range(1, m.njoints)]
-        n = sum(1 for j in range(1, m.njoints) if int(m.parents[j]) >= 1)
-        self._bones = srv.scene.add_line_segments(
-            f"{self._root_path}/bones", points=np.zeros((max(n, 1), 2, 3)),
-            colors=(200, 160, 70), line_width=3.0)
+        self._scene = URDFScene(get_server(self.port), self.urdf, models_root(),
+                                self.root_path)
+        if self.root_pose is not None:
+            self._scene.set_root(np.asarray(self.root_pose, dtype=float))
 
     def update(self, q, timestamp: Optional[float] = None) -> None:
-        if self._joints is None:
+        if self._scene is None:
             self.start()
         _ = timestamp
-        m, d = self._robot.model, self._robot.data
-        qv = np.asarray(q, dtype=float)
-        if qv.shape[0] != m.nq:
-            qv = np.resize(qv, m.nq)
-        pin.forwardKinematics(m, d, qv)
-        segs = []
-        for j in range(1, m.njoints):
-            p = d.oMi[j].translation
-            self._joints[j - 1].position = tuple(p)
-            par = int(m.parents[j])
-            if par >= 1:
-                segs.append([d.oMi[par].translation.copy(), p.copy()])
-        if segs:
-            self._bones.points = np.asarray(segs)
+        named = dict(zip(self.joint_names, np.asarray(q, dtype=float).ravel()))
+        self._scene.fk(self._scene.q_from_named(named))
+
+    @property
+    def mesh_mode(self) -> bool:
+        return bool(self._scene is not None and self._scene.mesh_mode)
 
 
-def _bone_pairs() -> List[Tuple[int, int]]:
-    return [(JOINT_INDEX[s.parent], i) for i, s in enumerate(HUMAN_HAND)
-            if s.parent is not None]
+class RobotHandViz(_UrdfHandViz):
+
+    def __init__(self, retargeter, port: int = 8080, root_path: str = "/robot_hand",
+                 root_pose=None, upright: bool = True):
+        urdf = getattr(retargeter, "urdf_path", None)
+        if urdf is None:
+            raise ValueError(
+                f"{type(retargeter).__name__} 에 urdf_path 가 없다 — 메쉬를 못 띄운다")
+        if root_pose is None and upright:
+            o = getattr(retargeter, "_r_origin", None)
+            R = getattr(retargeter, "_r_frame", None)
+            if o is not None and R is not None:
+                root_pose = upright_root(o, R)
+        super().__init__(urdf, retargeter.joint_names, port, root_path, root_pose)
+
+
+class HumanHandViz(_UrdfHandViz):
+
+    def __init__(self, fk, port: int = 8080, root_path: str = "/human_hand",
+                 root_pose=None, upright: bool = True, offset=None):
+        if root_pose is None and upright:
+            hp = fk.neutral_points()
+            o, R = _human_palm_frame(hp)
+            root_pose = upright_root(o, R)
+        if offset is not None and root_pose is not None:
+            shift = np.eye(4)
+            shift[:3, 3] = np.asarray(offset, dtype=float)
+            root_pose = shift @ root_pose
+        super().__init__(fk.urdf_path, fk.joint_names, port, root_path, root_pose)
 
 
 class HandSkeletonViz:

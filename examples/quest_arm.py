@@ -1,44 +1,81 @@
 #!/usr/bin/env python3
-"""Quest 컨트롤러(팔) + AirGlove(손) → nero(+orca) 텔레옵 실행 예제 (신 Model API).
-
-whatslab 은 파이프라인을 소유하지 않는다 — 소비자(이 스크립트)가 **텔레옵 Model** 을
-하나 만들고, 콜백 없이 폴링 루프에서 `get_q(side)` 만 당겨 쓴다. 좌표계/축 정합은
-리시버 내부에서 끝나 있고(출력 = X-fwd/Z-up/RH 정준), Model 의 전처리는 yaw
-캘리브(자세) + reach 캘리브(위치 스케일)뿐이다.
-
-최종 UX = 로봇(rig) + 팔 소스 + 손 소스만 고르면 끝:
-    --arm controller  손 = 글러브   → GloveModel  (컨트롤러 팔 + 글러브 손 + 햅틱)
-    --arm wrist                      → QuestModel  (Quest 핸드트래킹: 손목→팔, 손가락→손)
-
-실행:
-    pip install -e ~/whatslab-sdk[receiver,arm,hand]
-    # 컨트롤러(팔) + 글러브(손):
-    python ~/whatslab-sdk/examples/quest_arm.py --rig rigs/nero_orca_right.yaml --side right
-    # Quest 핸드트래킹 단독:
-    python ~/whatslab-sdk/examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist
-
-    실행 중 Enter → yaw 캘리브(머리연동), 'r' + Enter → reach 캘리브(8초 뻗기).
-"""
 import argparse
 import threading
 import time
 
 import numpy as np
 
-from whatslab.model import GloveModel, QuestModel
-from whatslab.robot import RobotModel, load_rig
+from whatslab.teleop import GloveModel, QuestModel
 
 
 def _build_model(args, robot):
+    if args.sides == "both":
+        arg = robot
+    else:
+        arg = [robot if s == args.sides else None for s in ("left", "right")]
     if args.arm == "wrist":
-        return QuestModel(robot)                  # Quest 핸드트래킹: 손목→팔, 손가락→손
-    return GloveModel(robot)                      # 컨트롤러→팔, 글러브→손 + 햅틱
+        return QuestModel(arg)
+    return GloveModel(arg)
+
+
+class _Recorder:
+
+    def __init__(self, robot, model, side):
+        self.robot, self.model, self.side = robot, model, side
+        self.rows = []
+
+    def tick(self, now, q_map, arm_names):
+        m = self.model.sides[self.side]
+        raw, T = m.raw_target, m.target
+        if raw is None or T is None:
+            return
+        have = all(n in q_map for n in arm_names)
+        q = np.array([q_map[n] for n in arm_names], dtype=float) if have else None
+        T_b = self.robot.clamp_reach(self.robot.to_base(T))
+        pe = oe = np.nan
+        ee = np.full((4, 4), np.nan)
+        if q is not None:
+            pe, oe = self.robot.solver.pose_error(q, T_b)
+            ee = self.robot.solver.fk(q)
+        c = self.model.sides[self.side].calib
+        self.rows.append(dict(
+            t=now,
+            raw_pos=np.asarray(raw.pos, dtype=float),
+            raw_quat=np.asarray(raw.quat, dtype=float),
+            target=np.asarray(T, dtype=float),
+            target_base=np.asarray(T_b, dtype=float),
+            q=q if q is not None else np.full(len(arm_names), np.nan),
+            ee_base=ee, pe=pe, oe=oe,
+            W=(c._W if c is not None and c._W is not None else np.full((3, 3), np.nan)),
+            enabled=float(getattr(c, "enabled", np.nan)) if c is not None else np.nan,
+        ))
+
+    def save(self, path):
+        if not self.rows:
+            print(f"[dump] 기록된 프레임 없음 — {path} 미생성")
+            return
+        out = {k: np.array([r[k] for r in self.rows]) for k in self.rows[0]}
+        out["arm_joint_names"] = np.array(self.robot.arm_joint_names)
+        rm = self.robot.rig.solver.reach_max
+        out["reach_max"] = np.array([rm if rm else np.nan])
+        out["input_reach"] = np.array([self.robot.rig.calibration.input_reach
+                                       or np.nan])
+        np.savez_compressed(path, **out)
+        pe = out["pe"][np.isfinite(out["pe"])] * 1e3
+        extra = (f"   pos 오차 mean {pe.mean():.1f} p95 {np.percentile(pe, 95):.1f} "
+                 f"max {pe.max():.1f} mm" if pe.size else "")
+        print(f"[dump] {len(self.rows)} 프레임 → {path}{extra}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rig", default="rigs/nero_orca_right.yaml", help="rig config 경로")
-    ap.add_argument("--side", default="right", choices=["left", "right"])
+    ap.add_argument("--side", default="right", choices=["left", "right"],
+                    help="계측/전송 대상 side")
+    ap.add_argument("--sides", default=None, choices=["left", "right", "both"],
+                    help="IK 를 돌릴 side (기본: --side 하나만). 한 팔 rig 에 "
+                         "반대쪽 컨트롤러를 물리면 도달 불가 목표에 전역탐색을 "
+                         "태우고 프레임 예산을 넘긴다")
     ap.add_argument("--arm", default="controller", choices=["controller", "wrist"],
                     help="팔 소스: controller=Quest 컨트롤러(+글러브 손), wrist=Quest 핸드트래킹")
     ap.add_argument("--hand-config", default="orca_hand", help="손 리타게팅 config (hand 포함 rig)")
@@ -56,41 +93,43 @@ def main():
     ap.add_argument("--no-calib", action="store_true",
                     help="캘리브 전처리(yaw W + reach 스케일 + 캘리브 원점 p0) 를 끄고 "
                          "리시버 좌표를 그대로 목표로 쓴다 — A/B 비교용")
+    ap.add_argument("--dump-targets", metavar="PATH",
+                    help="프레임별 원시입력/목표/해/오차를 npz 로 기록 — 오프라인 진단용")
     args = ap.parse_args()
 
-    rig = load_rig(args.rig)
+    args.sides = args.sides or args.side
+    if args.sides not in ("both", args.side):
+        ap.error(f"--side {args.side} 가 --sides {args.sides} 에 없습니다")
+
+    model = _build_model(args, args.rig)
+    robot = model.sides[args.side].robot
     if args.no_calib:
-        rig.calibration.enabled = False
-    robot = RobotModel(rig)
-    model = _build_model(args, robot)
+        for m in model.sides.values():
+            if m.calib is not None:
+                m.calib.enabled = False
 
-    print(f"[setup] rig={rig.name} arm={args.arm} hand={'on' if robot.has_hand else 'off'} "
-          f"reach_max={rig.solver.reach_max} "
-          f"calib={'on(W+scale+p0)' if rig.calibration.enabled else 'off(raw)'}")
-    print(f"[setup] arm_joints={robot.arm_joint_names}")
+    print(f"[setup] sides={sorted(s for s, v in model.sides.items() if v.ik)} arm_joints={robot.arm_joint_names}")
+    print("[setup] calib=%s" % ("off(raw)" if args.no_calib else "on(W+scale+p0)"))
 
-    if not args.no_safety:      # rig max_joint_velocity 를 get_q 출력에 강제
+    if not args.no_safety:
         from robot_io import attach_safety
         sf = attach_safety(model, robot, args.rate)
-        print(f"[safety] rate-limit {'on' if sf else 'off(설정 없음)'} "
-              f"({rig.solver.max_joint_velocity} rad/s @ {args.rate:g}Hz)")
 
     model.start()
 
     viz = None
     bridge = None
-    if args.viz:                          # 팔+손 메쉬 + 목표(/target)·EE(/ee) 프레임
+    if args.viz:
         from whatslab.viz import RobotArmViz
         viz = RobotArmViz(robot, port=args.port)
         viz.start()
         if args.robot:
-            from robot_io import build_robot_panel   # examples/ 동거 모듈
-            bridge = build_robot_panel(model, robot, args)   # 실물 연결 GUI (기본 미연결)
+            from robot_io import build_robot_panel
+            bridge = build_robot_panel(model, robot, args)
         print(f"[viz] viser: http://localhost:{args.port}")
     elif args.robot:
         print("[robot] --robot 은 --viz 와 함께 써야 합니다(연결 버튼이 viser 패널에 있음)")
 
-    # 캘리브 콘솔: Enter=yaw(자세, 즉시 캡처), 'r'+Enter=reach(위치, 8초 측정).
     def _calib_loop():
         while True:
             try:
@@ -99,8 +138,7 @@ def main():
                 return
             if line.strip().lower() == "r":
                 print("[calib] reach 측정 시작 — 팔을 최대 범위로 뻗으세요(8초)...", flush=True)
-                r = model.calibrate_reach(persist=True)   # rig yaml 에 저장
-                # print(f"[calib] reach 완료: input_reach={r.get("right"):.3f} m", flush=True)
+                r = model.calibrate_reach(persist=True)
             else:
                 ok = model.calibrate_yaw()
                 print("[calib] yaw " + ("완료(머리연동)" if ok else "실패 — HMD/자세 신호 확인"),
@@ -109,45 +147,58 @@ def main():
     print("[calib] 기준 자세로 Enter → yaw 캘리브 | 'r'+Enter → reach 캘리브. Ctrl-C 종료.")
 
     period, last = 1.0 / args.rate, 0.0
+    next_t = time.monotonic()
+    lag = 0
     arm_names = list(robot.arm_joint_names)
     arm_set = set(arm_names)
     diag = None
     if args.diag:
         from robot_io import Diag
         diag = Diag(robot, model, args.side)
+    rec = _Recorder(robot, model, args.side) if args.dump_targets else None
     try:
         while True:
             now = time.monotonic()
-            q = model.get_q()        # 논블로킹: 최신 입력 pull → (캐시)IK/리타게팅
+            q = model.get_q()
             right_q = q.get(args.side) or {}
-            if diag is not None:     # 단계별 계측 (원시입력 → 목표 → 클램프 → IK오차)
-                raw = model._get_raw_target().get(args.side)
+            if diag is not None:
+                raw = model.sides[args.side].raw_target
                 q_arm_v = (np.array([right_q[n] for n in arm_names], dtype=float)
                            if all(n in right_q for n in arm_names) else None)
                 diag.tick(raw, q_arm_v, now)
-            if bridge is not None:   # 실물 전송 (패널의 `송신` 이 켜져 있을 때만)
+            if rec is not None:
+                rec.tick(now, right_q, arm_names)
+            if bridge is not None:
                 bridge.send(right_q)
-            # 입력이 없는 컴포넌트는 q 에서 생략된다(0 을 채우지 않는다) → 팔 관절이
-            # 아직 없으면 viz/출력을 건너뛴다(시작 직후 Quest 신호 대기 구간).
             has_arm_q = all(n in right_q for n in arm_names)
             if viz is not None and has_arm_q:
-                # Model 이 채운 멤버(target)로 목표 프레임까지 그린다 — 재계산 없음.
                 arm_q = [right_q[n] for n in arm_names]
                 hand_names = [k for k in right_q if k not in arm_set]
                 hand_q = [right_q[n] for n in hand_names]
-                viz.update(arm_q, target_pose=model.target.get(args.side),
+                viz.update(arm_q, target_pose=model.sides[args.side].target,
                            hand_q=hand_q, hand_names=hand_names, timestamp=now)
             if now - last > 0.2:
                 last = now
                 arm_q = [round(right_q[n], 3) for n in arm_names] if has_arm_q else "--"
-                tgt = "on" if model.target.get(args.side) is not None else "--"
+                tgt = "on" if model.sides[args.side].target is not None else "--"
                 print(f"\r[q] arm={arm_q} hand={len(right_q) - len(arm_names)}j target={tgt}   ",
                       end="", flush=True)
-            time.sleep(period)
+            next_t += period
+            rest = next_t - time.monotonic()
+            if rest > 0:
+                time.sleep(rest)
+            else:
+                lag += 1
+                next_t = time.monotonic()
     except KeyboardInterrupt:
         print("\n[stop] 종료")
+        if lag:
+            print(f"[rate] {args.rate:g}Hz 를 못 맞춘 프레임 {lag}개 — 작업이 "
+                  f"{period*1e3:.1f}ms 를 넘었다")
     finally:
         model.stop()
+        if rec is not None:
+            rec.save(args.dump_targets)
 
 
 if __name__ == "__main__":
