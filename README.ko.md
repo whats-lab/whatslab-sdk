@@ -50,6 +50,24 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 - 손목 yaw 정렬(머리 기준 스냅샷)
 - 사용자별 팔 도달 범위(reach) 보정 — rig config 에 저장되어 다음 세션에 재사용
 
+### 지원하는 손
+
+아래 손 전부와 좌우가 ONNX 그래프 하나를 공유한다. 첫 열의 이름이 rig 의
+`retarget:` 에 넣는 값이고, 괄호 안 별칭도 같이 인식한다.
+
+| 손 | `retarget:` | `dexhand-description` 안의 URDF |
+|---|---|---|
+| 사람 기준 손 (리타게팅 입력) | `human` (`base_hand`) | `base_hand/urdf/{side}.urdf` |
+| ORCA Hand | `orca` (`orca_hand`) | `orca_hand/urdf/{side}.urdf` |
+| Allegro Hand | `allegro` (`allegro_hand`) | `allegro_hand/allegro_hand_{side}.urdf` |
+| Tesollo DG-5F | `tesollo` (`tesollo_dg5f`) | `tesollo_dg5f/dg5f_{side}.urdf` |
+| ROBOTIS HX5-D20 | `robotis` (`robotis_hx5_d20`) | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` |
+
+그 밖의 손은 생성 시점에 에러가 나고, 표에 있는 이름을 함께 알려준다. 새 손을 넣으려면
+retarget_net 의 `tools/onboard_urdf.py` 로 표를 만든다 — URDF 가 센서 프레임 계약
+(`{side}_sensor_dorsum` + 손가락마다 `_proximal`/`_distal`)을 지켜야 한다. 학습에 없던
+손은 몇백 스텝 미세조정 후 그래프를 재수출해야 성능이 난다.
+
 ## 설치
 
 공개 소스(source-available) 라이선스로 배포하며, PyPI 에는 올리지 않고 소스에서

@@ -51,6 +51,25 @@ downstream code never re-maps axes.
 - wrist yaw alignment (head-relative snapshot)
 - per-user arm reach scaling, persisted into the rig config
 
+### Supported hands
+
+One ONNX graph covers every hand below, both sides. The name in the first column is
+what a rig's `retarget:` field takes; the alias in parentheses also resolves.
+
+| Hand | `retarget:` | URDF in `dexhand-description` |
+|---|---|---|
+| Human reference hand (retargeting input) | `human` (`base_hand`) | `base_hand/urdf/{side}.urdf` |
+| ORCA Hand | `orca` (`orca_hand`) | `orca_hand/urdf/{side}.urdf` |
+| Allegro Hand | `allegro` (`allegro_hand`) | `allegro_hand/allegro_hand_{side}.urdf` |
+| Tesollo DG-5F | `tesollo` (`tesollo_dg5f`) | `tesollo_dg5f/dg5f_{side}.urdf` |
+| ROBOTIS HX5-D20 | `robotis` (`robotis_hx5_d20`) | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` |
+
+Any other hand raises on construction, listing the names the table does hold. To add
+one, generate its tables with retarget_net's `tools/onboard_urdf.py` — the URDF must
+carry the sensor-frame contract (`{side}_sensor_dorsum` plus `_proximal`/`_distal` per
+finger). A hand the model was not trained on needs a few hundred fine-tuning steps and
+a graph re-export before it performs.
+
 ## Installation
 
 Publicly available under a source-available license (not published on PyPI — install from source).

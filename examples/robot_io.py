@@ -78,8 +78,8 @@ class OrcaHandSender:
             self._map[wrist_joint] = "wrist"
 
     def connect(self) -> str:
-        from orca_core import OrcaHand
-        self.hand = OrcaHand(model_name=f"orcahand_{self.side}",
+        from orca_core import OrcaHandTouch
+        self.hand = OrcaHandTouch(model_name=f"orcahand_touch_{self.side}",
                              model_version=self.model_version)
         ok, msg = self.hand.connect()
         if not ok:
