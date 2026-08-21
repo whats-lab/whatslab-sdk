@@ -132,9 +132,13 @@ from whatslab.data import LeRobotRecorder
 
 | 메서드 | 설명 |
 |---|---|
-| `add_frame(state, action, images, replay, task)` | 한 프레임 누적. |
-| `save_episode()` | 현재 에피소드를 v2.1 parquet 로 저장. |
-| `finalize()` | 데이터셋 메타 마감. |
+| `add_frame(state, action, images, replay, task)` | 한 프레임 누적. 이미지는 누적하지 않고 **에피소드 mp4 에 즉시 append** 한다(RAM 상수). 벡터만 버퍼에 쌓인다. 에피소드 인덱스가 `chunks_size` 를 넘으면 여기서 `NotImplementedError`. |
+| `save_episode()` | mp4 를 닫고 현재 에피소드를 v2.1 parquet + 통계로 저장. 프레임이 없으면 `discard_episode()` 와 같다. |
+| `discard_episode()` | 현재 에피소드를 버린다 — mp4 를 닫고 그 에피소드의 mp4·parquet 파일을 지우고 인덱스를 재사용한다. 재촬영·중단 처리용. |
+| `finalize()` | 데이터셋 메타 마감. 열린 mp4 가 있으면 닫는다. |
+
+이미지 통계는 프레임을 모아두지 않고 누적 합/제곱합/최소/최대로 온라인 계산한다
+(`lerobot_schema.ImageStats`) — 배치 계산(`_reduce_image_stats`)과 같은 값을 낸다.
 
 ## whatslab.viz — viser 웹 3D 시각화 (`whatslab-sdk[viz]`)
 
