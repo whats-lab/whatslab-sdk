@@ -3,6 +3,23 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
+## [Unreleased]
+
+### 추가
+
+- **`LeRobotRecorder.discard_episode()`** — 진행 중이던 에피소드를 버린다(mp4 를 닫고
+  그 에피소드의 mp4·parquet 을 지우고 인덱스를 재사용). 재촬영·중단에서 반쪽
+  에피소드가 데이터셋에 조용히 섞이는 경로를 막는다.
+
+### 변경
+
+- **`LeRobotRecorder` 가 이미지를 버퍼링하지 않고 에피소드 mp4 로 즉시 스트리밍한다.**
+  전에는 `save_episode()` 까지 원시 프레임을 RAM 에 들고 있어 640x480 3대 30Hz 에서
+  초당 26MB 가 쌓였고(1분 에피소드 1.6GB), 종료 시 `mimwrite` 3개가 동기로 돌아 수 초
+  멈췄다. 이미지 통계는 누적 합/제곱합으로 온라인 계산한다(`lerobot_schema.ImageStats`,
+  배치 계산과 동일한 값). 단일 chunk 초과 검사는 `save_episode` 에서
+  **`add_frame`** 으로 옮겨졌다 — 스트리밍이라 mp4 를 쓰기 전에 걸러야 한다.
+
 ## [0.3.0] — 2026-08-20
 
 ### 호환 없는 변경 — 저장소에서 빠진 것
