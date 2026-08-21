@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -28,6 +29,19 @@ def get_server(port: int = 8080):
     return srv
 
 
+def _rebased_urdf(urdf: str, root: str) -> Optional[str]:
+    with open(urdf, "r") as f:
+        text = f.read()
+    root = root.rstrip("/")
+    names = {n for n in re.findall(r'package://([^/"\']+)/', text)
+             if not os.path.isdir(os.path.join(root, n))}
+    if not names:
+        return None
+    for name in names:
+        text = text.replace("package://%s/" % name, root + "/")
+    return text
+
+
 def _wxyz(R: np.ndarray) -> Tuple[float, float, float, float]:
     q = pin.Quaternion(np.asarray(R, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
@@ -45,15 +59,23 @@ class URDFScene:
         self.handles: List = []
         self.gmodel = None
         pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
-        try:
-            for gtype in (pin.GeometryType.COLLISION, pin.GeometryType.VISUAL):
-                gm = pin.buildGeomFromUrdf(self.model, urdf, gtype,
-                                           package_dirs=pkg_dirs)
-                if len(gm.geometryObjects) > 0:
-                    self.gmodel = gm
-                    break
-            if self.gmodel is None:
-                raise RuntimeError("URDF 에 지오메트리 없음")
+        urdf_text = _rebased_urdf(urdf, mesh_dir)
+        for gtype in (pin.GeometryType.COLLISION, pin.GeometryType.VISUAL):
+            try:
+                if urdf_text is None:
+                    gm = pin.buildGeomFromUrdf(self.model, urdf, gtype,
+                                               package_dirs=pkg_dirs)
+                else:
+                    gm = pin.buildGeomFromUrdfString(self.model, urdf_text,
+                                                     gtype,
+                                                     package_dirs=pkg_dirs)
+            except Exception as e:
+                _log.info("%s 지오메트리 건너뜀: %s", gtype, e)
+                continue
+            if len(gm.geometryObjects) > 0:
+                self.gmodel = gm
+                break
+        if self.gmodel is not None:
             self.gdata = pin.GeometryData(self.gmodel)
             for g in self.gmodel.geometryObjects:
                 path = str(g.meshPath)
@@ -61,14 +83,17 @@ class URDFScene:
                         or not os.path.exists(path):
                     self.handles.append(None)
                     continue
-                mesh = trimesh.load(path, force="mesh")
-                mesh.apply_scale(np.asarray(g.meshScale))
-                self.handles.append(
-                    server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
-        except Exception as e:
-            _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", e)
+                try:
+                    mesh = trimesh.load(path, force="mesh")
+                    mesh.apply_scale(np.asarray(g.meshScale))
+                    self.handles.append(server.scene.add_mesh_trimesh(
+                        f"{root_path}/{g.name}", mesh))
+                except Exception as e:
+                    _log.info("메쉬 건너뜀 %s: %s", path, e)
+                    self.handles.append(None)
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:
+            _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", urdf)
             ball = trimesh.creation.icosphere(radius=0.008)
             ball.visual.face_colors = [250, 200, 90, 255]
             self.joint_handles = [
