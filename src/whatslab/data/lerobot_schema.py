@@ -90,3 +90,44 @@ def _reduce_image_stats(frames: np.ndarray) -> dict:
         "std": nest(std),
         "count": [n],
     }
+
+
+class ImageStats:
+    def __init__(self) -> None:
+        self.frames = 0
+        self.pixels = 0
+        self._sum: np.ndarray | None = None
+        self._sumsq: np.ndarray | None = None
+        self._min: np.ndarray | None = None
+        self._max: np.ndarray | None = None
+
+    def update(self, frame: np.ndarray) -> None:
+        x = np.asarray(frame, dtype=np.float64) / 255.0
+        flat = x.reshape(-1, x.shape[-1])
+        s = flat.sum(axis=0)
+        q = np.square(flat).sum(axis=0)
+        mn = flat.min(axis=0)
+        mx = flat.max(axis=0)
+        if self._sum is None:
+            self._sum, self._sumsq, self._min, self._max = s, q, mn, mx
+        else:
+            self._sum += s
+            self._sumsq += q
+            self._min = np.minimum(self._min, mn)
+            self._max = np.maximum(self._max, mx)
+        self.frames += 1
+        self.pixels += flat.shape[0]
+
+    def result(self) -> dict:
+        if self._sum is None:
+            raise ValueError("ImageStats.result() before any update()")
+        mean = self._sum / self.pixels
+        var = np.maximum(self._sumsq / self.pixels - np.square(mean), 0.0)
+        nest = lambda v: [[[float(x)]] for x in v]
+        return {
+            "min": nest(self._min),
+            "max": nest(self._max),
+            "mean": nest(mean),
+            "std": nest(np.sqrt(var)),
+            "count": [self.frames],
+        }

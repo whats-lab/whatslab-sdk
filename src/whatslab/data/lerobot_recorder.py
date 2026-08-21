@@ -30,14 +30,49 @@ class LeRobotRecorder:
         self._global = 0
         self._tasks: dict[str, int] = {}
         self._ep_lines: list[dict] = []
+        self._ep_stats_lines: list[dict] = []
         self._buf: list[dict] = []
+        self._writers: dict[str, object] = {}
+        self._img_stats: dict[str, S.ImageStats] = {}
+
+    def _video_path(self, key: str, episode: int) -> Path:
+        return self.root / f"videos/chunk-000/{key}/episode_{episode:06d}.mp4"
+
+    def _data_path(self, episode: int) -> Path:
+        return self.root / f"data/chunk-000/episode_{episode:06d}.parquet"
+
+    def _open_writers(self) -> None:
+        for k in self._img_keys:
+            self._writers[k] = imageio.get_writer(
+                self._video_path(k, self._ep),
+                fps=self.fps,
+                codec="libx264",
+                pixelformat="yuv420p",
+                macro_block_size=1,
+            )
+            self._img_stats[k] = S.ImageStats()
+
+    def _close_writers(self) -> None:
+        for w in self._writers.values():
+            w.close()
+        self._writers = {}
 
     def add_frame(self, state, action, images: dict, replay: dict, task: str) -> None:
+        if self._ep >= S.CHUNKS_SIZE:
+            raise NotImplementedError(
+                f"mini-writer supports a single chunk (<{S.CHUNKS_SIZE} episodes); "
+                f"episode {self._ep} exceeds chunks_size"
+            )
+        if self._img_keys and not self._writers:
+            self._open_writers()
+        for k in self._img_keys:
+            frame = np.asarray(images[k.split(".")[-1]], dtype=np.uint8)
+            self._writers[k].append_data(frame)
+            self._img_stats[k].update(frame)
         self._buf.append(
             {
                 "observation.state": np.asarray(state, dtype=np.float32),
                 "action": np.asarray(action, dtype=np.float32),
-                "images": {k: np.asarray(v, dtype=np.uint8) for k, v in images.items()},
                 "replay": {k: np.asarray(v, dtype=np.float32) for k, v in replay.items()},
                 "task": task,
             }
@@ -53,14 +88,19 @@ class LeRobotRecorder:
             return frame["replay"][feat.split(".", 1)[1]]
         return frame[feat]
 
+    def discard_episode(self) -> None:
+        self._close_writers()
+        for k in self._img_keys:
+            self._video_path(k, self._ep).unlink(missing_ok=True)
+        self._data_path(self._ep).unlink(missing_ok=True)
+        self._img_stats = {}
+        self._buf = []
+
     def save_episode(self) -> None:
         if not self._buf:
+            self.discard_episode()
             return
-        if self._ep >= S.CHUNKS_SIZE:
-            raise NotImplementedError(
-                f"mini-writer supports a single chunk (<{S.CHUNKS_SIZE} episodes); "
-                f"episode {self._ep} exceeds chunks_size"
-            )
+        self._close_writers()
         n = len(self._buf)
 
         stacks: dict[str, np.ndarray] = {}
@@ -82,22 +122,7 @@ class LeRobotRecorder:
         arrays["episode_index"] = pa.array(episode_index.tolist(), type=pa.int64())
         arrays["index"] = pa.array(index.tolist(), type=pa.int64())
         arrays["task_index"] = pa.array(task_index.tolist(), type=pa.int64())
-        table = pa.table(arrays)
-        pq.write_table(table, self.root / f"data/chunk-000/episode_{self._ep:06d}.parquet")
-
-        image_stacks: dict[str, np.ndarray] = {}
-        for k in self._img_keys:
-            cam = k.split(".")[-1]
-            frames = np.stack([f["images"][cam] for f in self._buf])
-            image_stacks[k] = frames
-            imageio.mimwrite(
-                self.root / f"videos/chunk-000/{k}/episode_{self._ep:06d}.mp4",
-                list(frames),
-                fps=self.fps,
-                codec="libx264",
-                pixelformat="yuv420p",
-                macro_block_size=1,
-            )
+        pq.write_table(pa.table(arrays), self._data_path(self._ep))
 
         tasks_in_ep = sorted({f["task"] for f in self._buf})
         self._ep_lines.append({"episode_index": self._ep, "tasks": tasks_in_ep, "length": n})
@@ -105,21 +130,22 @@ class LeRobotRecorder:
         stats = {}
         for feat in self._vec_keys:
             stats[feat] = S._reduce_stats(stacks[feat].astype(np.float64))
-        for k, frames in image_stacks.items():
-            stats[k] = S._reduce_image_stats(frames)
+        for k in self._img_keys:
+            stats[k] = self._img_stats[k].result()
         stats["timestamp"] = S._reduce_stats(timestamp.astype(np.float64))
         stats["frame_index"] = S._reduce_stats(frame_index.astype(np.float64))
         stats["episode_index"] = S._reduce_stats(episode_index.astype(np.float64))
         stats["index"] = S._reduce_stats(index.astype(np.float64))
         stats["task_index"] = S._reduce_stats(task_index.astype(np.float64))
-        self._ep_stats_lines = getattr(self, "_ep_stats_lines", [])
         self._ep_stats_lines.append({"episode_index": self._ep, "stats": stats})
 
         self._global += n
         self._ep += 1
+        self._img_stats = {}
         self._buf = []
 
     def finalize(self) -> None:
+        self._close_writers()
         info = S.build_info(
             self.features, self.fps, self.robot_type, self._ep, self._global, len(self._tasks)
         )
@@ -134,5 +160,5 @@ class LeRobotRecorder:
                 fp.write(json.dumps({"task_index": i, "task": t}) + "\n")
 
         with open(self.root / "meta/episodes_stats.jsonl", "w") as fp:
-            for line in getattr(self, "_ep_stats_lines", []):
+            for line in self._ep_stats_lines:
                 fp.write(json.dumps(line) + "\n")
