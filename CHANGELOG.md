@@ -3,7 +3,25 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
-## [Unreleased]
+## [0.4.0] — 2026-08-21
+
+### 추가 — 손 리타게팅 데이터 파이프라인 (`tools/`)
+
+사람 손 데이터셋에서 **사람 손 URDF 관절각**을 만들고, URDF 의 구조·관절범위를
+데이터에 맞추는 도구 묶음. 리타게팅 엔진(`solvers/hand/uni_retargeter.py`) 의 입력을
+데이터셋에서 대량으로 뽑기 위한 것이다.
+
+- `retarget_hand_dataset.py` — 키포인트 데이터셋 → URDF q. 블록 병렬
+  (`--workers`/`--block`), 본길이 가중(`--w-bone`), 스켈레톤 지터 자기검증
+  (`--selftest`/`--skeleton-jitter`).
+- `nina_to_urdf_q.py` — 글러브 trial + 기준자세 → URDF q 시퀀스.
+- `bham_clean.py` / `bham_joint_stats.py` / `bham_urdf_plan.py` — BHaM 시퀀스 정리
+  (프레임 유효성 플래그), 관절 통계, 관절범위·축 제안(`--sd` 로 표준편차 배수).
+- `urdf_fit_bham.py` / `fit_urdf_structure.py` — 키포인트에 맞춰 URDF 의 origin rpy 와
+  axis 를 피팅한다.
+- `urdf_apply_limits.py` — 제안 npz 를 URDF 에 적용. **기본 dry-run**, `--apply` 로 기록.
+- `render_hand_q.py` / `render_bham_osim.py` / `render_osim_seq.py` /
+  `render_osim_decor.py` — q 시퀀스·OpenSim 모델·decor 확인용 렌더.
 
 ### 추가
 
@@ -19,6 +37,19 @@
   멈췄다. 이미지 통계는 누적 합/제곱합으로 온라인 계산한다(`lerobot_schema.ImageStats`,
   배치 계산과 동일한 값). 단일 chunk 초과 검사는 `save_episode` 에서
   **`add_frame`** 으로 옮겨졌다 — 스트리밍이라 mp4 를 쓰기 전에 걸러야 한다.
+- **viz 가 URDF 의 `package://` 경로를 models root 로 재기준한다.** 해당 이름의
+  디렉토리가 root 에 없을 때만 치환하므로, 패키지를 설치하지 않은 URDF 도 메쉬를
+  찾는다. 지오메트리·메쉬 하나가 실패해도 그것만 건너뛰고(로그 level info) 나머지를
+  렌더하며, 전부 실패했을 때만 스켈레톤 모드로 강등한다.
+- **실물 orca 연결을 `OrcaHandTouch` 로 바꿨다**(`examples/robot_io.py`) — 촉각형
+  하드웨어(`orcahand_touch_*`)를 쓴다.
+
+### 문서
+
+- **지원하는 손 표를 추가했다**(`README.md`·`README.ko.md`·`docs/API.md`).
+  통합 ONNX 표에 실제로 들어 있는 5종(human/orca/allegro/tesollo/robotis)과 그
+  `retarget:` 값·별칭·`dexhand-description` 안의 URDF 경로를 명시한다. 값의 정본은
+  `uni_retargeter._ALIAS`·`_URDF_STEM` 이다.
 
 ## [0.3.0] — 2026-08-20
 

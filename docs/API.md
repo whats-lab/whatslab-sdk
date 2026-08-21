@@ -108,6 +108,20 @@ from whatslab.solvers.hand import HandRetargetController
 | `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK — 지금은 **viz 전용**이다(추론 경로에 FK 가 없다). `points(angles)` = 손가락별 키포인트 4개 + `palm`, `neutral_points()`, `q_from_named(이름→rad)`. `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
 | `UniRetargeter(hand_type, config_name, threads=1)` | 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
 
+지원하는 손 — `config_name` 에 넣는 값(괄호는 별칭)과 `dexhand-description` 안의 URDF:
+
+| 손 | `config_name` | URDF |
+|---|---|---|
+| 사람 기준 손 | `human` (`base_hand`) | `base_hand/urdf/{side}.urdf` |
+| ORCA Hand | `orca` (`orca_hand`) | `orca_hand/urdf/{side}.urdf` |
+| Allegro Hand | `allegro` (`allegro_hand`) | `allegro_hand/allegro_hand_{side}.urdf` |
+| Tesollo DG-5F | `tesollo` (`tesollo_dg5f`) | `tesollo_dg5f/dg5f_{side}.urdf` |
+| ROBOTIS HX5-D20 | `robotis` (`robotis_hx5_d20`) | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` |
+
+별칭은 `uni_retargeter._ALIAS`, URDF 경로 규칙은 `_URDF_STEM` 이 정본이다.
+`urdf_path` 는 `<root>/<sub>/urdf/<stem>.urdf` → `<root>/<sub>/<stem>.urdf` 순으로 찾고
+없으면 `None` 을 낸다(pinocchio 없이 경로만 계산).
+
 새 로봇 손 온보딩: retarget_net 의 `tools/onboard_urdf.py` 가 URDF 하나에서 표를
 뽑는다(센서 프레임 계약 필요). 학습에 없던 손은 표만으로는 성능이 안 나온다 —
 몇백 스텝 미세조정 후 그래프를 재수출한다.
