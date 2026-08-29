@@ -30,7 +30,7 @@ class QuestControllerReceiver(QuestReceiverBase):
         side, v = self._split(args)
         with self._lock:
             s = self._state[side]
-            s["pos"] = np.array(v[:3], dtype=float)
+            s["pos"] = np.array((v[:3]), dtype=float)
             s["valid"] = True
             s["timestamp"] = time.monotonic()
 

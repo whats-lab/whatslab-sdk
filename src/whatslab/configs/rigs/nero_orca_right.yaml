@@ -20,7 +20,8 @@ attach:
   - 0.0
   - 0.0
   - 3.1416
-lock_joints: ["joint7"]
+lock_joints:
+- joint7
 solver:
   backend: diff
   w_pos: 20.0
@@ -29,19 +30,10 @@ solver:
   reach_max: 0.9204
   max_iter: 50
   iters_per_call: 20
-  sugihara_bias: 1.0e-4
-  # 목표 자세 rate-limit. 목표의 **변화량**이 아니라 현재 EE 자세에서 목표까지의
-  # 각도를 자른다 → 크게 두면(≥1.0 은 사실상 무제한) 도달 불가 방위를 끝까지
-  # 쫓다 위치를 내준다. walk 40시드 대응차(3.15→0.25): pos -16.5±5.0mm.
+  sugihara_bias: 0.0001
   dtheta_max: 0.25
-  # 널스페이스 투영자의 SVD rank 절단 임계. 감쇠 유사역으로 N=I-J⁺J 를 만들면
-  # 멱등이 아니다(태스크 감쇠 공유 시 ‖N²-N‖ 최대 0.38, 1e-6 분리해도 0.17) →
-  # SVD 로 정확한 직교 투영자를 만든다(‖N²-N‖ ~1e-16, 주태스크 누설 ~0).
-  proj_rcond: 1.0e-6
-  # 투영자를 고치면 한계회피가 제 세기로 들어오므로 다시 튜닝했다.
-  # walk 40시드 대응차(0.15→0.30, 투영자 분리 상태): pos -2.5±1.0mm.
-  # 단, 그 측정은 joint_weights 도입 전이다 — 재확인 대상.
-  k_limit: 0.30
+  proj_rcond: 1.0e-06
+  k_limit: 0.3
   joint_weights:
     joint1: 2.5
     joint2: 2.5
@@ -49,4 +41,4 @@ solver:
     joint4: 2.5
 calibration:
   enabled: true
-  input_reach: 0.8314
+  input_reach: 0.44
