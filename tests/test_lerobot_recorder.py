@@ -3,7 +3,9 @@ import json
 import numpy as np
 import pytest
 
-from whatslab.data.lerobot_recorder import LeRobotRecorder
+pytest.importorskip("pyarrow")
+
+from whatslab.data.lerobot_recorder import LeRobotRecorder  # noqa: E402
 
 FEATURES = {
     "observation.state": {"dtype": "float32", "shape": (7,), "names": None},
