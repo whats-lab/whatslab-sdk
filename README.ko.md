@@ -152,6 +152,8 @@ python tools/align_frames.py robot --robot robots/nero.yaml              # 로�
 
 ## 문서
 
+- [**실물 텔레옵 빠른 시작**](docs/QUICKSTART.md) — 새 PC 에서 클론부터 nero 팔 +
+  ORCA 손 텔레옵까지의 절차와, 자주 걸리는 것들
 - [**사용 가이드**](docs/GUIDE.md) — 새 로봇 올리기, 캘리브레이션, 팔 IK 튜닝과
   변경 판정법, 진단, 실물 전송
 - [**API 레퍼런스**](docs/API.md) — 서브패키지별 공개 심볼과 시그니처
