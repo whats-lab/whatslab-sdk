@@ -12,8 +12,8 @@ PY="${PY:-python}"
 ORCA_REF="${ORCA_REF:-v0.3.0}"
 ORCA_SRC="${ORCA_SRC:-$(cd "$(dirname "$0")/.." && pwd)/../orca_core}"
 
-echo "[1/3] whatslab-sdk[all,robot]"
-"$PY" -m pip install -e ".[all,robot]"
+echo "[1/3] whatslab-sdk[all,robot,dev]"
+"$PY" -m pip install -e ".[all,robot,dev]"
 
 # wheel 에는 models/ 가 안 들어간다(config.yaml·calibration.yaml 이 거기 있다).
 # 그래서 git 설치가 아니라 소스 클론 + editable 로 넣는다.
