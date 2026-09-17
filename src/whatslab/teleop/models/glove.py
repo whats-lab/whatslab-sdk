@@ -10,6 +10,7 @@ from whatslab.core.types import Pose
 from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
 from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 from whatslab.receiver.quest.controller import QuestControllerReceiver
+from whatslab.receiver.webxr.controller import WebXRControllerReceiver
 
 from ..base import TeleopModel
 
@@ -22,15 +23,24 @@ HAND_SOURCES = {
     "robot": GloveRobotHandReceiver,
 }
 
+ARM_SOURCES = {
+    "quest": QuestControllerReceiver,
+    "webxr": WebXRControllerReceiver,
+}
+
 
 class GloveModel(TeleopModel):
 
-    def __init__(self, robot, hand_source: str = "angles"):
+    def __init__(self, robot, hand_source: str = "angles",
+                 arm_source: str = "quest", arm_kwargs: Optional[dict] = None):
         if hand_source not in HAND_SOURCES:
             raise ValueError(
                 f"hand_source 는 {list(HAND_SOURCES)} 중 하나 — 받은 값 {hand_source!r}")
+        if arm_source not in ARM_SOURCES:
+            raise ValueError(
+                f"arm_source 는 {list(ARM_SOURCES)} 중 하나 — 받은 값 {arm_source!r}")
         self.hand_source = HAND_SOURCES[hand_source]()
-        self.arm_source = QuestControllerReceiver()
+        self.arm_source = ARM_SOURCES[arm_source](**(arm_kwargs or {}))
         super().__init__(robot)
 
     def _get_raw_target(self) -> Dict[str, Optional[Pose]]:

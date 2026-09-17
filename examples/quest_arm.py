@@ -15,7 +15,9 @@ def _build_model(args, robot):
         arg = [robot if s == args.sides else None for s in ("left", "right")]
     if args.arm == "wrist":
         return QuestModel(arg)
-    return GloveModel(arg)
+    kwargs = ({"port": args.webxr_port, "tls": args.webxr_tls}
+              if args.arm_source == "webxr" else None)
+    return GloveModel(arg, arm_source=args.arm_source, arm_kwargs=kwargs)
 
 
 class _Recorder:
@@ -78,6 +80,12 @@ def main():
                          "태우고 프레임 예산을 넘긴다")
     ap.add_argument("--arm", default="controller", choices=["controller", "wrist"],
                     help="팔 소스: controller=Quest 컨트롤러(+글러브 손), wrist=Quest 핸드트래킹")
+    ap.add_argument("--arm-source", default="quest", choices=["quest", "webxr"],
+                    help="팔 목표 전송 경로 (quest=OSC/UDP, webxr=브라우저 WebXR)")
+    ap.add_argument("--webxr-port", type=int, default=8443, help="WebXR 서버 포트")
+    ap.add_argument("--webxr-no-tls", dest="webxr_tls", action="store_false",
+                    help="평문 http 로 연다 — 유선 adb reverse 전용. "
+                         "기본은 무선용 HTTPS(자체 서명)")
     ap.add_argument("--hand-config", default="orca_hand", help="손 리타게팅 config (hand 포함 rig)")
     ap.add_argument("--rate", type=float, default=60.0, help="폴링/출력 주기 (Hz)")
     ap.add_argument("--viz", action="store_true", help="viser: 팔+손 메쉬 + 목표(/target)·EE(/ee) 프레임")
@@ -88,6 +96,13 @@ def main():
                     help="단계별 계측 출력 — 입력/캘리브/클램프/IK오차/불연속을 한 줄로")
     ap.add_argument("--robot", action="store_true",
                     help="실물 전송 패널을 viser 에 띄운다 (--viz 필요, 기본 미연결)")
+    ap.add_argument("--no-tactile", action="store_true",
+                    help="OrcaHandTouch 대신 OrcaHand 로 붙는다 — 촉각 센서 포트를 아예 "
+                         "열지 않으므로 sensors.port 가 모터 포트를 가리켜도 안전하다")
+    ap.add_argument("--hand-model", default=None,
+                    help="orca_core 모델 디렉터리 이름 (기본: orca_core 기본값)")
+    ap.add_argument("--hand-model-version", default=None,
+                    help="orca_core 모델 버전 (기본: orca_core 기본값)")
     ap.add_argument("--can", default="can0", help="nero CAN 채널")
     ap.add_argument("--speed", type=int, default=20, help="nero 속도 퍼센트 (텔레옵은 낮게)")
     ap.add_argument("--no-calib", action="store_true",
@@ -112,6 +127,19 @@ def main():
           f" arm_joints={robot.arm_joint_names}", flush=True)
     print("[setup] calib=%s" % ("off(raw)" if args.no_calib else "on(W+scale+p0)"),
           flush=True)
+    if args.arm_source == "webxr":
+        model.arm_source.start()
+        print(f"[webxr] 헤드셋 브라우저에서 열어라: {model.arm_source.url}", flush=True)
+        if args.webxr_tls:
+            from whatslab.receiver.webxr import local_ips
+            others = [ip for ip in local_ips() if ip not in model.arm_source.url]
+            if others:
+                print(f"[webxr] 이 주소로 안 붙으면 다른 IP 후보: {others}", flush=True)
+            print("[webxr] 자체 서명 인증서 — 최초 1회 경고를 수락한 뒤 'VR 시작'",
+                  flush=True)
+        else:
+            print(f"[webxr] 평문 모드 — adb reverse tcp:{args.webxr_port} "
+                  f"tcp:{args.webxr_port} 후 localhost 로 접속", flush=True)
 
     if not args.no_safety:
         from robot_io import attach_safety
