@@ -41,4 +41,4 @@ solver:
     joint4: 2.5
 calibration:
   enabled: true
-  input_reach: 0.44
+  input_reach: 0.6685
