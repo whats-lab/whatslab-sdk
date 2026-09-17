@@ -6,4 +6,4 @@ retarget: orca_hand                           # UniRetargeter 의 로봇 이름 
 axis_align: {xyz: [0.0, -0.01, 0.07], rpy: [1.5708, 0.0000, -1.5708]}   # 튜너 1단계 확정
 ee_align: {rpy: [0.0000, -1.5708, 1.5708]}
 
-base_frame: R-Carpals_8d1f1041               # 손목 — target_ee(IK 추종) fallback 프레임
+base_frame: R-Carpals_8d1f1041               # 손목 — target_ee(IK 추종) 
