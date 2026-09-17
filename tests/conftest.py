@@ -1,6 +1,7 @@
 import pytest
 
 from whatslab.receiver import osc_transport
+from whatslab.receiver.webxr import ws_server
 
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
@@ -28,6 +29,7 @@ def require_sensor_urdf(*configs, sides=("left", "right")):
 def _reset_osc_registry():
     osc_transport._registry.clear()
     yield
+    ws_server.clear_registry()
     for srv in list(osc_transport._registry.values()):
         try:
             while srv.is_running:
