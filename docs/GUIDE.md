@@ -2,6 +2,7 @@
 
 새 로봇을 올리고, 캘리브레이션하고, 팔 IK 를 튜닝하고, 문제를 진단하는 절차.
 공개 심볼 목록은 [API.md](API.md), 개념 요약은 [README](../README.ko.md).
+설치부터 실물 텔레옵까지의 절차는 [QUICKSTART.md](QUICKSTART.md) 에 있다.
 
 예제는 `$PY` 를 whatslab 이 설치된 파이썬으로 읽는다.
 

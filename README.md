@@ -153,6 +153,8 @@ Run the test suite with `pip install -e '.[all,dev]' && pytest`.
 
 ## Documentation
 
+- [**Real-robot quickstart**](docs/QUICKSTART.md) (Korean) — clone to running
+  teleop on a nero arm + ORCA hand, and what usually goes wrong.
 - [**Guide**](docs/GUIDE.md) — bringing up a new robot, calibration workflow, arm-IK
   tuning and how to judge a change, diagnostics, sending to real hardware.
 - [**API reference**](docs/API.md) — public symbols per subpackage, with signatures.
