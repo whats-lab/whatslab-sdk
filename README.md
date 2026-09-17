@@ -75,10 +75,25 @@ a graph re-export before it performs.
 Publicly available under a source-available license (not published on PyPI — install from source).
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm + viz
+pip install '.[all]'      # receiver + hand + arm + viz + data
 pip install '.[hand]'     # partial: hand / arm / receiver / viz / data
 pip install -e '.[all]'   # editable, for development
 ```
+
+Teleoperating real hardware (nero arm + ORCA hand) needs extra drivers.
+`scripts/install_robot_deps.sh` handles them in one step.
+
+```bash
+PY=$(which python) ./scripts/install_robot_deps.sh
+python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
+```
+
+`pyAgxArm` (CAN) ships in the `robot` extra, but `orca_core` cannot: every tag
+declares `numpy>=2.2.6` while this repo pins `numpy<2`, so resolution fails (the
+code itself runs fine on numpy 1.26). Its wheel also omits the hand configs
+(`models/<version>/<model>/config.yaml`), so the script clones the source and
+installs it editable. The hand model defaults to whatever `orca_core` picks;
+pass `--hand-model` for a different one.
 
 Robot/rig configs are bundled. URDF and meshes are provided by the separate
 single-source package [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf),
@@ -109,7 +124,12 @@ while True:
 ```
 
 Presets: `QuestModel` (hand-tracking), `GloveModel` (controller + glove),
-`HandModel` (hand only). For a custom hardware combination, subclass `TeleopModel`
+`HandModel` (hand only). `GloveModel` takes its arm target from either transport —
+`GloveModel(rig, arm_source="quest")` (OSC/UDP, default) or `arm_source="webxr"`
+(browser WebXR over WebSocket, no APK to sideload). The WebXR path defaults to
+wireless: it serves HTTPS with a self-signed cert on this machine's LAN IP, since
+WebXR needs a secure context. Pass `tls=False` for the wired `adb reverse` route.
+See `docs/API.md`. Both transports can be installed side by side. For a custom hardware combination, subclass `TeleopModel`
 and implement the single abstract hook `_get_raw_target()` — it decides which source
 feeds the arm EE target. Everything else (calibration, IK, retargeting, safety) is
 already wired.

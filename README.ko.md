@@ -74,10 +74,25 @@ retarget_net 의 `tools/onboard_urdf.py` 로 표를 만든다 — URDF 가 센�
 설치합니다.
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm + viz
+pip install '.[all]'      # receiver + hand + arm + viz + data
 pip install '.[hand]'     # 부분 설치: hand / arm / receiver / viz / data
 pip install -e '.[all]'   # 개발용 editable
 ```
+
+실물 로봇(nero 팔 + ORCA 손)으로 텔레옵하려면 드라이버가 더 필요합니다.
+`scripts/install_robot_deps.sh` 가 한 번에 처리합니다.
+
+```bash
+PY=$(which python) ./scripts/install_robot_deps.sh
+python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
+```
+
+`pyAgxArm`(CAN) 은 `robot` extra 로 들어가지만 `orca_core` 는 extra 에 넣을 수
+없습니다 — 전 태그가 `numpy>=2.2.6` 을 선언하는데 이 저장소는 `numpy<2` 핀이라
+의존성 해석이 실패합니다(실제 코드는 numpy 1.26 에서 동작). 또 `orca_core` 의
+wheel 에는 손 설정(`models/<버전>/<모델>/config.yaml`)이 들어가지 않으므로,
+스크립트는 소스를 클론해 editable 로 설치합니다. 손 모델은 `orca_core` 기본값을
+쓰고, 다른 손을 쓰면 `--hand-model` 로 지정합니다.
 
 robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 별도의 단일 소스 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) 이 제공하며,
@@ -109,6 +124,11 @@ while True:
 ```
 
 프리셋: `QuestModel`(핸드트래킹) · `GloveModel`(컨트롤러 + 글러브) · `HandModel`(손 단독).
+`GloveModel` 의 팔 목표는 전송 경로를 고를 수 있다 — `arm_source="quest"`(OSC/UDP, 기본)
+또는 `arm_source="webxr"`(브라우저 WebXR + WebSocket, APK 사이드로딩 불필요).
+WebXR 경로는 **무선이 기본**이다 — WebXR 이 보안 컨텍스트를 요구하므로 이 머신의
+LAN IP 에 자체 서명 HTTPS 를 연다. 유선 `adb reverse` 로 쓰려면 `tls=False`.
+둘은 **병행 설치**되며 자세한 것은 `docs/API.md` 의 「WebXR 경로」에 있다.
 직접 만든 하드웨어 조합은 `TeleopModel` 을 상속해 추상 훅 `_get_raw_target()`
 **하나만** 구현하면 됩니다 — 어느 소스를 팔 EE 목표로 쓸지만 정하면 캘리브·IK·
 리타게팅·안전필터 배선은 이미 되어 있습니다.

@@ -51,13 +51,65 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 
 | 클래스 | `get(side)` → | 설명 |
 |---|---|---|
-| `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세. `connected(side)`. |
+| `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세(OSC/UDP, 포트 9000). `connected(side)`. |
+| `WebXRControllerReceiver` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러 6D(WebSocket, 포트 8443). OSC 경로와 **병행** 가능. HMD 는 회전뿐 아니라 **위치도** 온다. `connected(side)`, `url`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
 | `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **사람 손** URDF 관절각(`/{side}/joint_angles/get`) + 손목. 손 리타게팅의 입력. |
 | `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만 — 손 리타게팅은 관절각을 쓴다. |
 | `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
+
+### WebXR 경로
+
+```python
+from whatslab.receiver.webxr import WebXRControllerReceiver
+rx = WebXRControllerReceiver()           # 기본이 무선 = 자체 서명 HTTPS, 포트 8443
+rx.start()                               # 정적 페이지 + WebSocket 을 같은 포트에서 연다
+print(rx.url)                            # https://192.168.1.88:8443/
+```
+
+헤드셋 브라우저로 `rx.url` 을 열고 **VR 시작**을 누르면 매 XR 프레임마다
+`gripSpace` 포즈(+ `getViewerPose`)가 JSON 으로 올라온다.
+
+- **패스스루 + 컨트롤러 마커.** 세션은 `immersive-ar` 를 먼저 시도하고(Quest 패스스루,
+  `alpha-blend`) 안 되면 `immersive-vr` 로 떨어진다. 컨트롤러 그립마다 초록 큐브와
+  RGB 축을 그리므로 **헤드셋 안에서 켜졌는지 눈으로 확인된다** — 큐브가 손을 따라오면
+  포즈가 나오고 있는 것이다. AR 일 때는 `clearColor` 의 알파를 0 으로 두어 실제 주변이
+  비치고, VR 일 때만 바닥 그리드를 그린다.
+
+- **보안 컨텍스트가 필요하다.** WebXR 은 HTTPS 이거나 `localhost` 에서만 뜬다.
+  - **무선(기본, `tls=True`)**: 자체 서명 인증서를 `~/.cache/whatslab/webxr/` 에 만들어
+    HTTPS + WSS 로 연다. URL 호스트는 기본 경로의 src IP(= 헤드셋이 붙을 LAN IP)다.
+    인증서 SAN 에 `localhost` 와 이 머신의 모든 전역 IPv4 가
+    들어간다(`openssl` 실행파일 필요, 유효기간 10년, 키 퍼미션 0600). IP 가 바뀌면
+    자동으로 재발급한다. **헤드셋에서 최초 1회 인증서 경고를 수락**해야 한다 —
+    페이지와 WebSocket 이 같은 오리진(같은 포트)이라 한 번 수락하면 WSS 도 통과한다.
+    직접 만든 인증서를 쓰려면 `certfile=`/`keyfile=` 을 넘긴다.
+  - **유선**: `tls=False` + `adb reverse tcp:8443 tcp:8443` — 헤드셋이 PC 서버를
+    `localhost` 로 본다(인증서 불필요). URL 도 이때만 `localhost` 가 된다.
+- **위치는 HMD 상대로 낸다.** `ArmCalibration.apply()` 가 위치를 그대로 쓰므로
+  (`T[:3,3] = scale * p` — `p0` 빼기도 `W` 곱하기도 없다) 리시버가 이미 상대 위치를
+  주어야 한다. 브라우저는 `local-floor` 절대좌표를 보내고, 변환은 리시버에서 한다.
+
+  | `pos_frame` | 계산 | 용도 |
+  |---|---|---|
+  | `hmd_yaw` (기본) | `Rz(−yaw_hmd)·(p_ctrl − p_hmd)` | 회전의 `_head_relative` 와 같은 규약 |
+  | `hmd` | `p_ctrl − p_hmd` | 머리 위치만 빼고 방 축은 유지 |
+  | `room` | 변환 없음 | 원시 `local-floor` — 진단용 |
+
+  HMD 신호가 없으면 자동으로 원시값으로 떨어진다. 실측 비교(머리 `[1,1.6,2]`,
+  컨트롤러 `[1.3,1.2,1.5]`): `room` 이면 `|p| = 2.319` 로 `reach_max 0.9204` 에
+  걸려 클램프되고, `hmd`/`hmd_yaw` 는 `0.707` 로 도달 가능하다.
+- 프레임은 **WebXR 프레임**(오른손계, +Y 위, −Z 앞)으로 오고 `WebXRReceiverBase._M`
+  이 정준으로 보낸다. 이 행렬은 `receiver/vive.py` 의 OpenVR 변환과 같다 —
+  두 API 의 축 관례가 같기 때문이다.
+- 전송은 WebSocket(TCP)이라 UDP 처럼 늦은 프레임을 버리지 않는다. 브라우저 쪽에서
+  `bufferedAmount` 가 밀리면 그 프레임을 **보내지 않고 버린다**(지연 누적 방지).
+- 의존성이 없다. WebSocket 핸드셰이크·프레임 디코딩은 표준 라이브러리로 구현했다
+  (`receiver/webxr/ws_server.py`) — 새 extra 가 필요 없다.
+- **핸드트래킹은 제공하지 않는다.** 손 리타게팅 입력은 사람 손 URDF 관절각이고
+  WebXR `XRHand` 는 키포인트라, 역산 경로가 없다(`spherical_fk.py` 와 함께 제거됨).
 
 ## whatslab.robot — 팔 기구학 모델 + config 로더
 
