@@ -55,7 +55,8 @@ include = ["whatslab*"]
 # configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
 # 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
 [tool.setuptools.package-data]
-whatslab = ["configs/**", "solvers/hand/assets/*.onnx", "solvers/hand/assets/*.npz"]
+whatslab = ["configs/**", "solvers/hand/assets/*.onnx", "solvers/hand/assets/*.npz",
+            "receiver/webxr/static/*.html"]
 
 [tool.setuptools.exclude-package-data]
 whatslab = ["**/__pycache__/**", "**/*.py[cod]"]

@@ -1,0 +1,266 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>whatslab WebXR</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; font: 16px/1.5 system-ui, sans-serif;
+         background: #111; color: #eee; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  button { font-size: 20px; padding: 14px 28px; border-radius: 8px;
+           border: 1px solid #555; background: #1e6; color: #041; cursor: pointer; }
+  button[disabled] { background: #333; color: #777; cursor: default; }
+  #log { margin-top: 20px; font-family: ui-monospace, monospace; font-size: 13px;
+         white-space: pre-wrap; color: #9c9; }
+  .bad { color: #f77; }
+</style>
+<h1>whatslab WebXR 컨트롤러 송신</h1>
+<button id="go">VR 시작</button>
+<div id="log">대기 중</div>
+<script>
+const logEl = document.getElementById("log");
+const goEl = document.getElementById("go");
+let ws = null, session = null, refSpace = null, viewerSpace = null;
+let gl = null, glLayer = null, prog = null, uMVP = null, aPos = null, aColor = null;
+let cubeBuf = null, axisBuf = null, gridBuf = null, gridCount = 0;
+let sent = 0, dropped = 0, lastReport = 0, passthrough = false;
+let stalledSince = 0, reconnects = 0, reconnectAt = 0;
+const STALL_MS = 1000, BUFFER_MAX = 8192, RETRY_MS = 500;
+
+function log(text, bad) { logEl.textContent = text; logEl.className = bad ? "bad" : ""; }
+
+function dropSocket() {
+  if (!ws) return;
+  ws.onclose = ws.onerror = ws.onopen = null;
+  try { ws.close(); } catch (e) { /* 이미 닫혔으면 무시 */ }
+  ws = null;
+  stalledSince = 0;
+}
+
+function connect() {
+  dropSocket();
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const sock = new WebSocket(proto + "//" + location.host + "/ws");
+  sock.onopen = () => { stalledSince = 0; };
+  sock.onclose = () => { if (ws === sock) { ws = null; stalledSince = 0; } };
+  sock.onerror = () => { if (ws === sock) { ws = null; stalledSince = 0; } };
+  ws = sock;
+}
+
+function socketReady(t) {
+  if (!ws) {
+    if (session && t > reconnectAt) {
+      reconnectAt = t + RETRY_MS;
+      reconnects++;
+      connect();
+    }
+    return false;
+  }
+  if (ws.readyState === WebSocket.CONNECTING) return false;
+  if (ws.readyState !== WebSocket.OPEN) { dropSocket(); return false; }
+  if (ws.bufferedAmount > BUFFER_MAX) {
+    if (!stalledSince) stalledSince = t;
+    else if (t - stalledSince > STALL_MS) { dropSocket(); reconnects++; }
+    dropped++;
+    return false;
+  }
+  stalledSince = 0;
+  return true;
+}
+
+/* ── 행렬 (열 우선, WebXR 관례) ─────────────────────────────────────── */
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = s;
+    }
+  return o;
+}
+
+/* ── 지오메트리 ──────────────────────────────────────────────────────── */
+function cubeData(h, col) {
+  const v = [[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];
+  const f = [[0,1,2,0,2,3],[5,4,7,5,7,6],[4,0,3,4,3,7],[1,5,6,1,6,2],[3,2,6,3,6,7],[4,5,1,4,1,0]];
+  const shade = [1.0, 0.55, 0.75, 0.75, 0.9, 0.45];
+  const out = [];
+  f.forEach((face, i) => face.forEach(idx => {
+    out.push(...v[idx], col[0] * shade[i], col[1] * shade[i], col[2] * shade[i]);
+  }));
+  return new Float32Array(out);
+}
+
+function axisData(len) {
+  return new Float32Array([
+    0,0,0, 1,0.2,0.2,  len,0,0, 1,0.2,0.2,
+    0,0,0, 0.2,1,0.2,  0,len,0, 0.2,1,0.2,
+    0,0,0, 0.3,0.5,1,  0,0,-len, 0.3,0.5,1,
+  ]);
+}
+
+function gridData(half, step, y) {
+  const out = [];
+  for (let x = -half; x <= half + 1e-6; x += step) {
+    out.push(x, y, -half, 0.25,0.35,0.3,  x, y, half, 0.25,0.35,0.3);
+    out.push(-half, y, x, 0.25,0.35,0.3,  half, y, x, 0.25,0.35,0.3);
+  }
+  gridCount = out.length / 6;
+  return new Float32Array(out);
+}
+
+const VS = `attribute vec3 aPos; attribute vec3 aColor; uniform mat4 uMVP;
+varying vec3 vColor;
+void main() { vColor = aColor; gl_Position = uMVP * vec4(aPos, 1.0); }`;
+const FS = `precision mediump float; varying vec3 vColor;
+void main() { gl_FragColor = vec4(vColor, 1.0); }`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(sh));
+  return sh;
+}
+
+function initGL() {
+  prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  uMVP = gl.getUniformLocation(prog, "uMVP");
+  aPos = gl.getAttribLocation(prog, "aPos");
+  aColor = gl.getAttribLocation(prog, "aColor");
+
+  const upload = (data) => {
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    return b;
+  };
+  cubeBuf = upload(cubeData(0.025, [0.1, 1.0, 0.5]));
+  axisBuf = upload(axisData(0.12));
+  gridBuf = upload(gridData(2.0, 0.5, 0.0));
+  gl.enable(gl.DEPTH_TEST);
+}
+
+function draw(buf, mode, count, mvp) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
+  gl.enableVertexAttribArray(aColor);
+  gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 24, 12);
+  gl.uniformMatrix4fv(uMVP, false, mvp);
+  gl.drawArrays(mode, 0, count);
+}
+
+/* ── 프레임 루프 ─────────────────────────────────────────────────────── */
+function onFrame(t, frame) {
+  session.requestAnimationFrame(onFrame);
+  const viewer = frame.getViewerPose(refSpace);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+  gl.clearColor(0, 0, 0, passthrough ? 0 : 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  const grips = [];
+  for (const src of session.inputSources) {
+    if (!src.gripSpace) continue;
+    if (src.handedness !== "left" && src.handedness !== "right") continue;
+    const pose = frame.getPose(src.gripSpace, refSpace);
+    if (pose) grips.push({ side: src.handedness, pose: pose });
+  }
+
+  if (viewer) {
+    for (const view of viewer.views) {
+      const vp = glLayer.getViewport(view);
+      gl.viewport(vp.x, vp.y, vp.width, vp.height);
+      const pv = mul(view.projectionMatrix, view.transform.inverse.matrix);
+      if (!passthrough) draw(gridBuf, gl.LINES, gridCount, pv);
+      for (const g of grips) {
+        const mvp = mul(pv, g.pose.transform.matrix);
+        draw(cubeBuf, gl.TRIANGLES, 36, mvp);
+        draw(axisBuf, gl.LINES, 6, mvp);
+      }
+    }
+  }
+
+  if (!socketReady(t)) return;
+
+  const msg = { t: t };
+  if (viewer) {
+    const p = viewer.transform.position, o = viewer.transform.orientation;
+    msg.hmd = { pos: [p.x, p.y, p.z], quat: [o.x, o.y, o.z, o.w] };
+  }
+  for (const g of grips) {
+    const p = g.pose.transform.position, o = g.pose.transform.orientation;
+    msg[g.side] = { pos: [p.x, p.y, p.z], quat: [o.x, o.y, o.z, o.w] };
+  }
+  ws.send(JSON.stringify(msg));
+  sent++;
+
+  if (t - lastReport > 500) {
+    lastReport = t;
+    log(`전송 ${sent}  드롭 ${dropped}  재연결 ${reconnects}  ` +
+        `컨트롤러 ${grips.length}` + (passthrough ? "  [패스스루]" : "  [VR]"));
+  }
+}
+
+/* ── 세션 ────────────────────────────────────────────────────────────── */
+async function requestSession() {
+  if (await navigator.xr.isSessionSupported("immersive-ar")) {
+    try {
+      const s = await navigator.xr.requestSession("immersive-ar",
+                                                  { requiredFeatures: ["local-floor"] });
+      passthrough = true;
+      return s;
+    } catch (err) { /* AR 실패 시 VR 로 떨어진다 */ }
+  }
+  passthrough = false;
+  return navigator.xr.requestSession("immersive-vr",
+                                     { requiredFeatures: ["local-floor"] });
+}
+
+async function start() {
+  if (!navigator.xr) { log("navigator.xr 없음 — WebXR 미지원 브라우저다", true); return; }
+  goEl.disabled = true;
+  dropSocket();
+  sent = dropped = reconnects = 0;
+  lastReport = reconnectAt = 0;
+  try {
+    session = await requestSession();
+  } catch (err) {
+    log("세션 시작 실패: " + err, true); goEl.disabled = false; return;
+  }
+  session.addEventListener("end", () => {
+    session = null; goEl.disabled = false;
+    dropSocket();
+    log(`세션 종료 — 전송 ${sent} 드롭 ${dropped} 재연결 ${reconnects}`);
+  });
+
+  const canvas = document.createElement("canvas");
+  gl = canvas.getContext("webgl", { xrCompatible: true, alpha: true, antialias: true });
+  if (!gl) { log("WebGL 컨텍스트를 못 만들었다", true); return; }
+  initGL();
+  glLayer = new XRWebGLLayer(session, gl, { alpha: true });
+  await session.updateRenderState({ baseLayer: glLayer });
+
+  refSpace = await session.requestReferenceSpace("local-floor");
+  viewerSpace = await session.requestReferenceSpace("viewer");
+  connect();
+  log(passthrough ? "패스스루 세션 — 컨트롤러에 초록 큐브가 보이면 정상"
+                  : "VR 세션(패스스루 불가) — 바닥 그리드 + 컨트롤러 큐브");
+  session.requestAnimationFrame(onFrame);
+}
+
+goEl.addEventListener("click", start);
+if (!window.isSecureContext) {
+  log("보안 컨텍스트가 아니다 — WebXR 은 HTTPS 이거나 localhost 에서만 뜬다.\n" +
+      "무선: https:// 주소로 접속해 인증서 경고를 수락하라.\n" +
+      "유선: adb reverse tcp:PORT tcp:PORT 로 localhost 로 열어라.", true);
+}
+</script>
