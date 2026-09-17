@@ -65,11 +65,16 @@ def orca_joint_map(side: str = "right") -> Dict[str, str]:
 class OrcaHandSender:
 
     def __init__(self, side: str = "right", wrist_joint: Optional[str] = None,
-                 model_version: str = "v2", move_to_neutral: bool = False):
+                 model_name: Optional[str] = None,
+                 model_version: Optional[str] = None,
+                 move_to_neutral: bool = False, tactile: bool = True):
         self.side = side
         self.wrist_joint = wrist_joint
+        self.model_name = model_name
         self.model_version = model_version
         self.move_to_neutral = bool(move_to_neutral)
+        self.want_tactile = bool(tactile)
+        self.tactile_ok = False
         self.hand = None
         self.last_sent: Dict[str, float] = {}
         self._warned_missing = None
@@ -78,13 +83,23 @@ class OrcaHandSender:
             self._map[wrist_joint] = "wrist"
 
     def connect(self) -> str:
-        from orca_core import OrcaHandTouch
-        self.hand = OrcaHandTouch(model_name=f"orcahand_touch_{self.side}",
-                             model_version=self.model_version)
+        from orca_core import OrcaHand, OrcaHandTouch
+
+        cls = OrcaHandTouch if self.want_tactile else OrcaHand
+        kw = {k: v for k, v in (("model_name", self.model_name),
+                                ("model_version", self.model_version)) if v}
+        self.hand = cls(**kw)
         ok, msg = self.hand.connect()
         if not ok:
             self.hand = None
-            raise RuntimeError(f"orca 연결 실패: {msg}")
+            motors_up = "Connection successful" in (msg or "")
+            raise RuntimeError(
+                f"orca 연결 실패: {msg}"
+                + (" — 모터는 붙었고 촉각 센서만 실패했다. --no-tactile 이면 OrcaHand 로"
+                   " 붙어 센서 포트를 아예 열지 않는다" if motors_up else ""))
+        self.tactile_ok = self.want_tactile
+        if not self.want_tactile:
+            msg = f"{msg} (OrcaHand — 촉각 없음)"
         self.hand.init_joints(move_to_neutral=self.move_to_neutral)
         self._verify_mapping()
         return msg
@@ -100,8 +115,9 @@ class OrcaHandSender:
         unsent = sorted(set(ids) - want)
         if missing:
             print(f"[orca] WARN: 하드웨어에 없는 관절명 {missing} — 이 명령은 "
-                  f"set_joint_positions 가 조용히 버립니다 (model_version="
-                  f"{self.model_version})", flush=True)
+                  f"set_joint_positions 가 조용히 버립니다 (model="
+                  f"{self.model_version or '기본'}/{self.model_name or '기본'})",
+                  flush=True)
         if unsent:
             print(f"[orca] 명령하지 않는 하드웨어 관절: {unsent}", flush=True)
         if not missing and not unsent:
@@ -251,7 +267,10 @@ class RobotBridge:
     def connect_hand(self) -> str:
         carpal = next((n for n in self.robot.arm_joint_names
                        if not n.startswith("joint")), None)
-        s = OrcaHandSender(side=self.args.side, wrist_joint=carpal)
+        s = OrcaHandSender(side=self.args.side, wrist_joint=carpal,
+                           model_name=getattr(self.args, "hand_model", None),
+                           model_version=getattr(self.args, "hand_model_version", None),
+                           tactile=not getattr(self.args, "no_tactile", False))
         msg = s.connect()
         self.hand = s
         return msg
