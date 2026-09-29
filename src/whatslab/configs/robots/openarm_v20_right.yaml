@@ -1,0 +1,8 @@
+# OpenArm v2.0 right 팔 — 양팔 URDF 하나를 쓰고 rig 에서 반대 팔을 잠근다 (그리퍼 없음)
+name: openarm_v20_right
+kind: arm
+urdf: arm_models/openarm_v20/urdf/openarm_v20_bimanual.urdf
+axis_align: {xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}   # URDF 가 이미 +x 정면·+z 위 (J4 + 로 굽히면 손목이 +x)
+ee:
+  parent: openarm_right_joint7
+  origin: {xyz: [0.0, 0.0, 0.0], rpy: [0.0, 0.0, 0.0]}   # link7 원점 = 플랜지, 도구 축은 -z
