@@ -92,6 +92,7 @@ class SolverCfg:
     k_limit: Optional[float] = None
     limit_margin: Optional[float] = None
     joint_weights: Optional[Dict[str, float]] = None
+    posture: Optional[Dict[str, float]] = None     # 남는 자유도를 끌어당길 기준 자세 (적지 않은 관절은 0)
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
@@ -121,6 +122,8 @@ class SolverCfg:
             joint_weights=({str(k): float(v)
                             for k, v in d["joint_weights"].items()}
                            if d.get("joint_weights") else None),
+            posture=({str(k): float(v) for k, v in d["posture"].items()}
+                     if d.get("posture") else None),
         )
 
 
