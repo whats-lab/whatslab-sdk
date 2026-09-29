@@ -1,0 +1,31 @@
+name: openarm_v20_left
+robots:
+  arm: robots/openarm_v20_left.yaml
+mount:
+  xyz:
+  - 0.0
+  - -0.094
+  - -0.698
+  rpy:
+  - 0.0
+  - 0.0
+  - 0.0
+lock_joints:
+- openarm_right_joint1
+- openarm_right_joint2
+- openarm_right_joint3
+- openarm_right_joint4
+- openarm_right_joint5
+- openarm_right_joint6
+- openarm_right_joint7
+solver:
+  backend: diff
+  w_pos: 20.0
+  w_ori: 10.0
+  posture:
+    openarm_left_joint2: -0.15
+    openarm_left_joint4: 1.3
+  reach_max: 1.162
+calibration:
+  enabled: true
+  input_reach: null

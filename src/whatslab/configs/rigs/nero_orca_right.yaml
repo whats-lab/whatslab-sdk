@@ -34,11 +34,9 @@ solver:
   dtheta_max: 0.25
   proj_rcond: 1.0e-06
   k_limit: 0.3
-  joint_weights:
-    joint1: 2.5
-    joint2: 2.5
-    joint3: 2.5
-    joint4: 2.5
+  posture:
+    joint2: 0.53
+    joint4: 1.478
 calibration:
   enabled: true
   input_reach: 0.6685

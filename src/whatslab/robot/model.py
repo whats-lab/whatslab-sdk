@@ -15,7 +15,7 @@ from .config import RigConfig, load_rig
 
 _RIG_ONLY_SOLVER_KEYS = frozenset({
     "backend", "w_pos", "w_ori", "max_joint_velocity", "reach_max",
-    "joint_weights",
+    "joint_weights", "posture",
 })
 
 
@@ -51,6 +51,10 @@ class RobotModel:
             self.solver.set_joint_weights(rig.solver.joint_weights)
             self._apply_solver_tuning(self.solver)
             self.arm_joint_names = list(self.solver.active_joint_names())
+            if rig.solver.posture and hasattr(self.solver, "q_posture"):
+                # 적지 않은 관절은 0 (범위 안으로) — 범위 가운데는 비대칭 한계에서 엉뚱한 자세가 된다
+                q = np.array([rig.solver.posture.get(n, 0.0) for n in self.arm_joint_names], dtype=float)
+                self.solver.q_posture = np.clip(q, self.solver._lo, self.solver._hi)
 
     def _apply_solver_tuning(self, solver) -> None:
         sol = self.rig.solver

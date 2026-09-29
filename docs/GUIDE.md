@@ -48,6 +48,20 @@ M = mount.T @ axis_align.T          # 베이스 → 정준
 `mount rpy: [0,0,0]` 도 항등이 아니다. `mount` 에는 **설치 보정분만** 넣는다 —
 팔을 뒤로 20° 기울였다면 `rpy: [0, -0.35, 0]` 처럼 작은 각도 하나다.
 
+### 관절 비용과 기준 자세
+
+`solver.joint_weights` 로 관절마다 비용을 다르게 주면 특정 관절만 몰아 움직여 자세가 부자연스러워진다.
+기본은 모든 관절 비용이 같게 두고, 남는 자유도는 `solver.posture` (관절 이름 -> rad, 적지 않은 관절은 0) 로
+자연스러운 대기 자세 쪽으로 푼다. 이 항은 널공간에서만 작용해 손 위치·방향을 바꾸지 않는다.
+
+```yaml
+solver:
+  posture: {joint2: 0.53, joint4: 1.478}   # 팔꿈치를 굽힌 자세
+```
+
+양팔 로봇(OpenArm v2.0)은 URDF 하나에 rig 를 팔마다 두고 반대 팔을 `lock_joints` 로 잠근다:
+`TeleopModel({"left": "rigs/openarm_v20_left.yaml", "right": "rigs/openarm_v20_right.yaml"})`.
+
 ### 도달 범위 기록
 
 ```bash
