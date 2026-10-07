@@ -3,6 +3,39 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
+## [Unreleased]
+
+### 추가 — 현재 Spine(OpenXR 손 출력) 글러브 수신
+
+- **`GloveOpenXRReceiver`**(`receiver/glove/openxr.py`) — `airglove-client` 의
+  `Client` 를 감싸 손마다 `HandPose(wrist=Pose, xr_joints=(26, 8))` 를 낸다.
+  `xr_joints` 는 OpenXR `XrHandJointEXT` 26관절 `[qx qy qz qw px py pz radius]` 를 받은
+  그대로(손목 공간, OpenXR 관절 축, 미터), `wrist` 는 글러브의 캘리브된 OpenXR 손목
+  (+Y 위 world, heading = IMU)을 WebXR 경로와 같은 `M R Mᵀ` 로 정준 프레임에 옮긴 값.
+  `tracked` = 프레임 있음 · `age_s < stale_timeout`(기본 0.2 s) · 26관절 valid.
+  `send_haptic` 은 값을 `round` 후 0..3 으로 클램프한다(`haptic_levels`).
+  계약 정본: AirGlove-Client-Core `docs/spine_protocol.md`, AirGlove-Client `python/README.md`.
+- **`HandPose.xr_joints`** (`Optional[np.ndarray]`, 기본 `None`).
+- `receiver` extra 에 `airglove-client @ git+…AirGlove-Client.git@v0.1.0#subdirectory=python`.
+- `GloveModel(…, hand_kwargs=None)`, `HandModel(…, hand_kwargs=None)` — 리시버 생성자
+  인자(`glove_port` 등)를 생성 시점에 넘긴다(만든 뒤 리시버를 갈아 끼울 필요 없음).
+
+### 변경
+
+- **`GloveModel` 의 기본 `hand_source` 가 `"angles"` → `"openxr"`**, **`HandModel` 의 기본
+  리시버가 `GloveHumanAnglesReceiver` → `GloveOpenXRReceiver`.** 옛 Spine(≤ 2.3.1)을
+  쓰면 `hand_source="angles"` 를 명시해야 한다.
+- 팔 회전 목표의 글러브 손목이 raw 손등 IMU → 캘리브된 OpenXR 손목(정준 변환)으로 바뀌었다.
+  옛 손목으로 맞춘 rig `ee_align` 값은 **실기에서 다시 확인해야 한다**(미검증).
+- `GloveHumanAnglesReceiver`·`GloveHumanHandReceiver`·`GloveRobotHandReceiver` 는
+  **레거시**(Spine ≤ 2.3.1)로 남는다. 현재 Spine 에서는 아무것도 받지 못한다.
+
+### 알려진 제한
+
+- `xr_joints` 를 쓰는 손 리타게터가 아직 없다 — `HandRetargetController` 는
+  `joint_angles` 만 받으므로 OpenXR 소스에서는 로봇 손이 초기/직전 명령을 유지한다.
+  `examples/airglove_hand.py` 와 `examples/quest_arm.py` 의 손가락도 같은 이유로 움직이지 않는다.
+
 ## [0.4.0] — 2026-08-21
 
 ### 추가 — 손 리타게팅 데이터 파이프라인 (`tools/`)

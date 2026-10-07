@@ -72,6 +72,7 @@ class HandPose:
     joint_angles: Dict[str, float] = field(default_factory=dict)
     tracked: bool = False
     timestamp: float = 0.0
+    xr_joints: Optional[np.ndarray] = None
 
     def to_sensor_array(self) -> np.ndarray:
         arr = np.tile(_IDENTITY_QUAT, (1 + len(SENSED_JOINTS), 1)).astype(float)
