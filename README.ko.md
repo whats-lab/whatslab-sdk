@@ -101,14 +101,31 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 
 ## 호환성
 
-데이터 글러브 텔레옵은 왓츠랩의 글러브 미들웨어 **Spine** 을 거칩니다. 지원하는 Spine
-버전은 **2.3.1 이하**입니다(그보다 새 버전은 아직 지원하지 않습니다). 컨트롤러·
+데이터 글러브 텔레옵은 왓츠랩의 글러브 미들웨어 **Spine** 을 거칩니다. 컨트롤러·
 핸드트래킹(Quest) 경로는 Spine 이 필요 없습니다.
 
-글러브 경로는 Spine `docs/OSC_Protocol.md` 의 OSC 계약을 그대로 따릅니다 —
-`GloveHumanHandReceiver` 는 `/{side}/quat/get`, `GloveRobotHandReceiver` 는
-`/{side}/joint_angles/get`((이름, 각도) 쌍) + `/{side}/wrist/get` 을 받습니다.
-모든 Spine 메시지는 `args[0]` 에 messageType 헤더를 싣습니다.
+**현재 Spine (OpenXR 손 출력)** — `GloveModel`·`HandModel` 의 기본 글러브 소스인
+`GloveOpenXRReceiver` 가 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client)
+라이브러리(`receiver` extra 가 설치)를 감쌉니다. 클라이언트 API 는 그 저장소의
+`python/README.md`, 전송 계약은 AirGlove-Client-Core `docs/spine_protocol.md` 가
+정본입니다. 손마다 다음을 냅니다.
+
+- `HandPose.xr_joints` — `(26, 8)` 배열. OpenXR `XrHandJointEXT` 26관절(palm, wrist,
+  엄지 4, 검지~소지 각 5)의 `[qx qy qz qw px py pz radius]` 를 받은 그대로 담습니다:
+  손목 공간(손목 = 단위), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, 양손 같은 규칙),
+  미터.
+- `HandPose.wrist` — 글러브의 캘리브된 OpenXR 손목 자세(Spine 의 +Y 위 world, heading 은
+  IMU 그대로라 드리프트)를 WebXR 경로와 같은 행렬로 정준 프레임에 옮긴 값입니다.
+  옛 raw 손등 IMU 손목으로 맞춘 rig `ee_align` 값은 실기에서 다시 확인해야 합니다.
+
+`xr_joints` 로 손가락을 리타게팅하는 경로는 아직 없습니다 — `HandRetargetController`
+는 여전히 `joint_angles` 를 받으므로, OpenXR 소스에서는 `xr_joints` 리타게터가 들어올
+때까지 로봇 손이 초기/직전 명령을 유지합니다.
+
+**레거시 (Spine 2.3.1 이하)** — `GloveHumanAnglesReceiver`(`/{side}/joint_angles/get`
++ `/{side}/wrist/get`), `GloveHumanHandReceiver`(`/{side}/quat/get`),
+`GloveRobotHandReceiver` 는 옛 Spine `docs/OSC_Protocol.md` 를 따르며 현재 Spine 에서는
+아무것도 받지 못합니다. `GloveModel(rig, hand_source="angles")` / `"robot"` 으로 고릅니다.
 
 ## 빠른 시작
 
@@ -124,6 +141,8 @@ while True:
 ```
 
 프리셋: `QuestModel`(핸드트래킹) · `GloveModel`(컨트롤러 + 글러브) · `HandModel`(손 단독).
+리시버 옵션은 dict 로 넘긴다 — `GloveModel(rig, hand_kwargs={"glove_port": 4040},
+arm_kwargs={...})`, `HandModel(hand_kwargs={...})`.
 `GloveModel` 의 팔 목표는 전송 경로를 고를 수 있다 — `arm_source="quest"`(OSC/UDP, 기본)
 또는 `arm_source="webxr"`(브라우저 WebXR + WebSocket, APK 사이드로딩 불필요).
 WebXR 경로는 **무선이 기본**이다 — WebXR 이 보안 컨텍스트를 요구하므로 이 머신의
