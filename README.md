@@ -102,13 +102,32 @@ pulled in by the `hand`/`arm` extras; override the asset tree with `WHATSLAB_MOD
 ## Compatibility
 
 Data-glove teleoperation goes through **Spine**, WHATs LAB's glove middleware.
-Supported Spine versions: **2.3.1 and below** (newer versions are not yet supported).
 Controller / hand-tracking (Quest) paths do not require Spine.
 
-The glove path follows Spine's OSC contract as documented in Spine's
-`docs/OSC_Protocol.md`: `GloveHumanHandReceiver` consumes `/{side}/quat/get`, and
-`GloveRobotHandReceiver` consumes `/{side}/joint_angles/get` (name/angle pairs) plus
-`/{side}/wrist/get`. Every Spine message carries the message type in `args[0]`.
+**Current Spine (OpenXR hand output)** — `GloveOpenXRReceiver`, the default glove
+source of `GloveModel` and `HandModel`, wraps the
+[`airglove-client`](https://github.com/whats-lab/AirGlove-Client) library (pulled in by
+the `receiver` extra; client API in its `python/README.md`, wire contract in
+AirGlove-Client-Core `docs/spine_protocol.md`). Per hand it delivers:
+
+- `HandPose.xr_joints` — `(26, 8)` array, 26 OpenXR `XrHandJointEXT` joints
+  (palm, wrist, thumb ×4, index..little ×5) as `[qx qy qz qw px py pz radius]`, as
+  received: wrist space (wrist = identity), OpenXR joint axes (−Z along the bone,
+  +Y back of hand, same rule for both hands), metres.
+- `HandPose.wrist` — the glove's calibrated OpenXR wrist orientation in Spine's +Y-up
+  world (heading = raw IMU, drifts), converted to the canonical frame with the same
+  matrix as the WebXR path. Rig `ee_align` values tuned against the old raw dorsum
+  IMU wrist must be re-checked on hardware.
+
+Finger retargeting from `xr_joints` is not wired yet — `HandRetargetController`
+still consumes `joint_angles`, so with the OpenXR source the robot hand holds its
+initial / last command until an `xr_joints` retargeter lands.
+
+**Legacy (Spine 2.3.1 and below)** — `GloveHumanAnglesReceiver`
+(`/{side}/joint_angles/get` + `/{side}/wrist/get`), `GloveHumanHandReceiver`
+(`/{side}/quat/get`) and `GloveRobotHandReceiver` follow Spine's old
+`docs/OSC_Protocol.md` and receive nothing from the current Spine. Select them with
+`GloveModel(rig, hand_source="angles")` / `"robot"`.
 
 ## Quick start
 
@@ -124,7 +143,9 @@ while True:
 ```
 
 Presets: `QuestModel` (hand-tracking), `GloveModel` (controller + glove),
-`HandModel` (hand only). `GloveModel` takes its arm target from either transport —
+`HandModel` (hand only). Receiver options go in as dicts —
+`GloveModel(rig, hand_kwargs={"glove_port": 4040}, arm_kwargs={...})`,
+`HandModel(hand_kwargs={...})`. `GloveModel` takes its arm target from either transport —
 `GloveModel(rig, arm_source="quest")` (OSC/UDP, default) or `arm_source="webxr"`
 (browser WebXR over WebSocket, no APK to sideload). The WebXR path defaults to
 wireless: it serves HTTPS with a self-signed cert on this machine's LAN IP, since

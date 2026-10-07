@@ -21,8 +21,8 @@ from whatslab.teleop import QuestModel, GloveModel
 | `TeleopModel.sides` | `{side: SideModel}` — **side별 상태의 유일한 소유자.** 항상 `SIDES` 전부를 담는다(로봇 없는 side 는 `robot=None`). |
 | `SideModel` | 한 side 의 전부: `side`·`robot`·`ik`·`retarget`·`calib`·`safety` + 이 틱의 `raw_target`·`target`·`q`. 유상태 컴포넌트가 이 안에만 있으므로 side 간 공유가 구조적으로 불가능하다. `solve`, `apply_calib`, `filter`, `sync_ik`, `reseed`. |
 | `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
-| `GloveModel(robot)` | 프리셋: 팔=Quest 컨트롤러 IK, 손=글러브 리타게팅. 햅틱 지원. |
-| `HandModel(robot)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). |
+| `GloveModel(robot, hand_source="openxr", arm_source="quest", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 컨트롤러, 회전=글러브 손목), 손=글러브. 햅틱 지원. `hand_source` = `HAND_SOURCES` 키 — `"openxr"`(기본, `GloveOpenXRReceiver`) / `"angles"`·`"robot"`(레거시, Spine ≤ 2.3.1). `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`). |
+| `HandModel(hand_config="orca_hand", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_source` 를 안 주면 `GloveOpenXRReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. |
 | `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃(`_cold_start`)과 `reseed()`** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `cold_*` 속성. |
 | `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + 캘리브 원점(`p0`) + reach 스케일 소유. `enabled=False` 면 리시버 좌표를 그대로 통과시킨다(rig `calibration.enabled`). |
 
@@ -54,11 +54,48 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세(OSC/UDP, 포트 9000). `connected(side)`. |
 | `WebXRControllerReceiver` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러 6D(WebSocket, 포트 8443). OSC 경로와 **병행** 가능. HMD 는 회전뿐 아니라 **위치도** 온다. `connected(side)`, `url`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
-| `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **사람 손** URDF 관절각(`/{side}/joint_angles/get`) + 손목. 손 리타게팅의 입력. |
-| `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만 — 손 리타게팅은 관절각을 쓴다. |
-| `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
+| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2)` | `InputSample(hand=HandPose(wrist=Pose, xr_joints=(26,8)))` | **현재 Spine** 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `running`. |
+| `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **레거시(Spine ≤ 2.3.1).** 사람 손 URDF 관절각(`/{side}/joint_angles/get`) + 손목. 현재 Spine 에서는 받는 게 없다. |
+| `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | **레거시(Spine ≤ 2.3.1).** AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만. |
+| `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | **레거시(Spine ≤ 2.3.1).** Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
+
+### OpenXR 글러브 (`GloveOpenXRReceiver`)
+
+```python
+from whatslab.receiver.glove import GloveOpenXRReceiver, XR_JOINT_NAMES
+rx = GloveOpenXRReceiver()      # Spine → 127.0.0.1:4040 수신, 요청·햅틱 → 127.0.0.1:4042
+rx.start()                      # 여기서 airglove_client.Client 를 만든다(포트 독점 바인드)
+s = rx.get("right")
+s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 공간
+```
+
+전송 계약의 정본은 AirGlove-Client-Core `docs/spine_protocol.md`, 클라이언트 API 는
+AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직접 파싱하지 않는다.
+
+- 생성자 인자 → `Client`: `glove_port` → `listen_port`, `listen_ip` → `listen_address`,
+  `target_ip` → `spine_address`, `client_port` → `spine_port`. `stale_timeout > 0` 이면
+  `Client.set_stale_threshold` 에도 같은 값을 넣는다. **`Client` 는 `start()` 에서 만들고**
+  `stop()` 에서 닫는다 — 생성만으로는 포트를 잡지 않는다. 한 포트에 클라이언트는 하나뿐이라
+  두 번째 바인드는 `airglove_client.AirGloveError`.
+- `xr_joints` — 26 OpenXR `XrHandJointEXT` 관절(`XR_JOINT_NAMES`: palm, wrist, thumb
+  metacarpal..tip, index..little metacarpal..tip)을 받은 그대로: 손목 공간(손목 = 단위,
+  `XR_WRIST_INDEX` = 1), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, X = Y×Z, 양손 같은
+  규칙), 미터. palm 은 Spine 이 합성한다. OpenXR[i+1] == WebXR[i]. **정준 변환하지 않는다.**
+- `wrist` — 글러브 손목 자세(Spine 의 +Y 위 오른손계 world, heading = IMU 그대로라 정렬
+  안 됨·드리프트)를 `openxr_quat_to_canonical(q)` = `M R Mᵀ`(`M` = WebXR 경로의
+  `_CANONICAL_M`)로 정준 프레임에 옮긴 값. WebXR 손목과 같은 프레임이다(테스트로 수치 일치
+  확인). 마지막으로 받은 손목은 오래돼도 유지한다 — 끊길 때 `GloveModel` 이 반대손 컨트롤러
+  회전으로 튀지 않게 하기 위해서다. 노름 0·비유한 손목은 `None`.
+- `tracked` = 프레임이 있고 `age_s < stale_timeout`(0 이하면 나이 검사 없음)이고
+  26관절이 전부 `valid`. 오래된 프레임도 `xr_joints` 는 그대로 싣고 `tracked=False` 만 낸다.
+  `timestamp` = `time.monotonic() - age_s`.
+- `connected(side)` = Spine `device_status` 가 그 손을 연결로 보고하거나 신선한 프레임이 있음.
+- `send_haptic(side, values)` → `bool`. 값은 손가락별(엄지..소지, 앞 5개까지) Spine 세기
+  단계로 본다: `round` 후 `[0, 3]` 클램프(0 끔, 1 약, 2 중, 3 강), 숫자가 아니거나 NaN 이면 0
+  (`haptic_levels`). 준 손가락만 보낸다 — 글러브는 0 을 받을 때까지 계속 진동한다.
+  시작 전·빈 값·전송 실패면 `False`.
 
 ### WebXR 경로
 
@@ -183,7 +220,7 @@ from whatslab.solvers.hand import HandRetargetController
 | 심볼 | 설명 |
 |---|---|
 | `types.Pose` | 위치 + quaternion(xyzw). |
-| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용). |
+| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용) + `xr_joints`(`Optional[np.ndarray]` `(26,8)`, OpenXR 글러브 관절, 손목 공간 — 아직 리타게터가 쓰지 않는다). |
 | `types.InputSample` | 리시버 출력 컨테이너(controller/hand/q/hmd). |
 | `types.HandCommand` | 리타게팅 출력(로봇 손 관절각). |
 | `types.JointSpec` | 관절 이름/한계 스펙. |

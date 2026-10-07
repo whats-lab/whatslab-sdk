@@ -77,7 +77,7 @@ class _FakeRobot:
 
 
 def _make_model():
-    return GloveModel(_FakeRobot())
+    return GloveModel(_FakeRobot(), hand_source="angles")
 
 
 def test_no_input_returns_empty_q():

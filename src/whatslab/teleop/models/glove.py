@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation
 
 from whatslab.core.types import Pose
 from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
+from whatslab.receiver.glove.openxr import GloveOpenXRReceiver
 from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 from whatslab.receiver.quest.controller import QuestControllerReceiver
 from whatslab.receiver.webxr.controller import WebXRControllerReceiver
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 _OPPOSITE = {"left": "right", "right": "left"}
 
 HAND_SOURCES = {
+    "openxr": GloveOpenXRReceiver,
     "angles": GloveHumanAnglesReceiver,
     "robot": GloveRobotHandReceiver,
 }
@@ -31,15 +33,16 @@ ARM_SOURCES = {
 
 class GloveModel(TeleopModel):
 
-    def __init__(self, robot, hand_source: str = "angles",
-                 arm_source: str = "quest", arm_kwargs: Optional[dict] = None):
+    def __init__(self, robot, hand_source: str = "openxr",
+                 arm_source: str = "quest", arm_kwargs: Optional[dict] = None,
+                 hand_kwargs: Optional[dict] = None):
         if hand_source not in HAND_SOURCES:
             raise ValueError(
                 f"hand_source 는 {list(HAND_SOURCES)} 중 하나 — 받은 값 {hand_source!r}")
         if arm_source not in ARM_SOURCES:
             raise ValueError(
                 f"arm_source 는 {list(ARM_SOURCES)} 중 하나 — 받은 값 {arm_source!r}")
-        self.hand_source = HAND_SOURCES[hand_source]()
+        self.hand_source = HAND_SOURCES[hand_source](**(hand_kwargs or {}))
         self.arm_source = ARM_SOURCES[arm_source](**(arm_kwargs or {}))
         super().__init__(robot)
 
