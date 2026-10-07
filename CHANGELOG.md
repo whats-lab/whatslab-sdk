@@ -35,6 +35,14 @@
 - `xr_joints` 를 쓰는 손 리타게터가 아직 없다 — `HandRetargetController` 는
   `joint_angles` 만 받으므로 OpenXR 소스에서는 로봇 손이 초기/직전 명령을 유지한다.
   `examples/airglove_hand.py` 와 `examples/quest_arm.py` 의 손가락도 같은 이유로 움직이지 않는다.
+- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 v1** 만 말한다
+  (`/heartbeat/get`·`/device/status/get`·`/{side}/hapt/set`, 메시지 타입 헤더 문자열).
+  AirGlove-Client-Core `docs/spine_protocol.md` 는 이미 v2(헤더 없음, `/heartbeat`·
+  `/device/status`·`/{side}/haptics/set`, 라이브러리 0.2.0)를 적고 있지만, 지금 Spine 은 아직
+  v1 이고 v2 를 담은 `airglove-client` 릴리스도 없다. v2 Spine 에는 관절·손목 프레임은
+  들어오지만 햅틱·하트비트·상태 요청은 무시된다. 종단 테스트는 설치된 라이브러리 버전
+  (`Client.version()`)에 맞는 리플레이어·캡처를 고른다 — 0.1.x 면 Core `cb0ec9b^`(마지막 v1)
+  에서 꺼내 쓴다.
 
 ## [0.4.0] — 2026-08-21
 
