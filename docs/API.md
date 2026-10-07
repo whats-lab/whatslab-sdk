@@ -73,6 +73,9 @@ s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 
 
 전송 계약의 정본은 AirGlove-Client-Core `docs/spine_protocol.md`, 클라이언트 API 는
 AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직접 파싱하지 않는다.
+고정한 `airglove-client` v0.1.0 은 Spine 프로토콜 **v1** 만 말한다 — Core 문서의 v2
+(햅틱 `/{side}/haptics/set` 등)를 쓰는 Spine 에는 햅틱·상태 요청이 닿지 않는다(CHANGELOG
+「알려진 제한」).
 
 - 생성자 인자 → `Client`: `glove_port` → `listen_port`, `listen_ip` → `listen_address`,
   `target_ip` → `spine_address`, `client_port` → `spine_port`. `stale_timeout > 0` 이면

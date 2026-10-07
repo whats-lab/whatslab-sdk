@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 import pytest
-from airglove_client import AirGloveError, DeviceStatus, HandFrame, Side, WristFrame
+from airglove_client import AirGloveError, Client, DeviceStatus, HandFrame, Side, WristFrame
 from pythonosc.osc_message_builder import OscMessageBuilder
 from scipy.spatial.transform import Rotation
 
@@ -24,8 +24,10 @@ from whatslab.receiver.webxr import WebXRControllerReceiver
 from whatslab.receiver.webxr.base import _CANONICAL_M
 from whatslab.teleop.models.glove import HAND_SOURCES, GloveModel
 
-REPLAYER = "/home/whatslab09/Desktop/AirGlove-Client-Core/tools/spine_replay.py"
-CAPTURE = "/home/whatslab09/Desktop/AirGlove-Client-Core/captures/spine_both_192s.agrec"
+CORE = "/home/whatslab09/Desktop/AirGlove-Client-Core"
+REPLAYER = "tools/spine_replay.py"
+CAPTURE = "captures/spine_both_192s.agrec"
+CORE_LAST_V1 = "cb0ec9b^"
 
 
 def _frame(age=0.01, valid=True, seed=0):
@@ -310,13 +312,41 @@ def _wait(pred, timeout):
     return None
 
 
-def test_end_to_end_against_spine_replayer():
-    if not (os.path.exists(REPLAYER) and os.path.exists(CAPTURE)):
+def _spine_protocol(version):
+    major, minor = (int(x) for x in version.split(".")[:2])
+    return 2 if (major, minor) >= (0, 2) else 1
+
+
+def _replay_files(tmp_path):
+    if _spine_protocol(Client.version()) >= 2:
+        return os.path.join(CORE, REPLAYER), os.path.join(CORE, CAPTURE)
+    out = []
+    for rel in (REPLAYER, CAPTURE):
+        dst = tmp_path / os.path.basename(rel)
+        r = subprocess.run(["git", "-C", CORE, "show", f"{CORE_LAST_V1}:{rel}"],
+                           capture_output=True)
+        if r.returncode != 0:
+            pytest.skip(f"v1 Spine {rel} 를 {CORE_LAST_V1} 에서 못 꺼냄")
+        dst.write_bytes(r.stdout)
+        out.append(str(dst))
+    return tuple(out)
+
+
+def test_spine_protocol_follows_library_version():
+    assert _spine_protocol("0.1.0") == 1
+    assert _spine_protocol("0.2.0") == 2
+    assert _spine_protocol("1.0.3") == 2
+
+
+def test_end_to_end_against_spine_replayer(tmp_path):
+    if not (os.path.exists(os.path.join(CORE, REPLAYER))
+            and os.path.exists(os.path.join(CORE, CAPTURE))):
         pytest.skip("Spine 리플레이어/캡처 없음")
+    replayer, capture = _replay_files(tmp_path)
     port = _free_port_pair()
     rx = GloveOpenXRReceiver(glove_port=port, client_port=port + 2)
     rx.start()
-    proc = subprocess.Popen([sys.executable, REPLAYER, CAPTURE, "--port", str(port),
+    proc = subprocess.Popen([sys.executable, replayer, capture, "--port", str(port),
                              "--listen-port", str(port + 2)],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
