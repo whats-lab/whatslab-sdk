@@ -41,8 +41,8 @@ def main():
         print("[viz] 왼쪽=사람 손 URDF (메쉬 %s)"
               % ("O" if viz_human.mesh_mode else "X"), flush=True)
     if args.viz:
-        viz_robot = HandViz(ctrl.engine.urdf_path, ctrl.joint_names,
-                            root_path="/robot_hand")
+        viz_names = ctrl.engine.robot_joint_names if ctrl.xr_input else ctrl.joint_names
+        viz_robot = HandViz(ctrl.engine.urdf_path, viz_names, root_path="/robot_hand")
         viz_robot.start()
         print("[viz] 로봇 손 (메쉬 %s)" % ("O" if viz_robot.mesh_mode else "X"), flush=True)
 
@@ -71,7 +71,8 @@ def main():
                     viz_human.update(
                         human_fk.q_from_named(angles), timestamp=now)
             if viz_robot is not None and tracked:
-                viz_robot.update(qv, timestamp=now)
+                viz_robot.update(ctrl.engine.full_qpos(qv) if ctrl.xr_input else qv,
+                                 timestamp=now)
             if now - last_log > 0.2:
                 last_log = now
                 if not tracked:
