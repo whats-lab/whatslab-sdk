@@ -60,7 +60,8 @@ class URDFScene:
         self.gmodel = None
         pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
         urdf_text = _rebased_urdf(urdf, mesh_dir)
-        for gtype in (pin.GeometryType.COLLISION, pin.GeometryType.VISUAL):
+        best = 0
+        for gtype in (pin.GeometryType.VISUAL, pin.GeometryType.COLLISION):
             try:
                 if urdf_text is None:
                     gm = pin.buildGeomFromUrdf(self.model, urdf, gtype,
@@ -72,9 +73,10 @@ class URDFScene:
             except Exception as e:
                 _log.info("%s 지오메트리 건너뜀: %s", gtype, e)
                 continue
-            if len(gm.geometryObjects) > 0:
-                self.gmodel = gm
-                break
+            n = sum(1 for g in gm.geometryObjects
+                    if os.path.exists(str(g.meshPath)))
+            if n > best:
+                self.gmodel, best = gm, n
         if self.gmodel is not None:
             self.gdata = pin.GeometryData(self.gmodel)
             for g in self.gmodel.geometryObjects:
