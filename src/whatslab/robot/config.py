@@ -155,8 +155,8 @@ class HandSolverCfg:
     def from_dict(d) -> "HandSolverCfg":
         d = d or {}
         if "backend" in d:
-            raise ValueError("hand_solver.backend 는 제거됐다 — 리타게팅 엔진은"
-                             " 통합 ONNX(UniRetargeter) 하나뿐이다")
+            raise ValueError("hand_solver.backend 는 제거됐다 — 엔진은 robot yaml 의"
+                             " retarget 로 고른다(dex:<이름> = DexPilot, 그 밖 = ONNX)")
         thr = d.get("threads")
         return HandSolverCfg(
             onnx_path=(None if d.get("onnx_path") is None

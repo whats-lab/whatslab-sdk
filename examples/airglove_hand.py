@@ -5,12 +5,16 @@ import time
 
 import numpy as np
 
+from whatslab.solvers.hand.human_fk import HumanHandFK
 from whatslab.teleop import HandModel
+from whatslab.viz import HandViz, human_upright_root
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="orca_hand", help="로봇 손 리타게팅 config")
+    ap.add_argument("--config", default="dex:orca",
+                    help="로봇 손 리타게팅 config — dex:<configs/hands 이름> 은 OpenXR 글러브,"
+                         " 그 밖(orca_hand 등)은 레거시 관절각 ONNX")
     ap.add_argument("--side", default="right", choices=["left", "right"])
     ap.add_argument("--urdf-root", default=os.environ.get("WHATSLAB_MODELS_ROOT"),
                     help="models 디렉토리 (미지정 시 WHATSLAB_MODELS_ROOT / 패키지 내장)")
@@ -27,22 +31,20 @@ def main():
     ctrl = m.sides[args.side].retarget
 
     viz_human = viz_robot = None
-    if args.viz:
-        from whatslab.solvers.hand.human_fk import HumanHandFK
-        from whatslab.viz import HandViz, human_upright_root
-        eng = ctrl.engine
+    if args.viz and not ctrl.xr_input:
         human_fk = HumanHandFK(args.side)
         viz_human = HandViz(
             human_fk.urdf_path, human_fk.joint_names, root_path="/human_hand",
             root_pose=human_upright_root(human_fk,
                                          offset=(0.0, -args.viz_gap, 0.0)))
         viz_human.start()
-        viz_robot = HandViz(eng.urdf_path, eng.joint_names,
+        print("[viz] 왼쪽=사람 손 URDF (메쉬 %s)"
+              % ("O" if viz_human.mesh_mode else "X"), flush=True)
+    if args.viz:
+        viz_robot = HandViz(ctrl.engine.urdf_path, ctrl.joint_names,
                             root_path="/robot_hand")
         viz_robot.start()
-        print("[viz] 왼쪽=사람 손 URDF, 오른쪽=로봇 손 (메쉬 %s / %s)"
-              % ("O" if viz_human.mesh_mode else "X",
-                 "O" if viz_robot.mesh_mode else "X"), flush=True)
+        print("[viz] 로봇 손 (메쉬 %s)" % ("O" if viz_robot.mesh_mode else "X"), flush=True)
 
     m.start()
     print("[run] 글러브 OSC 수신 대기. Ctrl-C 로 종료.", flush=True)
@@ -68,11 +70,12 @@ def main():
                 if angles:
                     viz_human.update(
                         human_fk.q_from_named(angles), timestamp=now)
+            if viz_robot is not None and tracked:
                 viz_robot.update(qv, timestamp=now)
             if now - last_log > 0.2:
                 last_log = now
                 if not tracked:
-                    print("[no-signal] 글러브 /joint_angles 수신 없음", flush=True)
+                    print("[no-signal] 글러브 손 프레임 수신 없음", flush=True)
                 elif dq_max < 1e-4:
                     print("[정지] 글러브는 붙었지만 손이 안 움직인다 —"
                           f" q = {np.round(qv, 3).tolist()}", flush=True)
