@@ -12,7 +12,7 @@ from ..side import SideModel
 
 class HandModel(TeleopModel):
 
-    def __init__(self, hand_config: str = "orca_hand", side: str = "right",
+    def __init__(self, hand_config: str = "dex:orca", side: str = "right",
                  urdf_root: str | None = None, hand_source=None,
                  hand_kwargs: Optional[dict] = None, **kwargs):
         if hand_source is not None and hand_kwargs:
