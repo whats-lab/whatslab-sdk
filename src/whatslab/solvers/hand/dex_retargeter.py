@@ -225,7 +225,8 @@ class XRHandRetargeter:
         out = np.zeros(self._seq.optimizer.robot.dof)
         out[self._seq.optimizer.idx_pin2fixed] = self._fixed_qpos
         out[self._idx_target] = np.asarray(q, dtype=float)
-        return out
+        adaptor = self._seq.optimizer.adaptor
+        return out if adaptor is None else adaptor.forward_qpos(out)
 
     @property
     def robot_joint_names(self) -> List[str]:

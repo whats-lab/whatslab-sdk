@@ -1,0 +1,17 @@
+# PSYONIC Ability Hand left — 글러브(OpenXR 26관절) → DexPilot (dex-retargeting 0.4.6).
+# 키 설명은 docs/API.md "손 리타게팅 config (configs/hands)".
+# 손목·손끝 링크는 dex-retargeting configs/teleop/ability_hand_left_dexpilot.yml 그대로.
+name: ability_left
+side: left
+urdf: ability_hand/ability_hand_left.urdf
+palm_links: {index: index_L1, middle: middle_L1, pinky: pinky_L1}
+human_hand_length: 0.19
+# q2(PIP)는 URDF mimic 이라 target 에서 뺀다 — dex-retargeting 이 mimic 으로 채운다.
+# SLSQP 평가 상한(틱당). 프레임 무관 지표는 무제한과 같고 2손 p99 지연을 8ms 안으로 둔다.
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: base_link
+  finger_tip_link_names: [thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip]
+  low_pass_alpha: 0.5
+  target_joint_names: [thumb_q1, thumb_q2, index_q1, middle_q1, ring_q1, pinky_q1]

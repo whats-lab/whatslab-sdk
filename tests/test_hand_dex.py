@@ -17,7 +17,9 @@ from whatslab.solvers.hand.dex_retargeter import resolve_hand_config  # noqa: E4
 from whatslab.solvers.hand.xr_input import (OPENXR_TO_MANO, XR_TO_MANO,  # noqa: E402
                                             mano_palm_frame, xr_wrist_positions)
 
-CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left")
+CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
+           "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
+           "ability_left", "schunk_right", "schunk_left")
 RIGHT_MCP_X = {"index": -0.025, "middle": -0.005, "ring": 0.015, "pinky": 0.033}
 SEG = (0.045, 0.026, 0.021)
 FLEX = np.radians((80.0, 95.0, 60.0))
@@ -118,7 +120,7 @@ def test_palm_frame_and_mirror():
 
 def test_hand_configs_are_shipped():
     names = hand_config_names()
-    for n in ("orca_right", "orca_left", "dg5f_right", "dg5f_left"):
+    for n in CONFIGS:
         assert n in names
     assert resolve_hand_config("dex:orca", "left").endswith("orca_left.yaml")
     assert resolve_hand_config("orca_right", "left").endswith("orca_right.yaml")
@@ -170,6 +172,16 @@ def test_retargeter_smoke(name):
         dist.append(_tip_wrist_mean(eng, q))
     assert dist[0] > dist[1] > dist[2], f"{name}: 펴짐→주먹 굽힘이 단조가 아니다 {dist}"
     assert dist[2] < 0.85 * dist[0], f"{name}: 주먹이 충분히 닫히지 않는다 {dist}"
+
+
+def test_full_qpos_fills_mimic_joints():
+    _require_urdf("ability_right")
+    eng = XRHandRetargeter("ability_right")
+    assert "index_q2" not in eng.joint_names
+    q = _settle(eng, hand_for("right", 1.0))
+    full = dict(zip(eng.robot_joint_names, eng.full_qpos(q)))
+    for f in ("index", "middle", "ring", "pinky"):
+        assert np.isclose(full[f"{f}_q2"], 1.05851325 * full[f"{f}_q1"] + 0.72349796)
 
 
 def test_retargeter_mirrors_opposite_side_input():
