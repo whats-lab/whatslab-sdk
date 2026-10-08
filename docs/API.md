@@ -22,7 +22,7 @@ from whatslab.teleop import QuestModel, GloveModel
 | `SideModel` | 한 side 의 전부: `side`·`robot`·`ik`·`retarget`·`calib`·`safety` + 이 틱의 `raw_target`·`target`·`q`. 유상태 컴포넌트가 이 안에만 있으므로 side 간 공유가 구조적으로 불가능하다. `solve`, `apply_calib`, `filter`, `sync_ik`, `reseed`. |
 | `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
 | `GloveModel(robot, hand_source="openxr", arm_source="quest", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 컨트롤러, 회전=글러브 손목), 손=글러브. 햅틱 지원. `hand_source` = `HAND_SOURCES` 키 — `"openxr"`(기본, `GloveOpenXRReceiver`) / `"angles"`·`"robot"`(레거시, Spine ≤ 2.3.1). `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`). |
-| `HandModel(hand_config="orca_hand", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_source` 를 안 주면 `GloveOpenXRReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. |
+| `HandModel(hand_config="dex:orca", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_config` 가 `dex:<이름>` 이면 OpenXR `xr_joints` → `XRHandRetargeter`, 그 밖이면 레거시 관절각 → ONNX. `hand_source` 를 안 주면 `GloveOpenXRReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. |
 | `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃(`_cold_start`)과 `reseed()`** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `cold_*` 속성. |
 | `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + 캘리브 원점(`p0`) + reach 스케일 소유. `enabled=False` 면 리시버 좌표를 그대로 통과시킨다(rig `calibration.enabled`). |
 
@@ -189,22 +189,109 @@ print(rx.url)                            # https://192.168.1.88:8443/
 ## whatslab.solvers.hand — 손 리타게팅
 
 ```python
-from whatslab.solvers.hand import HandRetargetController
+from whatslab.solvers.hand import HandRetargetController, XRHandRetargeter
 ```
 
-입력은 **사람 손 URDF 관절각** 하나다 — `HandPose.joint_angles`(이름→rad). 글러브가
-`/{side}/joint_angles/get` 으로 보내는 값이다. 엔진은 학습된 통합 ONNX 모델 하나
-(`assets/uni_all.onnx`)로, 사람 FK·인코더·헤드·관절범위 역정규화가 전부 그래프
-안에 있다. 로봇 의존부(관절 기술자·범위·사이드 부호)는 `assets/uni_tables.npz`
-표에서 입력으로 들어간다 — 로봇이 늘어도 모델은 안 바뀐다.
+엔진은 입력에 따라 둘이다. `config_name`(rig `retarget:`)이 `dex:` 로 시작하면 고른다.
+
+- **`dex:<이름>` — 현재 글러브(OpenXR).** 입력은 `HandPose.xr_joints` `(26, 8)`.
+  dex-retargeting 0.4.6 의 DexPilot(손끝·손가락 사이 벡터 + 핀치 투영)을 쓴다.
+- **그 밖 — 레거시 관절각.** 입력은 **사람 손 URDF 관절각** — `HandPose.joint_angles`
+  (이름→rad, 옛 Spine 의 `/{side}/joint_angles/get`). 엔진은 학습된 통합 ONNX 모델 하나
+  (`assets/uni_all.onnx`)로, 사람 FK·인코더·헤드·관절범위 역정규화가 전부 그래프
+  안에 있다. 로봇 의존부(관절 기술자·범위·사이드 부호)는 `assets/uni_tables.npz`
+  표에서 입력으로 들어간다 — 로봇이 늘어도 모델은 안 바뀐다.
 
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargetController(hand_type, config_name)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `sample.hand.joint_angles` 가 비면 직전 명령 유지. |
+| `HandRetargetController(hand_type, config_name="base_hand", urdf_root=None, **kwargs)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `xr_input`(bool) = dex 엔진인가. 엔진 입력(`xr_joints` / `joint_angles`)이 없거나 `tracked=False` 면 직전 명령 유지(dex 는 처음에 0 을 관절범위로 자른 값). `kwargs` 는 엔진 생성자로 간다 — dex 는 `max_evals` 와 dex-retargeting `RetargetingConfig` 필드만 받고 그 밖은 `TypeError`(rig `hand_solver:` 는 ONNX 전용이라 dex 와 같이 쓰면 `RobotModel` 이 `ValueError`). |
+| `XRHandRetargeter(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `compute(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `last_keypoints`, `scaling_factor`, `reset()`. 손당 프레임 p50 1.0~2.0ms, p99 약 4ms(아래 측정). |
+| `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 dex-retargeting 이 모르는 키가 있으면 `ValueError`. |
+| `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
+| `xr_to_mano(xr_joints)` | OpenXR 26 → MANO 21 손목 상대 위치. 인덱스 `[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`, 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`(양손 같음 — 손목 공간 위치를 손목 회전으로 한 번 더 풀어 손목 자세와 무관하다). |
+| `mirror_xr_joints(xr_joints)` | 손목 공간 x 축 거울상(왼손 ↔ 오른손). 두 번 하면 원래대로. |
 | `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK — 지금은 **viz 전용**이다(추론 경로에 FK 가 없다). `points(angles)` = 손가락별 키포인트 4개 + `palm`, `neutral_points()`, `q_from_named(이름→rad)`. `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
-| `UniRetargeter(hand_type, config_name, threads=1)` | 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
+| `UniRetargeter(hand_type, config_name, threads=1)` | 레거시 관절각용 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
 
-지원하는 손 — `config_name` 에 넣는 값(괄호는 별칭)과 `dexhand-description` 안의 URDF:
+### 손 리타게팅 config (configs/hands)
+
+`dex:<이름>` 이 읽는 yaml. `<이름>.yaml` 을 먼저, 없으면 `<이름>_{side}.yaml` 을 찾는다.
+
+| `dex:` 이름 | URDF (models root 기준) | 손목 링크 → 손끝 링크 | 비고 |
+|---|---|---|---|
+| `orca` | `orca_hand/urdf/{side}.urdf` | Carpals → `{side}_sensor_*_distal` ×5 | 손목 관절 0 고정 |
+| `dg5f` | `tesollo_dg5f/dg5f_{side}.urdf` | `?l_dg_palm` → `?l_dg_[1-5]_tip` | PIP·DIP −5..90° |
+| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` | `hx5_d20_{side}_base` → `{side}_sensor_*_distal` ×5 | |
+| `allegro` | `allegro_hand/allegro_hand_{side}.urdf` | `wrist` → `link_{15,11,7,3}.0_tip`(왼손) / `link_{15,3,7,11}.0_tip`(오른손) | 손가락 4개, 16축 |
+| `leap` | `leap_hand/leap_hand_{side}.urdf` | `base` → `{thumb,index,middle,ring}_tip_head` | 손가락 4개, 16축 |
+| `ability` | `ability_hand/ability_hand_{side}.urdf` | `base_link` → `{thumb,index,middle,ring,pinky}_tip` | 구동 6축, 손가락 q2 는 mimic |
+| `schunk` | `schunk_hand/schunk_svh_hand_{side}.urdf` | `{side}_hand_base_link` → `{th,ff,mf,rf,lf}tip` | 구동 9축, 나머지는 mimic |
+
+allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names` 는 dex-retargeting
+`configs/teleop/<hand>_{left,right}_dexpilot.yml` 그대로다. `scaling_factor`·`low_pass_alpha` 는
+그 config 값(1.0~1.6, 0.2) 대신 다른 손과 같은 규칙(길이비, 0.5)을 쓴다.
+
+| 키 | 뜻 |
+|---|---|
+| `side` | 이 URDF 가 어느 손인가(`left`/`right`). |
+| `urdf` | models root 기준 URDF 경로. |
+| `palm_links` | `{index, middle, pinky}` — q=0 에서 손바닥 프레임을 잡을 MCP 링크(손가락 4개인 손은 `pinky` 에 약지). z = 손목 링크 → 중지 MCP, y = 소지 → 검지(오른손; 왼손은 반대), x = y × z. 사람 쪽도 같은 규칙(MANO 0·5·9·17)으로 매 프레임 잡아 사람 → 로봇 루트 회전을 만든다. |
+| `mano_to_root.rpy` | (선택) 위 자동 정렬 대신 고정 MANO → 루트 회전(xyz 오일러, rad). |
+| `fixed_joints` | `{관절: rad}` — 리타게팅에서 빼고 고정한다. ORCA 손목 관절은 팔 IK(rig `target_ee` = Carpals)가 쓰므로 여기서 0 으로 둔다. |
+| `joint_limits_deg` | `{관절 이름 glob: [lo, hi]}` — 최적화 한계를 덮어쓴다. DG-5F 손가락 PIP·DIP 는 URDF 가 ±90° 라 역방향으로 꺾는 해가 나와 −5..90° 로 자른다. |
+| `human_hand_length` | 사람 손목 → 중지 끝(m, 기본 0.19). `retargeting.scaling_factor` 가 없으면 로봇 같은 길이(q=0)를 이것으로 나눠 쓴다. |
+| `max_evals` | 틱당 SLSQP 평가 상한(동봉값 20). 무제한과 프레임 무관 지표가 같고(아래) p99 지연만 준다. |
+| `retargeting` | dex-retargeting `RetargetingConfig` 그대로(`type`, `wrist_link_name`, `finger_tip_link_names`, `low_pass_alpha`, …). `urdf_path` 는 위 `urdf` 로 채우고 `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(dex-retargeting 이 mimic 으로 채운다 — ability·schunk). |
+
+측정(`tools/bench_hand_retarget.py`, 목표와 무관한 물리 지표 — 정의는 그 도구의
+독스트링). 입력은 agaSDK Python 손 모델이 실데이터에서 낸 OpenXR 26관절이다:
+Quest 핸드트래킹 녹화 11개 × 양손을 센서 회전으로 바꿔 모델에 넣은 것(`quest→aga`)과
+실제 글러브 raw 녹화 16개(캘리브 없음, `glove`).
+
+| 입력 | config | 펴짐 접촉 오차 mm | 핀치 로봇 손끝 거리 mm (n) | 뼈 방향각 ° | \|dq\| p95 rad | 한계 2% 비율 | 손당 ms p50 / p99 | 2손 p99 ms |
+|---|---|---|---|---|---|---|---|---|
+| quest→aga (20718) | orca_right | 3.2 | 5.0 (562) | 11.6 | 0.106 | 0.087 | 1.15 / 3.79 | 7.10 |
+| | orca_left | 3.2 | 5.0 (562) | 11.5 | 0.106 | 0.085 | 1.16 / 3.84 | 6.97 |
+| | dg5f_right | 4.2 | 5.1 (562) | 12.1 | 0.089 | 0.133 | 1.05 / 4.21 | 7.65 |
+| | dg5f_left | 4.2 | 5.1 (562) | 12.1 | 0.089 | 0.133 | 1.06 / 4.20 | 7.70 |
+| | robotis_right | 2.6 | 5.5 (562) | 11.1 | 0.103 | 0.204 | 1.18 / 4.03 | 7.42 |
+| | robotis_left | 2.5 | 7.2 (562) | 11.5 | 0.104 | 0.229 | 1.18 / 4.11 | 7.27 |
+| | allegro_right | 7.7 | 2.4 (418) | 16.6 | 0.079 | 0.151 | 0.95 / 3.21 | 5.93 |
+| | allegro_left | 8.0 | 2.6 (418) | 16.5 | 0.079 | 0.155 | 0.96 / 3.26 | 5.94 |
+| | leap_right | 5.0 | 2.1 (418) | 29.9 | 0.103 | 0.079 | 0.95 / 3.70 | 6.84 |
+| | leap_left | 6.0 | 2.3 (418) | 30.5 | 0.101 | 0.081 | 0.94 / 3.70 | 6.84 |
+| | ability_right | 6.5 | 6.2 (562) | 13.9 | 0.091 | 0.142 | 0.93 / 2.36 | 4.23 |
+| | ability_left | 6.5 | 6.2 (562) | 13.9 | 0.091 | 0.142 | 0.93 / 2.33 | 4.14 |
+| | schunk_right | 9.9 | 9.6 (562) | 16.8 | 0.078 | 0.425 | 0.95 / 2.96 | 5.16 |
+| | schunk_left | 9.4 | 10.2 (562) | 17.1 | 0.077 | 0.410 | 0.95 / 2.91 | 5.18 |
+| glove (24528) | orca_right | 4.5 | 3.4 (812) | 13.3 | 0.176 | 0.168 | 1.28 / 3.78 | — |
+| | orca_left | 4.4 | 3.5 (812) | 13.5 | 0.177 | 0.162 | 1.31 / 3.80 | — |
+| | dg5f_right | 5.4 | 4.1 (812) | 15.9 | 0.158 | 0.267 | 1.44 / 4.22 | — |
+| | dg5f_left | 5.4 | 4.1 (812) | 15.9 | 0.158 | 0.267 | 1.45 / 4.26 | — |
+| | robotis_right | 4.9 | 4.4 (812) | 13.7 | 0.195 | 0.258 | 1.95 / 4.27 | — |
+| | robotis_left | 4.7 | 4.9 (812) | 14.2 | 0.182 | 0.303 | 1.94 / 4.24 | — |
+| | allegro_right | 12.1 | 2.2 (693) | 16.7 | 0.154 | 0.244 | 1.50 / 3.63 | — |
+| | allegro_left | 12.4 | 2.2 (693) | 16.7 | 0.154 | 0.244 | 1.50 / 3.65 | — |
+| | leap_right | 7.7 | 1.9 (693) | 33.8 | 0.161 | 0.182 | 1.46 / 3.79 | — |
+| | leap_left | 9.7 | 2.3 (693) | 34.8 | 0.159 | 0.182 | 1.48 / 3.91 | — |
+| | ability_right | 9.5 | 4.6 (812) | 21.7 | 0.130 | 0.255 | 1.14 / 2.48 | — |
+| | ability_left | 9.5 | 4.6 (812) | 21.7 | 0.130 | 0.255 | 1.13 / 2.45 | — |
+| | schunk_right | 12.7 | 7.0 (812) | 24.4 | 0.116 | 0.474 | 1.14 / 3.35 | — |
+| | schunk_left | 12.0 | 7.1 (812) | 24.7 | 0.119 | 0.472 | 1.14 / 3.37 | — |
+
+2손 p99 = 같은 틱의 왼손 + 오른손(양손 녹화가 있는 quest→aga 만). 판정 기준(펴짐·핀치 ≤ 10mm,
+2손 p99 ≤ 8ms)은 전부 통과하지만 2손 p99 는 7.0~7.7ms 로 여유가 작다. `max_evals` 를 빼면(무제한)
+프레임 무관 지표는 거의 같고(뼈 방향각 ±0.1°) 2손 p99 만 는다(같은 부하에서 20 → 6.5~7.7ms, 무제한 → 7.7~8.4ms). 핀치 "오차"(로봇 거리 −
+스케일된 사람 거리)는 10.5~15mm 인데, DexPilot 투영이 사람 3cm 안쪽을 접촉으로 당기는 설계라서다.
+
+allegro·leap·ability·schunk(`--mirror`, 같은 입력): 손가락 4개인 allegro·leap 는 소지 핀치를 빼서
+핀치 n 이 적다. 핀치는 전부 ≤ 10.2mm, 2손 p99 ≤ 6.9ms 로 통과한다. 펴짐은 quest→aga 에서 ≤ 10mm 지만
+glove 에서 allegro(12.1~12.4mm)·schunk(12.0~12.7mm)가 기준을 넘는다 — allegro 는 손이 커서
+(배율 1.28) 엄지 위치 차가 커지고, schunk 는 관절범위가 좁아 한계 2% 비율이 0.41~0.47 이다.
+leap 의 뼈 방향각 30~35° 는 링크 원점이 손가락 축에서 벗어나 있는 탓이 크다(도구가 관절 원점으로
+뼈를 잡는다). ability·schunk 의 bone/limit 은 구동 관절 + mimic 관절 기준이다.
+
+지원하는 손(레거시 ONNX) — `config_name` 에 넣는 값(괄호는 별칭)과 `dexhand-description` 안의 URDF:
 
 | 손 | `config_name` | URDF |
 |---|---|---|
@@ -227,7 +314,7 @@ from whatslab.solvers.hand import HandRetargetController
 | 심볼 | 설명 |
 |---|---|
 | `types.Pose` | 위치 + quaternion(xyzw). |
-| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용) + `xr_joints`(`Optional[np.ndarray]` `(26,8)`, OpenXR 글러브 관절, 손목 공간 — 아직 리타게터가 쓰지 않는다). |
+| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용) + `xr_joints`(`Optional[np.ndarray]` `(26,8)`, OpenXR 글러브 관절, 손목 공간 — `XRHandRetargeter` 입력). |
 | `types.InputSample` | 리시버 출력 컨테이너(controller/hand/q/hmd). |
 | `types.HandCommand` | 리타게팅 출력(로봇 손 관절각). |
 | `types.JointSpec` | 관절 이름/한계 스펙. |
@@ -287,6 +374,8 @@ from whatslab.data import LeRobotRecorder
   방침(모든 import 는 모듈 최상단)의 결과다 — `robot/model.py` 가
   `solvers.hand.HandRetargetController` 를 최상단에서 끌어온다. extra 를 나눠
   설치하는 소비자는 `[all]` 을 써야 한다. `[arm]` 만으로는 `RobotModel` 을 못 쓴다.
+  그 결과 dex-retargeting 을 거쳐 `torch` 도 최상단에서 들어온다 — `import
+  whatslab.teleop` 약 0.9초(없을 때 0.25초), Python < 3.13.
 
 ## whatslab.paths — 자산 경로 해석
 
