@@ -41,8 +41,9 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 - 명확한 단방향 의존 구조 (`receiver → core`, `model → core·robot`)
 
 **리타게팅 중심**
-- 손: 글러브가 보낸 사람 손 URDF 관절각 → 학습된 통합 ONNX 모델 한 번의 순전파.
-  프레임별 IK 최적화가 없어 CPU 1스레드로 900Hz+, 모든 로봇 손·좌우가 그래프 하나
+- 손: 글러브의 OpenXR 26관절 → DexPilot 벡터 리타게팅
+  ([dex-retargeting](https://github.com/dexsuite/dex-retargeting) 0.4.6), 손당 프레임
+  1~2ms. 레거시 사람 손 URDF 관절각 입력은 학습된 통합 ONNX 모델 한 번의 순전파
 - 팔: pinocchio 해석 야코비안 + 감쇠 최소자승(DLS)
 - 출력은 그대로 발행 가능한 `{side: {joint_name: rad}}` 형태
 
@@ -52,8 +53,22 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 
 ### 지원하는 손
 
-아래 손 전부와 좌우가 ONNX 그래프 하나를 공유한다. 첫 열의 이름이 rig 의
-`retarget:` 에 넣는 값이고, 괄호 안 별칭도 같이 인식한다.
+**현재 글러브(OpenXR `xr_joints`)** — rig 의 `retarget:` 에 `dex:<이름>` 을 넣는다.
+`<이름>` 은 `configs/hands/` 의 파일이다(`dex:orca` → `orca_{side}`, 파일 경로도 된다).
+한쪽 손 config 로 반대쪽을 쓰면 입력을 거울상으로 바꿔 쓴다.
+
+| 손 | `retarget:` | config |
+|---|---|---|
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (손목 관절은 빼고 0 고정) |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP·DIP 를 −5..90° 로 자름) |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (손가락 4개 — 사람 소지는 안 쓴다) |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (손가락 4개 — 사람 소지는 안 쓴다) |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (구동 6축, PIP 는 URDF mimic) |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic) |
+
+**레거시 관절각 입력(Spine ≤ 2.3.1)** — 아래 손 전부와 좌우가 ONNX 그래프 하나를
+공유한다. 첫 열의 이름이 `retarget:` 에 넣는 값이고, 괄호 안 별칭도 같이 인식한다.
 
 | 손 | `retarget:` | `dexhand-description` 안의 URDF |
 |---|---|---|
@@ -94,6 +109,10 @@ wheel 에는 손 설정(`models/<버전>/<모델>/config.yaml`)이 들어가지 
 스크립트는 소스를 클론해 editable 로 설치합니다. 손 모델은 `orca_core` 기본값을
 쓰고, 다른 손을 쓰면 `--hand-model` 로 지정합니다.
 
+`hand` extra 는 `dex-retargeting==0.4.6` 으로 고정합니다 — `numpy<2` 를 받는 마지막
+버전입니다. 모듈 최상단에서 `torch` 를 import 하고 `nlopt<2.8`·`pin>=2.7`·
+Python < 3.13 이 필요하며, `import whatslab.teleop` 이 약 0.9초 걸립니다(없을 때 0.25초).
+
 robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 별도의 단일 소스 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) 이 제공하며,
 `hand`/`arm` extra 가 의존성으로 가져옵니다. 자산 경로는 `WHATSLAB_MODELS_ROOT` 로
@@ -120,9 +139,12 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
   IMU 그대로라 드리프트)를 WebXR 경로와 같은 행렬로 정준 프레임에 옮긴 값입니다.
   옛 raw 손등 IMU 손목으로 맞춘 rig `ee_align` 값은 실기에서 다시 확인해야 합니다.
 
-`xr_joints` 로 손가락을 리타게팅하는 경로는 아직 없습니다 — `HandRetargetController`
-는 여전히 `joint_angles` 를 받으므로, OpenXR 소스에서는 `xr_joints` 리타게터가 들어올
-때까지 로봇 손이 초기/직전 명령을 유지합니다.
+rig 의 `retarget:` 가 `dex:<이름>` 이면 손가락을 `xr_joints` 에서 리타게팅합니다
+(`XRHandRetargeter`, DexPilot). 위치를 손목 기준으로 잡아 MANO 21 키포인트로 옮기고,
+매 프레임 사람 손바닥 프레임(손목 + 검지·중지·소지 MCP)을 로봇의 q=0 손바닥 프레임에
+맞춰 돌립니다 — 손목 자세가 손가락으로 새지 않습니다. `retarget:` 가 ONNX 이름
+(`orca_hand` 등)이면 `joint_angles` 를 읽는데 현재 Spine 은 그것을 보내지 않으므로
+손이 직전 명령을 유지합니다.
 
 **레거시 (Spine 2.3.1 이하)** — `GloveHumanAnglesReceiver`(`/{side}/joint_angles/get`
 + `/{side}/wrist/get`), `GloveHumanHandReceiver`(`/{side}/quat/get`),
@@ -187,6 +209,7 @@ python tools/align_frames.py robot --robot robots/nero.yaml              # 로�
 
 whatslab 은 다음 오픈소스 위에서 만들어졌습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(강체 기구학/IK),
+[dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
 [LeRobot](https://github.com/huggingface/lerobot)(데이터셋 포맷).
 

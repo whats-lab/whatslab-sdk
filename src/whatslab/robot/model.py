@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation
 
 from whatslab.solvers.arm.builders import backend_cls
 from whatslab.solvers.hand import HandRetargetController
+from whatslab.solvers.hand.dex_retargeter import is_dex_config
 
 from .config import RigConfig, load_rig
 
@@ -112,6 +113,9 @@ class RobotModel:
     def make_hand_controller(self, config_name: str, side: str):
         cfg = getattr(self.rig, "hand_solver", None)
         kwargs = cfg.kwargs() if cfg is not None else {}
+        if is_dex_config(config_name) and kwargs:
+            raise ValueError(f"rig hand_solver({sorted(kwargs)})는 ONNX 엔진 전용이다 —"
+                             f" retarget: {config_name} 와 함께 쓸 수 없다")
         return HandRetargetController(side, config_name, **kwargs)
 
     def to_base(self, T_canonical: np.ndarray) -> np.ndarray:
