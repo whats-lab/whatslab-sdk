@@ -31,10 +31,12 @@ dependencies = [
 # airglove-client = 새 Spine(OpenXR 26관절) 수신 — GloveOpenXRReceiver 가 감싼다.
 receiver = ["python-osc",
             "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.1.0#subdirectory=python"]
-# 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 추론은 onnxruntime 뿐이다.
+# 글러브 OpenXR 26관절 → 로봇 손 = dex-retargeting(DexPilot, XRHandRetargeter).
+# 0.4.6 이 numpy<2 를 받는 마지막 버전이라 고정한다 — torch 를 최상단 import 하고
+# nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
+# onnxruntime 은 레거시 관절각 입력(UniRetargeter 통합 ONNX)용.
 # pin·dexhand-description 은 human_fk(viz)와 실물 관절 매핑(examples/robot_io)용.
-# dex-retargeting / nlopt / torch 의존은 제거됐다.
-hand     = ["onnxruntime", "pin",
+hand     = ["onnxruntime", "pin", "dex-retargeting==0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]

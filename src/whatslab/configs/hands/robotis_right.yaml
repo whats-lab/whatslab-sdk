@@ -1,0 +1,14 @@
+# ROBOTIS HX5-D20 right — 글러브(OpenXR 26관절) → DexPilot (dex-retargeting 0.4.6).
+# 키 설명은 docs/API.md "손 리타게팅 config (configs/hands)".
+name: robotis_right
+side: right
+urdf: robotis_hx5_d20/urdf/hx5_d20_right.urdf
+palm_links: {index: finger_r_link6, middle: finger_r_link10, pinky: finger_r_link18}
+human_hand_length: 0.19
+# SLSQP 평가 상한(틱당). 프레임 무관 지표는 무제한과 같고 2손 p99 지연을 8ms 안으로 둔다.
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: hx5_d20_right_base
+  finger_tip_link_names: [right_sensor_thumb_distal, right_sensor_index_distal, right_sensor_middle_distal, right_sensor_ring_distal, right_sensor_pinky_distal]
+  low_pass_alpha: 0.5
