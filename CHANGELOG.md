@@ -5,6 +5,69 @@
 
 ## [Unreleased]
 
+### 추가 — 글러브 OpenXR 손 리타게팅 (DexPilot)
+
+- **`XRHandRetargeter`**(`solvers/hand/dex_retargeter.py`) — `HandPose.xr_joints`(OpenXR 26관절)
+  → 로봇 손 관절각. dex-retargeting 0.4.6 의 DexPilot 을 쓴다. 입력 처리(`solvers/hand/xr_input.py`):
+  손목 상대 위치를 손목 회전으로 풀고(손목 자세 무관), OpenXR 26 → MANO 21
+  (`[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`), 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`
+  (양손 같음), 그 뒤 **매 프레임** 사람 손바닥 프레임(손목 + 검지·중지·소지 MCP)을 로봇의 q=0
+  손바닥 프레임(config `palm_links`)으로 돌린다. 고정 회전을 쓰려면 `mano_to_root.rpy`.
+  config 의 반대쪽 손은 입력 거울상(`mirror_xr_joints`)으로 처리한다.
+- **`configs/hands/`** — `orca_{left,right}`, `dg5f_{left,right}`, `robotis_{left,right}`. ORCA 는
+  손목 관절을 빼고 0 고정(`fixed_joints`, 팔 IK 가 Carpals 를 쓴다), DG-5F 는 손가락 PIP·DIP 를
+  −5..90° 로 자른다(`joint_limits_deg` — URDF ±90° 에서 역방향으로 꺾는 해가 나왔다). 전부
+  `max_evals: 20`(틱당 SLSQP 평가 상한)·`low_pass_alpha: 0.5`.
+- **`HandRetargetController`** — `config_name` 이 `dex:<이름>` 이면 `XRHandRetargeter` 를 쓰고
+  `xr_joints` 를 읽는다(`xr_input` 속성). 그 밖은 지금까지처럼 ONNX + `joint_angles`.
+  `robots/orca_right.yaml` 의 `retarget:` 가 `orca_hand` → `dex:orca`, `HandModel` 기본
+  `hand_config` 도 `dex:orca`. rig `hand_solver:`(ONNX 전용)와 `dex:` 를 같이 쓰면 `ValueError`.
+- `hand` extra 에 `dex-retargeting==0.4.6`(numpy<2 를 받는 마지막 버전; torch·nlopt<2.8·pin>=2.7,
+  Python < 3.13). `import whatslab.teleop` 이 0.25 → 약 0.9초.
+- **`tools/bench_hand_retarget.py`** 를 OpenXR 입력용으로 다시 넣었다 — 목표 구성과 무관한 물리
+  지표(펴짐 접촉 오차, 핀치 시 로봇 손끝 거리, 뼈 방향각, |dq| p95, 한계 비율, 손당·2손 지연).
+  입력은 npz(`xr` (N,26,8) + `side`, `*_left/_right.npz` 짝은 2손 지연용) 또는 Quest WebXR 녹화 json.
+- `examples/airglove_hand.py` 기본 `--config dex:orca`(OpenXR 이면 사람 손 URDF viz 는 끈다).
+
+측정 — agaSDK Python 손 모델이 실데이터에서 낸 OpenXR 26관절. `quest→aga` = Quest 핸드트래킹
+녹화 11개 × 양손을 센서 회전으로 바꿔 모델에 넣은 것, `glove` = 실제 글러브 raw 녹화 16개
+(캘리브 없음). `--mirror` 로 반대손도 거울상으로 넣었다. 핀치 = 사람 엄지-손가락 끝 < 20mm
+(OpenXR 끝 관절이 손끝 표면이라 패드 접촉도 10~15mm 로 남는다).
+
+| 입력 | config | 펴짐 접촉 오차 mm | 핀치 로봇 손끝 거리 mm (n) | 뼈 방향각 ° | \|dq\| p95 rad | 한계 2% 비율 | 손당 ms p50 / p99 | 2손 p99 ms |
+|---|---|---|---|---|---|---|---|---|
+| quest→aga (20718) | orca_right | 3.2 | 5.0 (562) | 11.6 | 0.106 | 0.087 | 1.15 / 3.79 | 7.10 |
+| | orca_left | 3.2 | 5.0 (562) | 11.5 | 0.106 | 0.085 | 1.16 / 3.84 | 6.97 |
+| | dg5f_right | 4.2 | 5.1 (562) | 12.1 | 0.089 | 0.133 | 1.05 / 4.21 | 7.65 |
+| | dg5f_left | 4.2 | 5.1 (562) | 12.1 | 0.089 | 0.133 | 1.06 / 4.20 | 7.70 |
+| | robotis_right | 2.6 | 5.5 (562) | 11.1 | 0.103 | 0.204 | 1.18 / 4.03 | 7.42 |
+| | robotis_left | 2.5 | 7.2 (562) | 11.5 | 0.104 | 0.229 | 1.18 / 4.11 | 7.27 |
+| glove (24528) | orca_right | 4.5 | 3.4 (812) | 13.3 | 0.176 | 0.168 | 1.28 / 3.78 | — |
+| | orca_left | 4.4 | 3.5 (812) | 13.5 | 0.177 | 0.162 | 1.31 / 3.80 | — |
+| | dg5f_right | 5.4 | 4.1 (812) | 15.9 | 0.158 | 0.267 | 1.44 / 4.22 | — |
+| | dg5f_left | 5.4 | 4.1 (812) | 15.9 | 0.158 | 0.267 | 1.45 / 4.26 | — |
+| | robotis_right | 4.9 | 4.4 (812) | 13.7 | 0.195 | 0.258 | 1.95 / 4.27 | — |
+| | robotis_left | 4.7 | 4.9 (812) | 14.2 | 0.182 | 0.303 | 1.94 / 4.24 | — |
+
+2손 p99 = 같은 틱의 왼손 + 오른손(양손 녹화가 있는 quest→aga 만). 판정 기준(펴짐·핀치 ≤ 10mm,
+2손 p99 ≤ 8ms)은 전부 통과하지만 2손 p99 는 7.0~7.7ms 로 여유가 작다. `max_evals` 를 빼면(무제한)
+프레임 무관 지표는 거의 같고(뼈 방향각 ±0.1°) 2손 p99 만 는다(같은 부하에서 20 → 6.5~7.7ms, 무제한 → 7.7~8.4ms). 핀치 "오차"(로봇 거리 −
+스케일된 사람 거리)는 10.5~15mm 인데, DexPilot 투영이 사람 3cm 안쪽을 접촉으로 당기는 설계라서다.
+
+예전 dex 백엔드 기각(아래 0.3.0, 펴짐 접촉 33.5mm)과 다른 점: 손가락별 `_SCALE_FACTOR`
+없이 균일 스케일(로봇/사람 손 길이) 하나, 매 프레임 손바닥 정렬, 입력이 OpenXR 손목 공간이다.
+
+### 알려진 제한 — OpenXR 리타게팅
+
+- **펴진 손에서 ORCA 엄지가 한계에 붙는다.** Quest `finger_spread_flat` 에서 엄지 CMC·외전이
+  각각 하한 −45°·상한 55° 에 붙고 IP 가 46° 굽어 엄지 원위 뼈 방향 오차가 37° 다(다른 손가락
+  4~6°, 약지·소지 근위 약 20°). 로봇 엄지 가동범위 밖의 목표라 리타게터 설정으로는 안 풀린다.
+- 핀치 투영(DexPilot `eta1=1e-4`)은 손끝 **프레임**을 맞붙인다. ORCA 손끝은
+  `{side}_sensor_*_distal` 프레임이라 실물 패드는 그보다 일찍 닿는다 — 충돌 검사는 없다.
+- 글러브 녹화는 캘리브 없이 모델에 넣었다(옛 캘리브 덤프는 현재 형식과 다르다). 실기 캘리브
+  후 데이터로 다시 재야 한다.
+- 실기(로봇 손) 검증 없음.
+
 ### 추가 — 현재 Spine(OpenXR 손 출력) 글러브 수신
 
 - **`GloveOpenXRReceiver`**(`receiver/glove/openxr.py`) — `airglove-client` 의
@@ -32,9 +95,8 @@
 
 ### 알려진 제한
 
-- `xr_joints` 를 쓰는 손 리타게터가 아직 없다 — `HandRetargetController` 는
-  `joint_angles` 만 받으므로 OpenXR 소스에서는 로봇 손이 초기/직전 명령을 유지한다.
-  `examples/airglove_hand.py` 와 `examples/quest_arm.py` 의 손가락도 같은 이유로 움직이지 않는다.
+- ~~`xr_joints` 를 쓰는 손 리타게터가 아직 없다~~ — 위 「글러브 OpenXR 손 리타게팅」으로 해소.
+  rig `retarget:` 가 ONNX 이름이면 여전히 `joint_angles` 만 받아 손이 직전 명령을 유지한다.
 
 ## [0.4.0] — 2026-08-21
 

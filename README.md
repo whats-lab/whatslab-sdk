@@ -41,9 +41,10 @@ downstream code never re-maps axes.
 - strict dependency direction (`receiver → core`, `model → core·robot`)
 
 **whatslab is retargeting-first:**
-- hand: human-hand URDF joint angles from the glove → one forward pass of a single
-  learned ONNX model. No per-frame IK — 900Hz+ on one CPU thread, every robot hand
-  and both sides share one graph
+- hand: the glove's OpenXR 26-joint skeleton → DexPilot vector retargeting
+  ([dex-retargeting](https://github.com/dexsuite/dex-retargeting) 0.4.6), 1–2 ms
+  per hand per frame. Legacy human-hand URDF joint angles still go through one
+  forward pass of a learned ONNX model
 - arm: pinocchio analytic Jacobian + damped least squares
 - output is `{side: {joint_name: rad}}`, ready to publish
 
@@ -53,8 +54,20 @@ downstream code never re-maps axes.
 
 ### Supported hands
 
-One ONNX graph covers every hand below, both sides. The name in the first column is
-what a rig's `retarget:` field takes; the alias in parentheses also resolves.
+**Current glove (OpenXR `xr_joints`)** — a rig's `retarget:` takes `dex:<name>`;
+`<name>` is a file in `configs/hands/` (`dex:orca` resolves to `orca_{side}`, a file
+path also works). The opposite side of a one-sided config is served by mirroring the
+input.
+
+| Hand | `retarget:` | config |
+|---|---|---|
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (wrist joint excluded, held at 0) |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP/DIP clamped to −5..90°) |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
+
+**Legacy joint-angle input (Spine ≤ 2.3.1)** — one ONNX graph covers every hand
+below, both sides. The name in the first column is what `retarget:` takes; the alias
+in parentheses also resolves.
 
 | Hand | `retarget:` | URDF in `dexhand-description` |
 |---|---|---|
@@ -95,6 +108,10 @@ code itself runs fine on numpy 1.26). Its wheel also omits the hand configs
 installs it editable. The hand model defaults to whatever `orca_core` picks;
 pass `--hand-model` for a different one.
 
+The `hand` extra pins `dex-retargeting==0.4.6` — the last release that accepts
+`numpy<2`. It imports `torch` at module level and needs `nlopt<2.8`, `pin>=2.7` and
+Python < 3.13, and `import whatslab.teleop` now takes about 0.9 s (0.25 s without it).
+
 Robot/rig configs are bundled. URDF and meshes are provided by the separate
 single-source package [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf),
 pulled in by the `hand`/`arm` extras; override the asset tree with `WHATSLAB_MODELS_ROOT`.
@@ -119,9 +136,13 @@ AirGlove-Client-Core `docs/spine_protocol.md`). Per hand it delivers:
   matrix as the WebXR path. Rig `ee_align` values tuned against the old raw dorsum
   IMU wrist must be re-checked on hardware.
 
-Finger retargeting from `xr_joints` is not wired yet — `HandRetargetController`
-still consumes `joint_angles`, so with the OpenXR source the robot hand holds its
-initial / last command until an `xr_joints` retargeter lands.
+Fingers are retargeted from `xr_joints` when the rig's `retarget:` is `dex:<name>`
+(`XRHandRetargeter`, DexPilot). Positions are taken relative to the wrist, mapped to
+MANO's 21 keypoints, and rotated so the human palm frame (wrist + index/middle/pinky
+MCP) lands on the robot's q=0 palm frame every frame — wrist orientation never leaks
+into the fingers. A rig still set to an ONNX name (`orca_hand`, ...) reads
+`joint_angles`, which the current Spine does not send, so its hand holds the last
+command.
 
 **Legacy (Spine 2.3.1 and below)** — `GloveHumanAnglesReceiver`
 (`/{side}/joint_angles/get` + `/{side}/wrist/get`), `GloveHumanHandReceiver`
@@ -186,6 +207,7 @@ Run the test suite with `pip install -e '.[all,dev]' && pytest`.
 
 whatslab builds on excellent open-source work:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio) (rigid-body kinematics/IK),
+[dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT),
 [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization), and
 [LeRobot](https://github.com/huggingface/lerobot) (dataset format).
 
