@@ -24,10 +24,11 @@ from whatslab.receiver.webxr import WebXRControllerReceiver
 from whatslab.receiver.webxr.base import _CANONICAL_M
 from whatslab.teleop.models.glove import HAND_SOURCES, GloveModel
 
-CORE = "/home/whatslab09/Desktop/AirGlove-Client-Core"
+CORE_ENV = "AIRGLOVE_CORE_DIR"
 REPLAYER = "tools/spine_replay.py"
 CAPTURE = "captures/spine_both_192s.agrec"
-CORE_LAST_V1 = "cb0ec9b^"
+MIN_LIBRARY = (0, 3)
+TEST_PORTS = range(47500, 47598)
 
 
 def _frame(age=0.01, valid=True, seed=0):
@@ -189,15 +190,17 @@ def test_haptic_levels_mapping():
     assert haptic_levels([0, 1, 2, 3, 4]) == [0, 1, 2, 3, 3]
     assert haptic_levels([-1, 0.4, 0.6, 2.5, float("nan")]) == [0, 0, 1, 2, 0]
     assert haptic_levels([1, 1, 1, 1, 1, 1, 1]) == [1, 1, 1, 1, 1]
-    assert haptic_levels(["x", None, 2]) == [0, 0, 2]
-    assert haptic_levels([]) == []
+    assert haptic_levels(["x", None, 2]) == [0, 0, 2, 0, 0]
+    assert haptic_levels([]) == [0, 0, 0, 0, 0]
 
 
-def test_send_haptic_clamps_and_reports(fake_client):
+def test_send_haptic_clamps_pads_and_reports(fake_client):
     rx, c = _started()
     assert rx.send_haptic("right", [10, 20, 30, 40, 50]) is True
-    assert c.haptics == [(Side.RIGHT, [3, 3, 3, 3, 3])]
-    assert rx.send_haptic("left", []) is False
+    assert rx.send_haptic("left", [2]) is True
+    assert rx.send_haptic("left", []) is True
+    assert c.haptics == [(Side.RIGHT, [3, 3, 3, 3, 3]), (Side.LEFT, [2, 0, 0, 0, 0]),
+                         (Side.LEFT, [0, 0, 0, 0, 0])]
     c.fail_haptics = True
     assert rx.send_haptic("left", [1]) is False
 
@@ -209,6 +212,16 @@ def test_connected_uses_device_status_then_fresh_frame(fake_client):
     assert rx.connected("right") is True and rx.connected("left") is False
     c.hands[Side.LEFT] = _frame(age=0.05)
     assert rx.connected("left") is True
+
+
+def test_connected_ignores_old_device_status(fake_client):
+    rx, c = _started()
+    c.status = DeviceStatus(True, True, 1.9)
+    assert rx.connected("right") is True
+    c.status = DeviceStatus(True, True, 2.5)
+    assert rx.connected("right") is False
+    c.hands[Side.RIGHT] = _frame(age=0.05)
+    assert rx.connected("right") is True
 
 
 class _FakeRig:
@@ -282,24 +295,20 @@ def test_glove_model_legacy_source_still_selectable():
 
 
 def _free_port_pair():
-    for _ in range(50):
-        a = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        a.bind(("127.0.0.1", 0))
-        p = a.getsockname()[1]
-        if p + 2 > 65535:
-            a.close()
-            continue
-        b = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for p in TEST_PORTS:
+        socks = []
         try:
-            b.bind(("127.0.0.1", p + 2))
+            for port in (p, p + 2):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                socks.append(sock)
+                sock.bind(("127.0.0.1", port))
         except OSError:
-            a.close()
-            b.close()
             continue
-        a.close()
-        b.close()
+        finally:
+            for sock in socks:
+                sock.close()
         return p
-    pytest.skip("빈 UDP 포트 쌍을 못 찾음")
+    pytest.skip("47500-47599 에서 빈 UDP 포트 쌍을 못 찾음")
 
 
 def _wait(pred, timeout):
@@ -312,42 +321,37 @@ def _wait(pred, timeout):
     return None
 
 
-def _spine_protocol(version):
-    major, minor = (int(x) for x in version.split(".")[:2])
-    return 2 if (major, minor) >= (0, 2) else 1
+def _library_version(version):
+    return tuple(int(x) for x in version.split(".")[:2])
 
 
-def _replay_files(tmp_path):
-    if _spine_protocol(Client.version()) >= 2:
-        return os.path.join(CORE, REPLAYER), os.path.join(CORE, CAPTURE)
-    out = []
-    for rel in (REPLAYER, CAPTURE):
-        dst = tmp_path / os.path.basename(rel)
-        r = subprocess.run(["git", "-C", CORE, "show", f"{CORE_LAST_V1}:{rel}"],
-                           capture_output=True)
-        if r.returncode != 0:
-            pytest.skip(f"v1 Spine {rel} 를 {CORE_LAST_V1} 에서 못 꺼냄")
-        dst.write_bytes(r.stdout)
-        out.append(str(dst))
-    return tuple(out)
+def _core_files():
+    core = os.environ.get(CORE_ENV)
+    if not core:
+        pytest.skip(f"{CORE_ENV} 미설정 — AirGlove-Client-Core 체크아웃 경로가 필요")
+    replayer, capture = os.path.join(core, REPLAYER), os.path.join(core, CAPTURE)
+    if not (os.path.exists(replayer) and os.path.exists(capture)):
+        pytest.skip(f"{CORE_ENV}={core} 에 Spine 리플레이어/캡처 없음")
+    if _library_version(Client.version()) < MIN_LIBRARY:
+        pytest.skip(f"airglove_client {Client.version()} 는 Spine 프로토콜 v2 이전 — "
+                    "0.3.0 이상 라이브러리(AIRGLOVE_CLIENT_LIBRARY)가 필요")
+    return replayer, capture
 
 
-def test_spine_protocol_follows_library_version():
-    assert _spine_protocol("0.1.0") == 1
-    assert _spine_protocol("0.2.0") == 2
-    assert _spine_protocol("1.0.3") == 2
+def test_library_version_parse():
+    assert _library_version("0.1.0") < MIN_LIBRARY
+    assert _library_version("0.2.0") < MIN_LIBRARY
+    assert _library_version("0.3.0") >= MIN_LIBRARY
+    assert _library_version("1.0.3") >= MIN_LIBRARY
 
 
-def test_end_to_end_against_spine_replayer(tmp_path):
-    if not (os.path.exists(os.path.join(CORE, REPLAYER))
-            and os.path.exists(os.path.join(CORE, CAPTURE))):
-        pytest.skip("Spine 리플레이어/캡처 없음")
-    replayer, capture = _replay_files(tmp_path)
+def test_end_to_end_against_spine_replayer():
+    replayer, capture = _core_files()
     port = _free_port_pair()
     rx = GloveOpenXRReceiver(glove_port=port, client_port=port + 2)
     rx.start()
-    proc = subprocess.Popen([sys.executable, replayer, capture, "--port", str(port),
-                             "--listen-port", str(port + 2)],
+    proc = subprocess.Popen([sys.executable, replayer, capture, "--port", str(port + 2),
+                             "--client-port", str(port)],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         samples = {s: _wait(lambda s=s: (lambda x: x if x.tracked else None)(rx.get(s)), 5.0)
@@ -362,8 +366,12 @@ def test_end_to_end_against_spine_replayer(tmp_path):
             tip = XR_JOINT_NAMES.index("middle_tip")
             assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
             assert s.hand.wrist is not None
-        assert _wait(lambda: rx.connected("right"), 3.0)
-        assert rx.send_haptic("right", [0, 2, 9, 0, 0]) is True
+        assert _wait(lambda: rx.connected("right") and rx.connected("left"), 3.0)
+        assert rx.send_haptic("right", [0, 2, 9]) is True
+        result = _wait(lambda: rx._client.haptics_result(Side.RIGHT), 2.0)
+        assert result is not None and result[0] is True
+        assert rx.send_haptic("right", []) is True
+        time.sleep(0.3)
     finally:
         rx.stop()
         proc.terminate()
@@ -373,3 +381,4 @@ def test_end_to_end_against_spine_replayer(tmp_path):
             proc.kill()
             out, _ = proc.communicate()
     assert "haptics right: [0, 2, 3, 0, 0]" in out
+    assert "haptics right: [0, 0, 0, 0, 0]" in out

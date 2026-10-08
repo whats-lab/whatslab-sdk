@@ -108,7 +108,9 @@ Controller / hand-tracking (Quest) paths do not require Spine.
 source of `GloveModel` and `HandModel`, wraps the
 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client) library (pulled in by
 the `receiver` extra; client API in its `python/README.md`, wire contract in
-AirGlove-Client-Core `docs/spine_protocol.md`). Per hand it delivers:
+AirGlove-Client-Core `docs/spine_protocol.md`). Spine OSC protocol v2 needs
+`airglove_client` 0.3.0; the pinned `airglove-client` v0.1.0 speaks protocol v1, so until
+v0.3.0 is tagged point `AIRGLOVE_CLIENT_LIBRARY` at a 0.3.0 native library. Per hand it delivers:
 
 - `HandPose.xr_joints` — `(26, 8)` array, 26 OpenXR `XrHandJointEXT` joints
   (palm, wrist, thumb ×4, index..little ×5) as `[qx qy qz qw px py pz radius]`, as
@@ -134,7 +136,9 @@ initial / last command until an `xr_joints` retargeter lands.
 ```python
 from whatslab.teleop import GloveModel
 
-m = GloveModel("rigs/nero_orca_right.yaml")   # arm = controller IK, hand = glove retarget
+m = GloveModel("rigs/nero_orca_right.yaml")   # arm = controller IK; with the default openxr
+                                              # glove source the robot fingers do NOT move yet
+                                              # (no xr_joints retargeter yet, see Compatibility)
 m.start()
 
 while True:

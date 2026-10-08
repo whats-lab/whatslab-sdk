@@ -13,7 +13,8 @@
   그대로(손목 공간, OpenXR 관절 축, 미터), `wrist` 는 글러브의 캘리브된 OpenXR 손목
   (+Y 위 world, heading = IMU)을 WebXR 경로와 같은 `M R Mᵀ` 로 정준 프레임에 옮긴 값.
   `tracked` = 프레임 있음 · `age_s < stale_timeout`(기본 0.2 s) · 26관절 valid.
-  `send_haptic` 은 값을 `round` 후 0..3 으로 클램프한다(`haptic_levels`).
+  `send_haptic` 은 값을 `round` 후 0..3 으로 클램프하고 항상 5개(빠진 손가락 = 0)를 보낸다
+  (`haptic_levels`). `connected` 는 2 s 보다 오래된 `device_status` 를 무시한다.
   계약 정본: AirGlove-Client-Core `docs/spine_protocol.md`, AirGlove-Client `python/README.md`.
 - **`HandPose.xr_joints`** (`Optional[np.ndarray]`, 기본 `None`).
 - `receiver` extra 에 `airglove-client @ git+…AirGlove-Client.git@v0.1.0#subdirectory=python`.
@@ -35,14 +36,14 @@
 - `xr_joints` 를 쓰는 손 리타게터가 아직 없다 — `HandRetargetController` 는
   `joint_angles` 만 받으므로 OpenXR 소스에서는 로봇 손이 초기/직전 명령을 유지한다.
   `examples/airglove_hand.py` 와 `examples/quest_arm.py` 의 손가락도 같은 이유로 움직이지 않는다.
-- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 v1** 만 말한다
-  (`/heartbeat/get`·`/device/status/get`·`/{side}/hapt/set`, 메시지 타입 헤더 문자열).
-  AirGlove-Client-Core `docs/spine_protocol.md` 는 이미 v2(헤더 없음, `/heartbeat`·
-  `/device/status`·`/{side}/haptics/set`, 라이브러리 0.2.0)를 적고 있지만, 지금 Spine 은 아직
-  v1 이고 v2 를 담은 `airglove-client` 릴리스도 없다. v2 Spine 에는 관절·손목 프레임은
-  들어오지만 햅틱·하트비트·상태 요청은 무시된다. 종단 테스트는 설치된 라이브러리 버전
-  (`Client.version()`)에 맞는 리플레이어·캡처를 고른다 — 0.1.x 면 Core `cb0ec9b^`(마지막 v1)
-  에서 꺼내 쓴다.
+- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 v1** 만 말한다.
+  지금 Spine 은 프로토콜 **v2**(헤더 없음, 한 PC 에 클라이언트 하나, Spine 은 `127.0.0.1:4040` 으로
+  보내고 `127.0.0.1:4042` 에서 받는다)이고 이를 말하는 것은 `airglove_client` 0.3.0 이다
+  (AirGlove-Client-Core `docs/spine_protocol.md`). v0.3.0 태그가 나오면 `receiver` extra 의 핀을
+  `@v0.3.0` 으로 올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를
+  지정한다(0.1.0 Python 패키지와 ABI 가 같다).
+- 종단 테스트는 `AIRGLOVE_CORE_DIR`(AirGlove-Client-Core 체크아웃)의 `tools/spine_replay.py` 로
+  v2 Spine 을 흉내 낸다. 환경변수가 없거나 라이브러리가 0.3.0 미만이면 건너뛴다.
 
 ## [0.4.0] — 2026-08-21
 
