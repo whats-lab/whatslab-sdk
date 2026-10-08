@@ -1,0 +1,16 @@
+# Allegro Hand left — 글러브(OpenXR 26관절) → DexPilot (dex-retargeting 0.4.6).
+# 키 설명은 docs/API.md "손 리타게팅 config (configs/hands)".
+# 손목·손끝 링크는 dex-retargeting configs/teleop/allegro_hand_left_dexpilot.yml 그대로.
+name: allegro_left
+side: left
+urdf: allegro_hand/allegro_hand_left.urdf
+palm_links: {index: link_9.0, middle: link_5.0, pinky: link_1.0}
+human_hand_length: 0.19
+# 손가락이 4개(소지 없음) — palm_links.pinky 자리에 약지를 둔다.
+# SLSQP 평가 상한(틱당). 프레임 무관 지표는 무제한과 같고 2손 p99 지연을 8ms 안으로 둔다.
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: wrist
+  finger_tip_link_names: [link_15.0_tip, link_11.0_tip, link_7.0_tip, link_3.0_tip]
+  low_pass_alpha: 0.5
