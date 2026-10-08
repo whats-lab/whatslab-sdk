@@ -29,6 +29,8 @@ dependencies = [
 # 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
 # airglove-client = 새 Spine(OpenXR 26관절) 수신 — GloveOpenXRReceiver 가 감싼다.
+# v0.1.0 은 Spine 프로토콜 v1 이다. 프로토콜 v2 Spine 용 v0.3.0 태그가 나오면 @v0.3.0 으로 올린다
+# (그 전엔 AIRGLOVE_CLIENT_LIBRARY 로 0.3.0 네이티브 라이브러리를 지정).
 receiver = ["python-osc",
             "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.1.0#subdirectory=python"]
 # 통합 ONNX 리타게터 — 사람 FK 까지 그래프 안이라 추론은 onnxruntime 뿐이다.

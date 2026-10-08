@@ -73,8 +73,10 @@ s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 
 
 전송 계약의 정본은 AirGlove-Client-Core `docs/spine_protocol.md`, 클라이언트 API 는
 AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직접 파싱하지 않는다.
-고정한 `airglove-client` v0.1.0 은 Spine 프로토콜 **v1** 만 말한다 — Core 문서의 v2
-(햅틱 `/{side}/haptics/set` 등)를 쓰는 Spine 에는 햅틱·상태 요청이 닿지 않는다(CHANGELOG
+Spine 프로토콜 **v2**(헤더 없음, 한 PC 에 클라이언트 하나, `/heartbeat`·`/device/status/get`·
+`/{side}/hapt/set` 정확히 5개)는 `airglove_client` 0.3.0 부터다. 고정한 `airglove-client`
+v0.1.0 은 v1 이라 v2 Spine 에는 햅틱·상태 요청이 닿지 않는다 — v0.3.0 태그가 나오면 핀을
+올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를 지정한다(CHANGELOG
 「알려진 제한」).
 
 - 생성자 인자 → `Client`: `glove_port` → `listen_port`, `listen_ip` → `listen_address`,
@@ -94,11 +96,13 @@ AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직�
 - `tracked` = 프레임이 있고 `age_s < stale_timeout`(0 이하면 나이 검사 없음)이고
   26관절이 전부 `valid`. 오래된 프레임도 `xr_joints` 는 그대로 싣고 `tracked=False` 만 낸다.
   `timestamp` = `time.monotonic() - age_s`.
-- `connected(side)` = Spine `device_status` 가 그 손을 연결로 보고하거나 신선한 프레임이 있음.
+- `connected(side)` = 2 s 안에 받은 Spine `device_status` 가 그 손을 연결로 보고하거나
+  신선한 프레임이 있음. 2 s 보다 오래된 상태(Spine 이 응답을 멈춤)는 무시한다.
 - `send_haptic(side, values)` → `bool`. 값은 손가락별(엄지..소지, 앞 5개까지) Spine 세기
   단계로 본다: `round` 후 `[0, 3]` 클램프(0 끔, 1 약, 2 중, 3 강), 숫자가 아니거나 NaN 이면 0
-  (`haptic_levels`). 준 손가락만 보낸다 — 글러브는 0 을 받을 때까지 계속 진동한다.
-  시작 전·빈 값·전송 실패면 `False`.
+  (`haptic_levels`). 항상 정확히 5개를 보낸다 — 빠진 손가락은 0(빈 값 = 전부 끔).
+  글러브는 0 을 받을 때까지 계속 진동한다(Spine 은 클라이언트 하트비트가 3 s 끊기면 끈다).
+  시작 전·전송 실패면 `False`.
 
 ### WebXR 경로
 
