@@ -18,6 +18,12 @@
   손목 관절을 빼고 0 고정(`fixed_joints`, 팔 IK 가 Carpals 를 쓴다), DG-5F 는 손가락 PIP·DIP 를
   −5..90° 로 자른다(`joint_limits_deg` — URDF ±90° 에서 역방향으로 꺾는 해가 나왔다). 전부
   `max_evals: 20`(틱당 SLSQP 평가 상한)·`low_pass_alpha: 0.5`.
+- **`configs/hands/`** 추가 — `allegro`, `leap`, `ability`(PSYONIC), `schunk`(SVH) `{left,right}`.
+  손목·손끝 링크·`target_joint_names` 는 dex-retargeting `configs/teleop/*_dexpilot.yml` 그대로.
+  allegro·leap 는 손가락 4개(`palm_links.pinky` 에 약지), ability·schunk 는 URDF mimic 관절을
+  target 에서 빼고 dex-retargeting mimic 어댑터가 채운다.
+- `XRHandRetargeter.full_qpos` 가 URDF mimic 관절도 채운다. `examples/airglove_hand.py --viz` 는
+  dex config 이면 `full_qpos` 로 그린다. `tools/bench_hand_retarget.py` 가 손가락 4개·mimic 손을 잰다.
 - **`HandRetargetController`** — `config_name` 이 `dex:<이름>` 이면 `XRHandRetargeter` 를 쓰고
   `xr_joints` 를 읽는다(`xr_input` 속성). 그 밖은 지금까지처럼 ONNX + `joint_angles`.
   `robots/orca_right.yaml` 의 `retarget:` 가 `orca_hand` → `dex:orca`, `HandModel` 기본

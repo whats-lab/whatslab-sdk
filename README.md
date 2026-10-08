@@ -64,6 +64,10 @@ input.
 | ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (wrist joint excluded, held at 0) |
 | Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP/DIP clamped to −5..90°) |
 | ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (4 fingers — the human pinky is not used) |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (4 fingers — the human pinky is not used) |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (6 actuated joints; PIP follows URDF mimic) |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (9 actuated joints; coupled joints follow URDF mimic) |
 
 **Legacy joint-angle input (Spine ≤ 2.3.1)** — one ONNX graph covers every hand
 below, both sides. The name in the first column is what `retarget:` takes; the alias

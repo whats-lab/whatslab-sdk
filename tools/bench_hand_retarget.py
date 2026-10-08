@@ -92,14 +92,14 @@ class RobotProbe:
         return self.data.oMf[fid].translation.copy()
 
     def _chain(self, fid, thumb):
-        target = set(self.eng.joint_names)
+        target = set(self.eng.robot_joint_names) - set(self.eng.config.fixed_joints)
         j, joints = self.model.frames[fid].parent, []
         while j > 0:
             if self.model.names[j] in target:
                 joints.append(j)
             j = self.model.parents[j]
         joints = joints[::-1]
-        return joints[-2:] if thumb else joints[1:3]
+        return joints[-2:] if thumb or len(joints) < 3 else joints[1:3]
 
     def _fk(self, q_full):
         q = pin.neutral(self.model)
@@ -116,7 +116,7 @@ class RobotProbe:
 
 def bone_angles(h_pts, r_bones, R_h, R_r):
     out = []
-    for k, idx in enumerate(XR_BONES):
+    for k, idx in enumerate(XR_BONES[:len(r_bones)]):
         hb = h_pts[list(idx)] @ R_h
         rb = r_bones[k] @ R_r
         for a in range(2):
@@ -135,6 +135,7 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
     lo, hi = eng.joint_limits[:, 0], eng.joint_limits[:, 1]
     band = LIMIT_FRAC * (hi - lo)
     side = eng.config.side
+    tip_idx = list(XR_TIP[1:len(probe.tips)])
     for sq in seqs:
         if sq["side"] == side:
             xr = sq["xr"]
@@ -145,7 +146,8 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
         eng.reset()
         H = np.array([xr_wrist_positions(x) for x in xr])
         s = probe.length / np.percentile(np.linalg.norm(H[:, 15] - H[:, 1], axis=1), 95)
-        ext = np.linalg.norm(H[:, list(XR_TIP)] - H[:, list(XR_BASE)], axis=2)
+        n_f = len(probe.tips)
+        ext = np.linalg.norm(H[:, list(XR_TIP[:n_f])] - H[:, list(XR_BASE[:n_f])], axis=2)
         ext_ref = np.percentile(ext, 95, axis=0)
         prev = None
         for i, x in enumerate(xr):
@@ -161,7 +163,7 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
             h = H[i]
             R_h = palm_frame(*(h[j] for j in XR_PALM), side=side)
             acc["bone"].extend(bone_angles(h, bones, R_h, probe.R_palm))
-            hd = np.linalg.norm(h[list(XR_TIP[1:])] - h[XR_TIP[0]], axis=1) * 1e3
+            hd = np.linalg.norm(h[tip_idx] - h[XR_TIP[0]], axis=1) * 1e3
             rd = np.linalg.norm(tips[1:] - tips[0], axis=1) * 1e3
             if np.all(ext[i] >= OPEN_FRAC * ext_ref):
                 acc["open"].append(float(np.mean(np.abs(rd - s * hd))))

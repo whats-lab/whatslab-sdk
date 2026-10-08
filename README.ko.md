@@ -62,6 +62,10 @@ ROS 에 의존하지 않아 어디서든 in-process 로 동작합니다. 입력 
 | ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (손목 관절은 빼고 0 고정) |
 | Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP·DIP 를 −5..90° 로 자름) |
 | ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (손가락 4개 — 사람 소지는 안 쓴다) |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (손가락 4개 — 사람 소지는 안 쓴다) |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (구동 6축, PIP 는 URDF mimic) |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic) |
 
 **레거시 관절각 입력(Spine ≤ 2.3.1)** — 아래 손 전부와 좌우가 ONNX 그래프 하나를
 공유한다. 첫 열의 이름이 `retarget:` 에 넣는 값이고, 괄호 안 별칭도 같이 인식한다.
