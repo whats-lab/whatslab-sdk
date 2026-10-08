@@ -108,7 +108,9 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 `GloveOpenXRReceiver` 가 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client)
 라이브러리(`receiver` extra 가 설치)를 감쌉니다. 클라이언트 API 는 그 저장소의
 `python/README.md`, 전송 계약은 AirGlove-Client-Core `docs/spine_protocol.md` 가
-정본입니다. 손마다 다음을 냅니다.
+정본입니다. Spine OSC 프로토콜 v2 에는 `airglove_client` 0.3.0 이 필요합니다. 고정한
+`airglove-client` v0.1.0 은 프로토콜 v1 이라, v0.3.0 태그가 나올 때까지는
+`AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를 지정합니다. 손마다 다음을 냅니다.
 
 - `HandPose.xr_joints` — `(26, 8)` 배열. OpenXR `XrHandJointEXT` 26관절(palm, wrist,
   엄지 4, 검지~소지 각 5)의 `[qx qy qz qw px py pz radius]` 를 받은 그대로 담습니다:
@@ -132,7 +134,9 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 ```python
 from whatslab.teleop import GloveModel
 
-m = GloveModel("rigs/nero_orca_right.yaml")   # 팔 = 컨트롤러 IK, 손 = 글러브 리타게팅
+m = GloveModel("rigs/nero_orca_right.yaml")   # 팔 = 컨트롤러 IK. 기본 openxr 글러브 소스로는
+                                              # 로봇 손가락이 아직 움직이지 않는다
+                                              # (xr_joints 리타게터 아직 없음, 위 「호환성」 참고)
 m.start()
 
 while True:

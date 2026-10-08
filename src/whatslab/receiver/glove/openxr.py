@@ -22,6 +22,7 @@ XR_JOINT_NAMES = tuple(JOINT_NAMES)
 XR_WRIST_INDEX = XR_JOINT_NAMES.index("wrist")
 HAPTIC_LEVEL_MAX = 3
 OPENXR_STALE_TIMEOUT = 0.2
+DEVICE_STATUS_MAX_AGE = 2.0
 
 _SIDES = {"left": Side.LEFT, "right": Side.RIGHT}
 
@@ -32,15 +33,15 @@ def openxr_quat_to_canonical(quat) -> np.ndarray:
 
 
 def haptic_levels(values) -> list:
-    out = []
-    for v in list(values)[:AGA_FINGER_COUNT]:
+    out = [0] * AGA_FINGER_COUNT
+    for i, v in enumerate(list(values)[:AGA_FINGER_COUNT]):
         try:
             f = float(v)
         except (TypeError, ValueError):
             f = 0.0
         if not math.isfinite(f):
             f = 0.0
-        out.append(int(min(max(round(f), 0), HAPTIC_LEVEL_MAX)))
+        out[i] = int(min(max(round(f), 0), HAPTIC_LEVEL_MAX))
     return out
 
 
@@ -131,16 +132,14 @@ class GloveOpenXRReceiver:
                 return False
             status = self._client.device_status()
             frame = self._client.hand(key)
-        if status is not None and (status.left_connected if key == Side.LEFT
-                                   else status.right_connected):
+        if (status is not None and float(status.age_s) < DEVICE_STATUS_MAX_AGE
+                and (status.left_connected if key == Side.LEFT else status.right_connected)):
             return True
         return frame is not None and self._fresh(float(frame.age_s))
 
     def send_haptic(self, side: str, values: list) -> bool:
         key = _SIDES[side]
         levels = haptic_levels(values)
-        if not levels:
-            return False
         with self._lock:
             if self._client is None:
                 return False
