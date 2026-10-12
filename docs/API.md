@@ -21,7 +21,7 @@ from whatslab.teleop import QuestModel, GloveModel
 | `TeleopModel.sides` | `{side: SideModel}` — **side별 상태의 유일한 소유자.** 항상 `SIDES` 전부를 담는다(로봇 없는 side 는 `robot=None`). |
 | `SideModel` | 한 side 의 전부: `side`·`robot`·`ik`·`retarget`·`calib`·`safety` + 이 틱의 `raw_target`·`target`·`q`. 유상태 컴포넌트가 이 안에만 있으므로 side 간 공유가 구조적으로 불가능하다. `solve`, `apply_calib`, `filter`, `sync_ik`, `reseed`. |
 | `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
-| `GloveModel(robot, hand_source="openxr", arm_source="quest", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 컨트롤러, 회전=글러브 손목), 손=글러브. 햅틱 지원. `hand_source` = `HAND_SOURCES` 키 — `"openxr"`(기본, `GloveOpenXRReceiver`) / `"angles"`·`"robot"`(레거시, Spine ≤ 2.3.1). `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`). |
+| `GloveModel(robot, hand_source="openxr", arm_source="quest", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 컨트롤러, 회전=글러브 손목 — 손목이 없으면 컨트롤러 회전, `"openxr"` 소스는 손목을 내지 않으므로 항상 컨트롤러 회전), 손=글러브. 햅틱 지원. `hand_source` = `HAND_SOURCES` 키 — `"openxr"`(기본, `GloveOpenXRReceiver`) / `"angles"`·`"robot"`(레거시, Spine ≤ 2.3.1). `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`). |
 | `HandModel(hand_config="dex:orca", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_config` 가 `dex:<이름>` 이면 OpenXR `xr_joints` → `XRHandRetargeter`, 그 밖이면 레거시 관절각 → ONNX. `hand_source` 를 안 주면 `GloveOpenXRReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. |
 | `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃(`_cold_start`)과 `reseed()`** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `cold_*` 속성. |
 | `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + 캘리브 원점(`p0`) + reach 스케일 소유. `enabled=False` 면 리시버 좌표를 그대로 통과시킨다(rig `calibration.enabled`). |
@@ -54,7 +54,7 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세(OSC/UDP, 포트 9000). `connected(side)`. |
 | `WebXRControllerReceiver` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러 6D(WebSocket, 포트 8443). OSC 경로와 **병행** 가능. HMD 는 회전뿐 아니라 **위치도** 온다. `connected(side)`, `url`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
-| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2)` | `InputSample(hand=HandPose(wrist=Pose, xr_joints=(26,8)))` | **현재 Spine** 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `running`. |
+| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2, pair=1)` | `InputSample(hand=HandPose(wrist=None, xr_joints=(26,8)))` | **현재 Spine**(프로토콜 3) 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `raw_wrist(side)`, `spine_protocol()`, `running`. |
 | `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **레거시(Spine ≤ 2.3.1).** 사람 손 URDF 관절각(`/{side}/joint_angles/get`) + 손목. 현재 Spine 에서는 받는 게 없다. |
 | `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | **레거시(Spine ≤ 2.3.1).** AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만. |
 | `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | **레거시(Spine ≤ 2.3.1).** Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
@@ -73,28 +73,36 @@ s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 
 
 전송 계약의 정본은 AirGlove-Client-Core `docs/spine_protocol.md`, 클라이언트 API 는
 AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직접 파싱하지 않는다.
-Spine 프로토콜 **v2**(헤더 없음, 한 PC 에 클라이언트 하나, `/heartbeat`·`/device/status/get`·
-`/{side}/hapt/set` 정확히 5개)는 `airglove_client` 0.3.0 부터다. 고정한 `airglove-client`
-v0.1.0 은 v1 이라 v2 Spine 에는 햅틱·상태 요청이 닿지 않는다 — v0.3.0 태그가 나오면 핀을
-올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를 지정한다(CHANGELOG
-「알려진 제한」).
+현재 Spine 은 프로토콜 **3**(모든 메시지 첫 인자가 번호 문자열, 손·장치 주소 앞에 `/pair/N`,
+Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보낸다)이고 이를 말하는 것은
+`airglove_client` 0.4.0 이다. 고정한 `airglove-client` v0.1.0 은 프로토콜 1 이라 지금 Spine 과
+통하지 않는다 — v0.4.0 태그가 나오면 핀을 올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.4.0
+네이티브 라이브러리를 지정한다(ABI 1 그대로라 고정한 Python 패키지로 동작, CHANGELOG
+「알려진 제한」). `start()` 는 라이브러리가 0.4.0 미만이면 경고하고, 첫 하트비트 응답이 프로토콜
+3 이 아니면 `get()` 이 한 번 경고한다(`spine_protocol()` = 보고된 번호 또는 `None`).
 
 - 생성자 인자 → `Client`: `glove_port` → `listen_port`, `listen_ip` → `listen_address`,
-  `target_ip` → `spine_address`, `client_port` → `spine_port`. `stale_timeout > 0` 이면
-  `Client.set_stale_threshold` 에도 같은 값을 넣는다. **`Client` 는 `start()` 에서 만들고**
+  `target_ip` → `spine_address`, `client_port` → `spine_port`, `pair` → `Client.set_pair`
+  (1 이 기본이라 1 이면 부르지 않는다. 1 이 아닌데 패키지에 `set_pair` 가 없으면 `start()` 가
+  `AirGloveError`). `set_stale_threshold` 는 0.4.0 에서 효과가 없어 부르지 않는다.
+  **`Client` 는 `start()` 에서 만들고**
   `stop()` 에서 닫는다 — 생성만으로는 포트를 잡지 않는다. 한 포트에 클라이언트는 하나뿐이라
   두 번째 바인드는 `airglove_client.AirGloveError`.
 - `xr_joints` — 26 OpenXR `XrHandJointEXT` 관절(`XR_JOINT_NAMES`: palm, wrist, thumb
   metacarpal..tip, index..little metacarpal..tip)을 받은 그대로: 손목 공간(손목 = 단위,
   `XR_WRIST_INDEX` = 1), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, X = Y×Z, 양손 같은
   규칙), 미터. palm 은 Spine 이 합성한다. OpenXR[i+1] == WebXR[i]. **정준 변환하지 않는다.**
-- `wrist` — 글러브 손목 자세(Spine 의 +Y 위 오른손계 world, heading = IMU 그대로라 정렬
-  안 됨·드리프트)를 `openxr_quat_to_canonical(q)` = `M R Mᵀ`(`M` = WebXR 경로의
-  `_CANONICAL_M`)로 정준 프레임에 옮긴 값. WebXR 손목과 같은 프레임이다(테스트로 수치 일치
-  확인). 마지막으로 받은 손목은 오래돼도 유지한다 — 끊길 때 `GloveModel` 이 반대손 컨트롤러
-  회전으로 튀지 않게 하기 위해서다. 노름 0·비유한 손목은 `None`.
+- `wrist` — **항상 `None`.** 프로토콜 3 의 손목(18/19)은 SDK 의 world 손목 자세가 아니라
+  손등 IMU 의 raw 쿼터니언을 Spine 이 `[y, x, z, -w]` 로 재배열한 값이다. 캘리브·heading
+  정렬이 없는 센서 프레임이라 정준 프레임으로 옮길 근거가 없고, 팔 목표로 쓰면 팔이 틀린
+  방향으로 움직인다. 그래서 `HandPose.wrist` 에 넣지 않고 `GloveModel` 은 팔 회전을 반대손
+  컨트롤러 회전으로 쓴다(손마다 경고 한 번). raw 값은 `raw_wrist(side)` → `(4,)` 배열(받은
+  그대로, 정규화·재배열 없음) 또는 `None`(없음·`stale_timeout` 넘음)으로만 낸다.
+  `openxr_quat_to_canonical` 은 OpenXR 쿼터니언용 변환으로 남아 있다.
 - `tracked` = 프레임이 있고 `age_s < stale_timeout`(0 이하면 나이 검사 없음)이고
   26관절이 전부 `valid`. 오래된 프레임도 `xr_joints` 는 그대로 싣고 `tracked=False` 만 낸다.
+  `age_s` 는 클라이언트가 받은 뒤 지난 시간이다 — 프로토콜 3 에는 Spine 시각·순번이 없고
+  `seq`·`sender_time_us` 는 클라이언트가 센 값·받은 시각이라 신선도 판단에 쓰지 않는다.
   `timestamp` = `time.monotonic() - age_s`.
 - `connected(side)` = 2 s 안에 받은 Spine `device_status` 가 그 손을 연결로 보고하거나
   신선한 프레임이 있음. 2 s 보다 오래된 상태(Spine 이 응답을 멈춤)는 무시한다.

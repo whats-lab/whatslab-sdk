@@ -129,18 +129,26 @@ Controller / hand-tracking (Quest) paths do not require Spine.
 source of `GloveModel` and `HandModel`, wraps the
 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client) library (pulled in by
 the `receiver` extra; client API in its `python/README.md`, wire contract in
-AirGlove-Client-Core `docs/spine_protocol.md`). Spine OSC protocol v2 needs
-`airglove_client` 0.3.0; the pinned `airglove-client` v0.1.0 speaks protocol v1, so until
-v0.3.0 is tagged point `AIRGLOVE_CLIENT_LIBRARY` at a 0.3.0 native library. Per hand it delivers:
+AirGlove-Client-Core `docs/spine_protocol.md`). The current Spine speaks OSC protocol 3
+(message-number header, `/pair/N` addresses), which needs `airglove_client` 0.4.0; the pinned
+`airglove-client` v0.1.0 speaks protocol 1, so until v0.4.0 is tagged point
+`AIRGLOVE_CLIENT_LIBRARY` at a 0.4.0 native library (same ABI as the pinned Python package).
+`GloveOpenXRReceiver(pair=1)` selects the Spine pair. Per hand it delivers:
 
 - `HandPose.xr_joints` — `(26, 8)` array, 26 OpenXR `XrHandJointEXT` joints
   (palm, wrist, thumb ×4, index..little ×5) as `[qx qy qz qw px py pz radius]`, as
   received: wrist space (wrist = identity), OpenXR joint axes (−Z along the bone,
   +Y back of hand, same rule for both hands), metres.
-- `HandPose.wrist` — the glove's calibrated OpenXR wrist orientation in Spine's +Y-up
-  world (heading = raw IMU, drifts), converted to the canonical frame with the same
-  matrix as the WebXR path. Rig `ee_align` values tuned against the old raw dorsum
-  IMU wrist must be re-checked on hardware.
+- `HandPose.wrist` — always `None`. Protocol 3 no longer sends the SDK's world wrist
+  orientation, only the raw back-of-hand IMU quaternion (Spine reorders it to
+  `[y, x, z, -w]`) in an uncalibrated sensor frame. Using it as an arm target would move the
+  arm wrongly, so the receiver does not; `GloveModel` takes the arm rotation from the
+  controller instead (one warning per side). The raw value is available, unconverted,
+  through `GloveOpenXRReceiver.raw_wrist(side)`.
+
+Freshness (`stale_timeout`, default 0.2 s) is the age since the client *received* the
+frame; protocol 3 carries no Spine timestamp or sequence (`seq` / `sender_time_us` are
+client-side counters and receive times).
 
 Fingers are retargeted from `xr_joints` when the rig's `retarget:` is `dex:<name>`
 (`XRHandRetargeter`, DexPilot). Positions are taken relative to the wrist, mapped to

@@ -90,13 +90,25 @@
 - `GloveModel(…, hand_kwargs=None)`, `HandModel(…, hand_kwargs=None)` — 리시버 생성자
   인자(`glove_port` 등)를 생성 시점에 넘긴다(만든 뒤 리시버를 갈아 끼울 필요 없음).
 
+### 변경 — Spine OSC 프로토콜 3 (airglove_client 0.4.0)
+
+- `GloveOpenXRReceiver` 가 Spine 프로토콜 3(번호 헤더 + `/pair/N`)을 기준으로 한다. `pair`
+  인자(기본 1, `Client.set_pair`), `spine_protocol()`, 라이브러리 0.4.0 미만·프로토콜 3 아님 경고.
+  `set_stale_threshold` 는 0.4.0 에서 무효라 부르지 않는다 — 신선도는 원래대로 클라이언트 수신
+  나이(`age_s`)만 본다(Spine 은 시각·순번을 보내지 않는다).
+- **`HandPose.wrist` 를 더는 채우지 않는다(항상 `None`).** 프로토콜 3 의 손목은 raw 손등 IMU
+  쿼터니언(`[y, x, z, -w]`, 캘리브 없는 센서 프레임)이라 팔 목표로 쓰면 틀린 동작이 나온다.
+  `GloveModel` 의 팔 회전은 컨트롤러 회전으로 대체된다. raw 값은 `raw_wrist(side)` 로만 낸다.
+- 종단 테스트를 AirGlove-Client-Core `eed7eb5` 의 `tools/spine_replay.py`·재녹화 캡처로 돌린다
+  (라이브러리 0.4.0 미만이면 건너뜀).
+
 ### 변경
 
 - **`GloveModel` 의 기본 `hand_source` 가 `"angles"` → `"openxr"`**, **`HandModel` 의 기본
   리시버가 `GloveHumanAnglesReceiver` → `GloveOpenXRReceiver`.** 옛 Spine(≤ 2.3.1)을
   쓰면 `hand_source="angles"` 를 명시해야 한다.
-- 팔 회전 목표의 글러브 손목이 raw 손등 IMU → 캘리브된 OpenXR 손목(정준 변환)으로 바뀌었다.
-  옛 손목으로 맞춘 rig `ee_align` 값은 **실기에서 다시 확인해야 한다**(미검증).
+- ~~팔 회전 목표의 글러브 손목이 raw 손등 IMU → 캘리브된 OpenXR 손목(정준 변환)으로 바뀌었다.~~
+  프로토콜 3 에서 Spine 이 다시 raw 손등 IMU 만 보내므로 `"openxr"` 소스는 손목을 내지 않는다(위).
 - `GloveHumanAnglesReceiver`·`GloveHumanHandReceiver`·`GloveRobotHandReceiver` 는
   **레거시**(Spine ≤ 2.3.1)로 남는다. 현재 Spine 에서는 아무것도 받지 못한다.
 
@@ -104,14 +116,19 @@
 
 - ~~`xr_joints` 를 쓰는 손 리타게터가 아직 없다~~ — 위 「글러브 OpenXR 손 리타게팅」으로 해소.
   rig `retarget:` 가 ONNX 이름이면 여전히 `joint_angles` 만 받아 손이 직전 명령을 유지한다.
-- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 v1** 만 말한다.
-  지금 Spine 은 프로토콜 **v2**(헤더 없음, 한 PC 에 클라이언트 하나, Spine 은 `127.0.0.1:4040` 으로
-  보내고 `127.0.0.1:4042` 에서 받는다)이고 이를 말하는 것은 `airglove_client` 0.3.0 이다
-  (AirGlove-Client-Core `docs/spine_protocol.md`). v0.3.0 태그가 나오면 `receiver` extra 의 핀을
-  `@v0.3.0` 으로 올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를
-  지정한다(0.1.0 Python 패키지와 ABI 가 같다).
+- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 1** 만 말한다.
+  지금 Spine 은 프로토콜 **3**(모든 메시지 첫 인자가 번호 문자열, 손·장치 주소 앞에 `/pair/N`,
+  Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보내고 `127.0.0.1:4042` 에서 받는다)이고 이를
+  말하는 것은 `airglove_client` 0.4.0 이다(AirGlove-Client-Core `docs/spine_protocol.md`).
+  v0.4.0 태그가 나오면 `receiver` extra 의 핀을 `@v0.4.0` 으로 올린다. 그 전엔
+  `AIRGLOVE_CLIENT_LIBRARY` 로 0.4.0 네이티브 라이브러리를 지정한다(ABI 1 그대로라 고정한 Python
+  패키지로 동작, `pair` ≠ 1 만 패키지에 `set_pair` 가 있어야 한다).
+- 글러브 손목 자세가 없어 `GloveModel` 의 팔 회전은 컨트롤러 회전이다. raw 손등 IMU 를 팔 목표로
+  쓰려면 센서 장착·heading 정렬 캘리브가 따로 필요하다(없음).
+- 레거시 리시버(`GloveHumanAnglesReceiver`·`GloveHumanHandReceiver`·`GloveRobotHandReceiver`)는
+  `/pair/N` 주소를 모른다 — 프로토콜 3 Spine 에서도 받는 것이 없다.
 - 종단 테스트는 `AIRGLOVE_CORE_DIR`(AirGlove-Client-Core 체크아웃)의 `tools/spine_replay.py` 로
-  v2 Spine 을 흉내 낸다. 환경변수가 없거나 라이브러리가 0.3.0 미만이면 건너뛴다.
+  프로토콜 3 Spine 을 흉내 낸다. 환경변수가 없거나 라이브러리가 0.4.0 미만이면 건너뛴다.
 
 ## [0.4.0] — 2026-08-21
 
