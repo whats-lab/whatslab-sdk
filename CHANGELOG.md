@@ -116,13 +116,10 @@
 
 - ~~`xr_joints` 를 쓰는 손 리타게터가 아직 없다~~ — 위 「글러브 OpenXR 손 리타게팅」으로 해소.
   rig `retarget:` 가 ONNX 이름이면 여전히 `joint_angles` 만 받아 손이 직전 명령을 유지한다.
-- 고정한 `airglove-client` v0.1.0(네이티브 라이브러리 0.1.0)은 **Spine 프로토콜 1** 만 말한다.
-  지금 Spine 은 프로토콜 **3**(모든 메시지 첫 인자가 번호 문자열, 손·장치 주소 앞에 `/pair/N`,
-  Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보내고 `127.0.0.1:4042` 에서 받는다)이고 이를
-  말하는 것은 `airglove_client` 0.4.0 이다(AirGlove-Client-Core `docs/spine_protocol.md`).
-  v0.4.0 태그가 나오면 `receiver` extra 의 핀을 `@v0.4.0` 으로 올린다. 그 전엔
-  `AIRGLOVE_CLIENT_LIBRARY` 로 0.4.0 네이티브 라이브러리를 지정한다(ABI 1 그대로라 고정한 Python
-  패키지로 동작, `pair` ≠ 1 만 패키지에 `set_pair` 가 있어야 한다).
+- `receiver` extra 의 `airglove-client` 핀을 `@v0.4.0` 으로 올렸다. 지금 Spine 은 프로토콜 **3**
+  (모든 메시지 첫 인자가 번호 문자열, 손·장치 주소 앞에 `/pair/N`, Spine 은 임시 송신 포트에서
+  `127.0.0.1:4040` 으로 보내고 `127.0.0.1:4042` 에서 받는다, AirGlove-Client-Core `docs/spine_protocol.md`)이고
+  이전 태그(v0.1.0)는 프로토콜 1 이라 받지 못한다.
 - 글러브 손목 자세가 없어 `GloveModel` 의 팔 회전은 컨트롤러 회전이다. raw 손등 IMU 를 팔 목표로
   쓰려면 센서 장착·heading 정렬 캘리브가 따로 필요하다(없음).
 - 레거시 리시버(`GloveHumanAnglesReceiver`·`GloveHumanHandReceiver`·`GloveRobotHandReceiver`)는

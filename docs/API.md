@@ -75,10 +75,7 @@ s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 
 AirGlove-Client `python/README.md` 다. 이 SDK 는 주소·페이로드를 직접 파싱하지 않는다.
 현재 Spine 은 프로토콜 **3**(모든 메시지 첫 인자가 번호 문자열, 손·장치 주소 앞에 `/pair/N`,
 Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보낸다)이고 이를 말하는 것은
-`airglove_client` 0.4.0 이다. 고정한 `airglove-client` v0.1.0 은 프로토콜 1 이라 지금 Spine 과
-통하지 않는다 — v0.4.0 태그가 나오면 핀을 올린다. 그 전엔 `AIRGLOVE_CLIENT_LIBRARY` 로 0.4.0
-네이티브 라이브러리를 지정한다(ABI 1 그대로라 고정한 Python 패키지로 동작, CHANGELOG
-「알려진 제한」). `start()` 는 라이브러리가 0.4.0 미만이면 경고하고, 첫 하트비트 응답이 프로토콜
+`airglove_client` 0.4.0 이다(`receiver` extra 가 `@v0.4.0` 으로 고정). `start()` 는 라이브러리가 0.4.0 미만이면 경고하고, 첫 하트비트 응답이 프로토콜
 3 이 아니면 `get()` 이 한 번 경고한다(`spine_protocol()` = 보고된 번호 또는 `None`).
 
 - 생성자 인자 → `Client`: `glove_port` → `listen_port`, `listen_ip` → `listen_address`,
