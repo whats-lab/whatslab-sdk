@@ -29,10 +29,9 @@ dependencies = [
 # 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
 # airglove-client = 새 Spine(OpenXR 26관절) 수신 — GloveOpenXRReceiver 가 감싼다.
-# v0.1.0 은 Spine 프로토콜 v1 이다. 프로토콜 v2 Spine 용 v0.3.0 태그가 나오면 @v0.3.0 으로 올린다
-# (그 전엔 AIRGLOVE_CLIENT_LIBRARY 로 0.3.0 네이티브 라이브러리를 지정).
+# v0.4.0 = Spine 프로토콜 3(메시지 번호 헤더, /pair/N).
 receiver = ["python-osc",
-            "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.1.0#subdirectory=python"]
+            "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
 # 글러브 OpenXR 26관절 → 로봇 손 = dex-retargeting(DexPilot, XRHandRetargeter).
 # 0.4.6 이 numpy<2 를 받는 마지막 버전이라 고정한다 — torch 를 최상단 import 하고
 # nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.

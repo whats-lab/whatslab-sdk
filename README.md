@@ -130,9 +130,8 @@ source of `GloveModel` and `HandModel`, wraps the
 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client) library (pulled in by
 the `receiver` extra; client API in its `python/README.md`, wire contract in
 AirGlove-Client-Core `docs/spine_protocol.md`). The current Spine speaks OSC protocol 3
-(message-number header, `/pair/N` addresses), which needs `airglove_client` 0.4.0; the pinned
-`airglove-client` v0.1.0 speaks protocol 1, so until v0.4.0 is tagged point
-`AIRGLOVE_CLIENT_LIBRARY` at a 0.4.0 native library (same ABI as the pinned Python package).
+(message-number header, `/pair/N` addresses), which needs `airglove_client` 0.4.0 — the
+version the `receiver` extra pins.
 `GloveOpenXRReceiver(pair=1)` selects the Spine pair. Per hand it delivers:
 
 - `HandPose.xr_joints` — `(26, 8)` array, 26 OpenXR `XrHandJointEXT` joints
