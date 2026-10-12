@@ -127,17 +127,25 @@ robot/rig config 는 패키지에 함께 들어 있습니다. URDF·메쉬는 �
 `GloveOpenXRReceiver` 가 [`airglove-client`](https://github.com/whats-lab/AirGlove-Client)
 라이브러리(`receiver` extra 가 설치)를 감쌉니다. 클라이언트 API 는 그 저장소의
 `python/README.md`, 전송 계약은 AirGlove-Client-Core `docs/spine_protocol.md` 가
-정본입니다. Spine OSC 프로토콜 v2 에는 `airglove_client` 0.3.0 이 필요합니다. 고정한
-`airglove-client` v0.1.0 은 프로토콜 v1 이라, v0.3.0 태그가 나올 때까지는
-`AIRGLOVE_CLIENT_LIBRARY` 로 0.3.0 네이티브 라이브러리를 지정합니다. 손마다 다음을 냅니다.
+정본입니다. 현재 Spine 은 OSC 프로토콜 3(메시지 번호 헤더, `/pair/N` 주소)이고
+`airglove_client` 0.4.0 이 필요합니다. 고정한 `airglove-client` v0.1.0 은 프로토콜 1 이라,
+v0.4.0 태그가 나올 때까지는 `AIRGLOVE_CLIENT_LIBRARY` 로 0.4.0 네이티브 라이브러리를
+지정합니다(고정한 Python 패키지와 ABI 가 같습니다). Spine 페어는
+`GloveOpenXRReceiver(pair=1)` 로 고릅니다. 손마다 다음을 냅니다.
 
 - `HandPose.xr_joints` — `(26, 8)` 배열. OpenXR `XrHandJointEXT` 26관절(palm, wrist,
   엄지 4, 검지~소지 각 5)의 `[qx qy qz qw px py pz radius]` 를 받은 그대로 담습니다:
   손목 공간(손목 = 단위), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, 양손 같은 규칙),
   미터.
-- `HandPose.wrist` — 글러브의 캘리브된 OpenXR 손목 자세(Spine 의 +Y 위 world, heading 은
-  IMU 그대로라 드리프트)를 WebXR 경로와 같은 행렬로 정준 프레임에 옮긴 값입니다.
-  옛 raw 손등 IMU 손목으로 맞춘 rig `ee_align` 값은 실기에서 다시 확인해야 합니다.
+- `HandPose.wrist` — 항상 `None` 입니다. 프로토콜 3 은 SDK 의 world 손목 자세를 보내지 않고
+  손등 IMU 의 raw 쿼터니언(Spine 이 `[y, x, z, -w]` 로 재배열)만 보내는데, 캘리브되지 않은
+  센서 프레임이라 팔 목표로 쓰면 팔이 엉뚱하게 움직입니다. 그래서 리시버가 손목을 내지 않고
+  `GloveModel` 은 팔 회전을 컨트롤러 회전으로 대신합니다(손마다 경고 한 번). raw 값은 변환 없이
+  `GloveOpenXRReceiver.raw_wrist(side)` 로 읽을 수 있습니다.
+
+신선도(`stale_timeout`, 기본 0.2 s)는 클라이언트가 프레임을 *받은* 뒤 지난 시간입니다.
+프로토콜 3 에는 Spine 시각·순번이 없습니다(`seq`·`sender_time_us` 는 클라이언트가 센 값과 받은
+시각).
 
 rig 의 `retarget:` 가 `dex:<이름>` 이면 손가락을 `xr_joints` 에서 리타게팅합니다
 (`XRHandRetargeter`, DexPilot). 위치를 손목 기준으로 잡아 MANO 21 키포인트로 옮기고,

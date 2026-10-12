@@ -70,7 +70,7 @@ class GloveModel(TeleopModel):
             seen = self._no_wrist_warned = set()
         if side not in seen:
             seen.add(side)
-            logger.warning("[%s] 글러브 손목 신호 없음 — 팔 자세를 컨트롤러 회전으로 대체", side)
+            logger.warning("[%s] 글러브 손목 자세 없음 — 팔 회전을 컨트롤러 회전으로 대체(openxr 소스는 손목을 내지 않는다)", side)
 
     @staticmethod
     def _head_relative(quat, hmd_quat):

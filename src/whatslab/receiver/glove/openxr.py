@@ -10,7 +10,7 @@ import numpy as np
 from airglove_client import JOINT_COUNT, JOINT_NAMES, AirGloveError, Client, Side
 from scipy.spatial.transform import Rotation
 
-from whatslab.core.types import HandPose, InputSample, Pose
+from whatslab.core.types import HandPose, InputSample
 from ..webxr.base import _CANONICAL_M
 from .base import AGA_FINGER_COUNT, GLOVE_CLIENT_PORT, GLOVE_OSC_PORT, GLOVE_TARGET_IP
 
@@ -23,6 +23,9 @@ XR_WRIST_INDEX = XR_JOINT_NAMES.index("wrist")
 HAPTIC_LEVEL_MAX = 3
 OPENXR_STALE_TIMEOUT = 0.2
 DEVICE_STATUS_MAX_AGE = 2.0
+SPINE_PROTOCOL = 3
+DEFAULT_PAIR = 1
+MIN_LIBRARY_VERSION = (0, 4)
 
 _SIDES = {"left": Side.LEFT, "right": Side.RIGHT}
 
@@ -51,14 +54,11 @@ def _xr_joints(frame) -> np.ndarray:
                            np.asarray(frame.radii, dtype=float).reshape(-1, 1)], axis=1)
 
 
-def _wrist_quat(frame) -> Optional[np.ndarray]:
-    if frame is None:
-        return None
-    q = np.asarray(frame.orientation, dtype=float)
-    n = float(np.linalg.norm(q)) if np.all(np.isfinite(q)) else 0.0
-    if n < 1e-9:
-        return None
-    return openxr_quat_to_canonical(q / n)
+def _library_version(version: str) -> tuple:
+    try:
+        return tuple(int(x) for x in str(version).split(".")[:2])
+    except ValueError:
+        return (0, 0)
 
 
 class GloveOpenXRReceiver:
@@ -70,14 +70,19 @@ class GloveOpenXRReceiver:
         target_ip: str = GLOVE_TARGET_IP,
         client_port: int = GLOVE_CLIENT_PORT,
         stale_timeout: float = OPENXR_STALE_TIMEOUT,
+        pair: int = DEFAULT_PAIR,
     ):
+        if int(pair) < 1:
+            raise ValueError(f"pair 는 1 이상 — 받은 값 {pair!r}")
         self._glove_port = int(glove_port)
         self._listen_ip = listen_ip
         self._target_ip = target_ip
         self._client_port = int(client_port)
         self._stale_timeout = float(stale_timeout)
+        self._pair = int(pair)
         self._lock = threading.Lock()
         self._client: Optional[Client] = None
+        self._protocol_checked = False
 
     @property
     def running(self) -> bool:
@@ -88,11 +93,21 @@ class GloveOpenXRReceiver:
         with self._lock:
             if self._client is not None:
                 return
+            version = Client.version()
+            if _library_version(version) < MIN_LIBRARY_VERSION:
+                _log.warning("airglove_client 네이티브 라이브러리 %s 는 Spine 프로토콜 %d 이전 — "
+                             "0.4.0 이상이 필요하다(AIRGLOVE_CLIENT_LIBRARY)", version, SPINE_PROTOCOL)
             client = Client(listen_address=self._listen_ip, listen_port=self._glove_port,
                             spine_address=self._target_ip, spine_port=self._client_port)
-            if self._stale_timeout > 0:
-                client.set_stale_threshold(self._stale_timeout)
+            if self._pair != DEFAULT_PAIR:
+                set_pair = getattr(client, "set_pair", None)
+                if set_pair is None:
+                    client.close()
+                    raise AirGloveError(f"이 airglove_client 는 set_pair 가 없어 pair {self._pair} 를 "
+                                        "쓸 수 없다(0.4.0 이상 필요)")
+                set_pair(self._pair)
             self._client = client
+            self._protocol_checked = False
 
     def stop(self) -> None:
         with self._lock:
@@ -104,25 +119,46 @@ class GloveOpenXRReceiver:
         key = _SIDES[side]
         with self._lock:
             if self._client is None:
-                return None, None
-            return self._client.hand(key), self._client.wrist(key)
+                return None
+            if not self._protocol_checked:
+                self._check_protocol()
+            return self._client.hand(key)
+
+    def _check_protocol(self) -> None:
+        reported = self._client.spine_protocol()
+        if reported is None:
+            return
+        self._protocol_checked = True
+        if int(reported[0]) != SPINE_PROTOCOL:
+            _log.warning("Spine 프로토콜 %s 보고됨 — 이 리시버는 %d 기준이다", reported[0], SPINE_PROTOCOL)
+
+    def spine_protocol(self) -> Optional[int]:
+        with self._lock:
+            if self._client is None:
+                return None
+            reported = self._client.spine_protocol()
+        return None if reported is None else int(reported[0])
+
+    def raw_wrist(self, side: str) -> Optional[np.ndarray]:
+        key = _SIDES[side]
+        with self._lock:
+            if self._client is None:
+                return None
+            frame = self._client.wrist(key)
+        if frame is None or (self._stale_timeout > 0 and float(frame.age_s) >= self._stale_timeout):
+            return None
+        return np.asarray(frame.orientation, dtype=float).copy()
 
     def _fresh(self, age_s: float) -> bool:
         return not (self._stale_timeout > 0 and age_s >= self._stale_timeout)
 
     def get(self, side: str) -> InputSample:
-        frame, wrist_frame = self._read(side)
-        wrist = _wrist_quat(wrist_frame)
-        if frame is None and wrist is None:
+        frame = self._read(side)
+        if frame is None:
             return InputSample(tracked=False, timestamp=0.0)
-        now = time.monotonic()
-        ref = frame if frame is not None else wrist_frame
-        ts = now - float(ref.age_s)
-        tracked = (frame is not None and self._fresh(float(frame.age_s))
-                   and bool(np.all(frame.valid)))
-        hand = HandPose(wrist=None if wrist is None else Pose(quat=wrist),
-                        xr_joints=None if frame is None else _xr_joints(frame),
-                        tracked=tracked, timestamp=ts)
+        ts = time.monotonic() - float(frame.age_s)
+        tracked = self._fresh(float(frame.age_s)) and bool(np.all(frame.valid))
+        hand = HandPose(wrist=None, xr_joints=_xr_joints(frame), tracked=tracked, timestamp=ts)
         return InputSample(hand=hand, tracked=tracked, timestamp=ts)
 
     def connected(self, side: str) -> bool:
