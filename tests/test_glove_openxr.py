@@ -21,13 +21,12 @@ from whatslab.receiver.glove.openxr import (XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_
                                             XR_WRIST_INDEX, GloveOpenXRReceiver, haptic_levels,
                                             openxr_quat_to_canonical)
 from whatslab.receiver.webxr import WebXRControllerReceiver
-from whatslab.receiver.webxr.base import _CANONICAL_M
 from whatslab.teleop.models.glove import HAND_SOURCES, GloveModel
 
 CORE_ENV = "AIRGLOVE_CORE_DIR"
 REPLAYER = "tools/spine_replay.py"
 CAPTURE = "captures/spine_both_192s.agrec"
-MIN_LIBRARY = (0, 3)
+MIN_LIBRARY = (0, 4)
 TEST_PORTS = range(47500, 47598)
 
 
@@ -55,7 +54,13 @@ class _FakeClient:
         self.stale = None
         self.closed = False
         self.fail_haptics = False
+        self.protocol = None
+        self.pair = None
         _FakeClient.instances.append(self)
+
+    @staticmethod
+    def version():
+        return "0.4.0"
 
     def hand(self, side):
         return self.hands[Side(side)]
@@ -73,6 +78,12 @@ class _FakeClient:
 
     def set_stale_threshold(self, seconds):
         self.stale = seconds
+
+    def spine_protocol(self):
+        return self.protocol
+
+    def set_pair(self, pair):
+        self.pair = pair
 
     def close(self):
         self.closed = True
@@ -99,15 +110,50 @@ def test_exports_and_protocol():
     assert len(XR_JOINT_NAMES) == XR_JOINT_COUNT == 26
 
 
-def test_ports_map_to_client_and_stale_threshold(fake_client):
+def test_ports_map_to_client_and_stale_is_local(fake_client):
     rx, c = _started(glove_port=47040, client_port=47042, target_ip="10.0.0.2",
                      stale_timeout=0.3)
     assert c.args == ("127.0.0.1", 47040, "10.0.0.2", 47042)
-    assert c.stale == pytest.approx(0.3)
+    assert c.stale is None and c.pair is None
     rx.start()
     assert len(fake_client.instances) == 1
     rx.stop()
     assert c.closed and not rx.running
+
+
+def test_pair_is_forwarded_and_validated(fake_client):
+    rx, c = _started(pair=2)
+    assert c.pair == 2
+    with pytest.raises(ValueError):
+        GloveOpenXRReceiver(pair=0)
+
+
+def test_pair_without_library_support_fails_and_closes(fake_client, monkeypatch):
+    monkeypatch.delattr(_FakeClient, "set_pair")
+    rx = GloveOpenXRReceiver(pair=2)
+    with pytest.raises(AirGloveError):
+        rx.start()
+    assert fake_client.instances[-1].closed and not rx.running
+
+
+def test_old_library_warns(fake_client, monkeypatch, caplog):
+    monkeypatch.setattr(_FakeClient, "version", staticmethod(lambda: "0.3.0"))
+    with caplog.at_level("WARNING", logger=oxr.__name__):
+        _started()
+    assert "0.4.0" in caplog.text
+
+
+def test_protocol_mismatch_warns_once(fake_client, caplog):
+    rx, c = _started()
+    c.hands[Side.RIGHT] = _frame()
+    assert rx.spine_protocol() is None
+    c.protocol = (2, 0.1)
+    with caplog.at_level("WARNING", logger=oxr.__name__):
+        rx.get("right")
+        rx.get("right")
+    assert caplog.text.count("Spine 프로토콜 2") == 1
+    assert rx.spine_protocol() == 2
+    assert oxr.SPINE_PROTOCOL == glove_pkg.SPINE_PROTOCOL == 3
 
 
 def test_get_before_start_is_untracked_without_binding(fake_client):
@@ -147,25 +193,18 @@ def test_stale_or_invalid_frame_is_untracked(fake_client):
     assert rx.get("right").tracked is True
 
 
-def test_wrist_converted_to_canonical_and_held_when_stale(fake_client):
+def test_raw_dorsum_wrist_is_not_used_as_hand_wrist(fake_client):
     rx, c = _started()
-    q = Rotation.from_euler("xyz", [0.3, -0.7, 1.1]).as_quat()
-    c.wrists[Side.LEFT] = WristFrame(q.astype(np.float32), 3, 1, 5.0)
+    raw = np.array([0.1, 0.2, 0.3, -0.927], np.float32)
+    c.wrists[Side.LEFT] = WristFrame(raw, 3, 1, 0.01)
+    assert rx.get("left").hand is None
+    c.hands[Side.LEFT] = _frame()
     s = rx.get("left")
-    assert s.tracked is False
-    assert s.hand.xr_joints is None
-    expect = Rotation.from_matrix(_CANONICAL_M @ Rotation.from_quat(q).as_matrix()
-                                  @ _CANONICAL_M.T)
-    got = Rotation.from_quat(s.hand.wrist.quat)
-    assert (got.inv() * expect).magnitude() < 1e-5
-
-
-def test_degenerate_wrist_is_dropped(fake_client):
-    rx, c = _started()
-    c.wrists[Side.RIGHT] = WristFrame(np.zeros(4, np.float32), 1, 1, 0.0)
-    c.hands[Side.RIGHT] = _frame()
-    s = rx.get("right")
-    assert s.hand.wrist is None and s.tracked is True
+    assert s.tracked is True and s.hand.wrist is None
+    assert np.allclose(rx.raw_wrist("left"), raw)
+    c.wrists[Side.LEFT] = WristFrame(raw, 4, 1, 5.0)
+    assert rx.raw_wrist("left") is None
+    assert rx.raw_wrist("right") is None
 
 
 def test_glove_wrist_matches_webxr_conversion():
@@ -277,8 +316,7 @@ def test_glove_model_defaults_to_openxr_with_receiver_kwargs(fake_client):
     data = m.get_data()["right"]
     assert data["fingers"].hand.xr_joints.shape == (26, 8)
     got = Rotation.from_quat(data["arm_pose"].quat)
-    want = Rotation.from_quat(openxr_quat_to_canonical(q))
-    assert (got.inv() * want).magnitude() < 1e-6
+    assert got.magnitude() < 1e-6
     assert data["tracked"] is True
     m.send_feedback({"side": "right", "forces": [0, 1, 2, 3, 9]})
     assert c.haptics == [(Side.RIGHT, [0, 1, 2, 3, 3])]
@@ -333,15 +371,15 @@ def _core_files():
     if not (os.path.exists(replayer) and os.path.exists(capture)):
         pytest.skip(f"{CORE_ENV}={core} 에 Spine 리플레이어/캡처 없음")
     if _library_version(Client.version()) < MIN_LIBRARY:
-        pytest.skip(f"airglove_client {Client.version()} 는 Spine 프로토콜 v2 이전 — "
-                    "0.3.0 이상 라이브러리(AIRGLOVE_CLIENT_LIBRARY)가 필요")
+        pytest.skip(f"airglove_client {Client.version()} 는 Spine 프로토콜 3 이전 — "
+                    "0.4.0 이상 라이브러리(AIRGLOVE_CLIENT_LIBRARY)가 필요")
     return replayer, capture
 
 
 def test_library_version_parse():
     assert _library_version("0.1.0") < MIN_LIBRARY
-    assert _library_version("0.2.0") < MIN_LIBRARY
-    assert _library_version("0.3.0") >= MIN_LIBRARY
+    assert _library_version("0.3.0") < MIN_LIBRARY
+    assert _library_version("0.4.0") >= MIN_LIBRARY
     assert _library_version("1.0.3") >= MIN_LIBRARY
 
 
@@ -365,7 +403,12 @@ def test_end_to_end_against_spine_replayer():
             assert np.allclose(np.linalg.norm(xj[:, 0:4], axis=1), 1.0, atol=1e-4)
             tip = XR_JOINT_NAMES.index("middle_tip")
             assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
-            assert s.hand.wrist is not None
+            assert s.hand.wrist is None
+            assert _wait(lambda side=side: rx.raw_wrist(side) is not None, 2.0)
+            raw = rx.raw_wrist(side)
+            assert raw is not None and raw.shape == (4,) and np.all(np.isfinite(raw))
+            assert 0.9 < np.linalg.norm(raw) < 1.1
+        assert _wait(lambda: rx.spine_protocol() == 3, 3.0)
         assert _wait(lambda: rx.connected("right") and rx.connected("left"), 3.0)
         assert rx.send_haptic("right", [0, 2, 9]) is True
         result = _wait(lambda: rx._client.haptics_result(Side.RIGHT), 2.0)
