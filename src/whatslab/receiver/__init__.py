@@ -1,7 +1,7 @@
-from .glove import GloveHumanHandReceiver, GloveOpenXRReceiver, GloveRobotHandReceiver
+from .glove import GloveFrame, GloveOpenXRReceiver, GloveWrist
 from .quest import QuestControllerReceiver, QuestHandReceiver
 from .webxr import WebXRControllerReceiver
 
 __all__ = ["QuestControllerReceiver", "QuestHandReceiver",
-           "GloveOpenXRReceiver", "GloveHumanHandReceiver", "GloveRobotHandReceiver",
+           "GloveOpenXRReceiver", "GloveFrame", "GloveWrist",
            "WebXRControllerReceiver"]

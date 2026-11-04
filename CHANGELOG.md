@@ -5,6 +5,27 @@
 
 ## [Unreleased]
 
+### 추가 — 글러브 프레임 메타데이터
+
+- `GloveOpenXRReceiver.frame(side)` → `GloveFrame`(`xr_joints`(26, 8)·`valid`·`seq`·
+  `sender_time_us`·`age_s`). 신선도 필터 없이 최신 프레임을 준다 — `seq` 로 새 프레임을 가리고
+  여러 소비자가 같은 프레임을 받았는지 맞추는 용도(robotPlatform 입력 노드).
+- `wrist_frame(side)` → `GloveWrist`(Spine 원본 `[y, x, z, -w]` 손등 쿼터니언 + 메타),
+  `device_status()`·`alarms()`·`stats()` 는 airglove-client 값을 그대로 넘긴다.
+
+### 제거 — 레거시 글러브 수신기 (호환 없는 변경)
+
+- `GloveReceiverBase`·`GloveHumanHandReceiver`·`GloveHumanAnglesReceiver`·
+  `GloveRobotHandReceiver` 와 `GloveModel(hand_source="angles"|"robot")`. 헤더·`/pair/N` 없는
+  옛 주소와 Spine 이 더는 보내지 않는 #16/#17 에 의존해 현재 Spine(프로토콜 3)에서 아무것도 받지
+  못했다. `osc_transport`·`python-osc` 는 Quest 수신기가 쓰므로 남긴다.
+
+### 변경 — 의존성
+
+- `numpy>=1.24`(상한 제거), `hand` extra 의 `dex-retargeting>=0.4.6`. numpy 1 소비자(Isaac Sim
+  5.1)는 자기 쪽에서 `numpy<2`·`dex-retargeting<0.5` 를 고정한다. numpy 2.5 + dex-retargeting
+  0.5.0 에서 테스트 통과(기존 실패 3건 제외: `test_arm` posture, robotis URDF 센서 링크).
+
 ### 추가 — 글러브 OpenXR 손 리타게팅 (DexPilot)
 
 - **`XRHandRetargeter`**(`solvers/hand/dex_retargeter.py`) — `HandPose.xr_joints`(OpenXR 26관절)

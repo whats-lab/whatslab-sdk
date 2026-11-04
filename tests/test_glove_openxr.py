@@ -16,7 +16,6 @@ import whatslab.receiver as receiver_pkg
 import whatslab.receiver.glove as glove_pkg
 from whatslab.core.interfaces import Receiver
 from whatslab.receiver.glove import openxr as oxr
-from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
 from whatslab.receiver.glove.openxr import (XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES,
                                             XR_WRIST_INDEX, GloveOpenXRReceiver, haptic_levels,
                                             openxr_quat_to_canonical)
@@ -84,6 +83,13 @@ class _FakeClient:
 
     def set_pair(self, pair):
         self.pair = pair
+
+    def alarms(self):
+        out, self.pending_alarms = list(getattr(self, "pending_alarms", [])), []
+        return out
+
+    def stats(self):
+        return {"datagrams": 3, "malformed": 0, "dropped_seq": 0}
 
     def close(self):
         self.closed = True
@@ -253,6 +259,41 @@ def test_connected_uses_device_status_then_fresh_frame(fake_client):
     assert rx.connected("left") is True
 
 
+def test_frame_exposes_receive_metadata_without_stale_filtering(fake_client):
+    rx = GloveOpenXRReceiver()
+    assert rx.frame("right") is None and rx.wrist_frame("right") is None
+    assert rx.alarms() == [] and rx.stats() == {} and rx.device_status() is None
+    rx.start()
+    c = fake_client.instances[-1]
+    assert rx.frame("right") is None
+    raw = _frame(age=5.0, valid=False)
+    c.hands[Side.RIGHT] = raw
+    f = rx.frame("right")
+    assert (f.side, f.seq, f.sender_time_us, f.age_s) == ("right", 7, 123456, 5.0)
+    assert f.xr_joints.shape == (26, 8) and f.valid.dtype == bool and not f.valid.any()
+    np.testing.assert_allclose(f.xr_joints[:, :4], raw.orientations)
+    np.testing.assert_allclose(f.xr_joints[:, 4:7], raw.positions)
+    np.testing.assert_allclose(f.xr_joints[:, 7], raw.radii)
+
+
+def test_wrist_frame_passes_raw_dorsum_quaternion(fake_client):
+    rx, c = _started()
+    q = np.array([0.1, 0.2, 0.3, -0.9], dtype=np.float32)
+    c.wrists[Side.LEFT] = WristFrame(q, 4, 99, 0.02)
+    w = rx.wrist_frame("left")
+    assert (w.side, w.seq, w.sender_time_us, w.age_s) == ("left", 4, 99, pytest.approx(0.02))
+    np.testing.assert_allclose(w.orientation_raw, q)
+
+
+def test_status_alarms_and_stats_pass_through(fake_client):
+    rx, c = _started()
+    c.status = DeviceStatus(False, True, 0.3)
+    c.pending_alarms = ["RESTART"]
+    assert rx.device_status().right_connected is True
+    assert rx.alarms() == ["RESTART"] and rx.alarms() == []
+    assert rx.stats()["datagrams"] == 3
+
+
 def test_connected_ignores_old_device_status(fake_client):
     rx, c = _started()
     c.status = DeviceStatus(True, True, 1.9)
@@ -324,12 +365,11 @@ def test_glove_model_defaults_to_openxr_with_receiver_kwargs(fake_client):
     assert c.closed
 
 
-def test_glove_model_legacy_source_still_selectable():
-    m = GloveModel(_FakeRobot(), hand_source="angles",
-                   hand_kwargs={"glove_port": 47240}, arm_kwargs={"quest_port": 47260})
-    assert isinstance(m.hand_source, GloveHumanAnglesReceiver)
-    with pytest.raises(ValueError):
-        GloveModel(_FakeRobot(), hand_source="nope")
+def test_glove_model_rejects_unknown_hand_source():
+    assert set(HAND_SOURCES) == {"openxr"}
+    for legacy in ("angles", "robot", "nope"):
+        with pytest.raises(ValueError):
+            GloveModel(_FakeRobot(), hand_source=legacy)
 
 
 def _free_port_pair():

@@ -54,10 +54,7 @@ from whatslab.receiver.quest.controller import QuestControllerReceiver
 | `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세(OSC/UDP, 포트 9000). `connected(side)`. |
 | `WebXRControllerReceiver` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러 6D(WebSocket, 포트 8443). OSC 경로와 **병행** 가능. HMD 는 회전뿐 아니라 **위치도** 온다. `connected(side)`, `url`. |
 | `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
-| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2, pair=1)` | `InputSample(hand=HandPose(wrist=None, xr_joints=(26,8)))` | **현재 Spine**(프로토콜 3) 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `raw_wrist(side)`, `spine_protocol()`, `running`. |
-| `GloveHumanAnglesReceiver` | `InputSample(hand=HandPose(joint_angles=…))` | **레거시(Spine ≤ 2.3.1).** 사람 손 URDF 관절각(`/{side}/joint_angles/get`) + 손목. 현재 Spine 에서는 받는 게 없다. |
-| `GloveHumanHandReceiver` | `InputSample(hand=HandPose(joint_rot=…))` | **레거시(Spine ≤ 2.3.1).** AirGlove 손가락 회전(`/{side}/quat/get`). 전송 계층만. |
-| `GloveRobotHandReceiver` | `InputSample(joint_q=…, hand=wrist만)` | **레거시(Spine ≤ 2.3.1).** Spine 이 IK 를 끝낸 URDF 관절각을 직접 받는다(손 리타게팅 바이패스). `joint_map` = Spine 이름→로봇 관절명. |
+| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2, pair=1)` | `InputSample(hand=HandPose(wrist=None, xr_joints=(26,8)))` | **현재 Spine**(프로토콜 3) 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `raw_wrist(side)`, `spine_protocol()`, `running`, `frame(side) -> GloveFrame`(seq·수신 시각·age, 신선도 필터 없음), `wrist_frame(side) -> GloveWrist`, `device_status()`, `alarms()`, `stats()`. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
 

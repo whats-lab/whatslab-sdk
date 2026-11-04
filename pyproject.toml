@@ -17,10 +17,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    # numpy<2 로 고정: 공유 SDK 이므로 소비자 스택(dex-retargeting·Isaac Sim 5.1 모두
-    # numpy<2 요구)과 일관되게 맞춘다. 상한 없으면 fresh 설치가 numpy2 를 끌어와 소비자
-    # env 를 오염시킴. (dex_vla / dex_mj / ROS 와 동일 핀.)
-    "numpy>=1.24,<2",
+    # numpy 상한 없음: numpy 1 소비자(Isaac Sim 5.1 — dex_vla 등)는 자기 쪽에서
+    # numpy<2 · dex-retargeting<0.5 를 고정한다. robotPlatform(ROS 2 Jazzy venv)은 numpy 2.
+    "numpy>=1.24",
     "scipy>=1.10",
     "pyyaml",          # robot/rig config 로더
 ]
@@ -33,11 +32,11 @@ dependencies = [
 receiver = ["python-osc",
             "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
 # 글러브 OpenXR 26관절 → 로봇 손 = dex-retargeting(DexPilot, XRHandRetargeter).
-# 0.4.6 이 numpy<2 를 받는 마지막 버전이라 고정한다 — torch 를 최상단 import 하고
-# nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
+# 0.4.6 은 numpy<2 전용, 0.5.0 부터 numpy>=2 — 소비자의 numpy 에 맞는 쪽이 설치된다.
+# torch 를 최상단 import 하고 nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
 # onnxruntime 은 레거시 관절각 입력(UniRetargeter 통합 ONNX)용.
 # pin·dexhand-description 은 human_fk(viz)와 실물 관절 매핑(examples/robot_io)용.
-hand     = ["onnxruntime", "pin", "dex-retargeting==0.4.6",
+hand     = ["onnxruntime", "pin", "dex-retargeting>=0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]

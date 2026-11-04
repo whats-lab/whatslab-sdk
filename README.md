@@ -157,11 +157,11 @@ into the fingers. A rig still set to an ONNX name (`orca_hand`, ...) reads
 `joint_angles`, which the current Spine does not send, so its hand holds the last
 command.
 
-**Legacy (Spine 2.3.1 and below)** — `GloveHumanAnglesReceiver`
-(`/{side}/joint_angles/get` + `/{side}/wrist/get`), `GloveHumanHandReceiver`
-(`/{side}/quat/get`) and `GloveRobotHandReceiver` follow Spine's old
-`docs/OSC_Protocol.md` and receive nothing from the current Spine. Select them with
-`GloveModel(rig, hand_source="angles")` / `"robot"`.
+`GloveOpenXRReceiver.frame(side)` returns the latest frame with its client-side
+`seq`, receive time (`sender_time_us`) and `age_s` and no staleness filtering, for callers
+that need to tell new frames apart; `wrist_frame(side)`, `device_status()`, `alarms()` and
+`stats()` pass the rest of the client through. The legacy receivers for Spine 2.3.1 and
+below were removed.
 
 ## Quick start
 
