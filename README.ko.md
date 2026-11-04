@@ -152,10 +152,10 @@ rig 의 `retarget:` 가 `dex:<이름>` 이면 손가락을 `xr_joints` 에서 �
 (`orca_hand` 등)이면 `joint_angles` 를 읽는데 현재 Spine 은 그것을 보내지 않으므로
 손이 직전 명령을 유지합니다.
 
-**레거시 (Spine 2.3.1 이하)** — `GloveHumanAnglesReceiver`(`/{side}/joint_angles/get`
-+ `/{side}/wrist/get`), `GloveHumanHandReceiver`(`/{side}/quat/get`),
-`GloveRobotHandReceiver` 는 옛 Spine `docs/OSC_Protocol.md` 를 따르며 현재 Spine 에서는
-아무것도 받지 못합니다. `GloveModel(rig, hand_source="angles")` / `"robot"` 으로 고릅니다.
+`GloveOpenXRReceiver.frame(side)` 는 최신 프레임을 클라이언트 측 `seq`·수신 시각
+(`sender_time_us`)·`age_s` 와 함께, 신선도 필터 없이 돌려줍니다 — 새 프레임인지 가려야 하는
+호출자용입니다. `wrist_frame(side)`·`device_status()`·`alarms()`·`stats()` 는 클라이언트 값을
+그대로 넘깁니다. Spine 2.3.1 이하용 레거시 수신기는 제거했습니다.
 
 ## 빠른 시작
 
