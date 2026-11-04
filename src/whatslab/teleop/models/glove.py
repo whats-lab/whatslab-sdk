@@ -7,9 +7,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.types import Pose
-from whatslab.receiver.glove.human_hand import GloveHumanAnglesReceiver
 from whatslab.receiver.glove.openxr import GloveOpenXRReceiver
-from whatslab.receiver.glove.robot_hand import GloveRobotHandReceiver
 from whatslab.receiver.quest.controller import QuestControllerReceiver
 from whatslab.receiver.webxr.controller import WebXRControllerReceiver
 
@@ -21,8 +19,6 @@ _OPPOSITE = {"left": "right", "right": "left"}
 
 HAND_SOURCES = {
     "openxr": GloveOpenXRReceiver,
-    "angles": GloveHumanAnglesReceiver,
-    "robot": GloveRobotHandReceiver,
 }
 
 ARM_SOURCES = {

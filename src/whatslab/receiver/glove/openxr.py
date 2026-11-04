@@ -4,6 +4,7 @@ import logging
 import math
 import threading
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -59,6 +60,25 @@ def _library_version(version: str) -> tuple:
         return tuple(int(x) for x in str(version).split(".")[:2])
     except ValueError:
         return (0, 0)
+
+
+@dataclass(frozen=True)
+class GloveFrame:
+    side: str
+    xr_joints: np.ndarray
+    valid: np.ndarray
+    seq: int
+    sender_time_us: int
+    age_s: float
+
+
+@dataclass(frozen=True)
+class GloveWrist:
+    side: str
+    orientation_raw: np.ndarray
+    seq: int
+    sender_time_us: int
+    age_s: float
 
 
 class GloveOpenXRReceiver:
@@ -148,6 +168,39 @@ class GloveOpenXRReceiver:
         if frame is None or (self._stale_timeout > 0 and float(frame.age_s) >= self._stale_timeout):
             return None
         return np.asarray(frame.orientation, dtype=float).copy()
+
+    def frame(self, side: str) -> Optional[GloveFrame]:
+        frame = self._read(side)
+        if frame is None:
+            return None
+        return GloveFrame(side=side, xr_joints=_xr_joints(frame),
+                          valid=np.asarray(frame.valid, dtype=bool).copy(),
+                          seq=int(frame.seq), sender_time_us=int(frame.sender_time_us),
+                          age_s=float(frame.age_s))
+
+    def wrist_frame(self, side: str) -> Optional[GloveWrist]:
+        key = _SIDES[side]
+        with self._lock:
+            if self._client is None:
+                return None
+            frame = self._client.wrist(key)
+        if frame is None:
+            return None
+        return GloveWrist(side=side, orientation_raw=np.asarray(frame.orientation, dtype=float).copy(),
+                          seq=int(frame.seq), sender_time_us=int(frame.sender_time_us),
+                          age_s=float(frame.age_s))
+
+    def device_status(self):
+        with self._lock:
+            return None if self._client is None else self._client.device_status()
+
+    def alarms(self) -> list:
+        with self._lock:
+            return [] if self._client is None else list(self._client.alarms())
+
+    def stats(self) -> dict:
+        with self._lock:
+            return {} if self._client is None else dict(self._client.stats())
 
     def _fresh(self, age_s: float) -> bool:
         return not (self._stale_timeout > 0 and age_s >= self._stale_timeout)
