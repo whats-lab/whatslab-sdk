@@ -121,12 +121,9 @@ PY=$(which python) ./scripts/install_robot_deps.sh
 python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
 ```
 
-`pyAgxArm` (Nero arm, CAN) is listed in `examples/requirements-robot.txt`, because only the
-examples use it. `orca_core` (ORCA hand) cannot be listed there: every tag declares
-`numpy>=2.2.6`, which conflicts with numpy-1 environments (the code itself runs on numpy
-1.26), and its wheel leaves out the hand configs (`models/<version>/<model>/config.yaml`).
-The script therefore clones its source and installs it editable. The hand model defaults to
-`orca_core`'s choice; pass `examples/quest_arm.py --hand-model` for a different one.
+`pyAgxArm` (Nero arm, CAN) is listed in `examples/requirements-robot.txt`; `orca_core` (ORCA hand)
+is cloned and installed editable by the script, for reasons given in the
+[quickstart](docs/QUICKSTART.md#1-설치).
 
 ## Compatibility
 
@@ -137,34 +134,16 @@ The script therefore clones its source and installs it editable. The hand model 
 
 **Spine and the AirGlove.** `AirGloveReceiver`, the default glove source of `GloveModel`
 and `HandModel`, wraps [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)
-(`airglove-client` 0.4.0), which speaks Spine 3.0.0's OSC protocol 3 (message-number header,
-`/pair/N` addresses). Spine 2.x is not supported since whatslab 0.5.0; use whatslab 0.4.x
-for it. Spine sends to one client per machine (UDP 4040), so only one process on the Spine
-PC can receive the glove. `AirGloveReceiver(pair=1)` selects the Spine pair. Per hand it
-delivers:
+(`airglove-client` 0.4.0), which speaks Spine 3.0.0's OSC protocol 3. Spine 2.x is not supported
+since whatslab 0.5.0; use whatslab 0.4.x for it. Spine sends to one client per machine (UDP 4040),
+so only one process on the Spine PC can receive the glove; `AirGloveReceiver(pair=1)` selects the
+Spine pair. Per hand it delivers `HandPose.xr_joints`, the 26 OpenXR joints as a `(26, 8)` array
+relative to the wrist. `HandPose.wrist` is always `None` (Spine sends only an uncalibrated IMU
+quaternion), so `GloveModel` takes the arm rotation from the controller. Field-level details,
+freshness and the extra client calls are in [API.md](docs/API.md) (OpenXR glove).
 
-- `HandPose.xr_joints`: a `(26, 8)` array, the 26 OpenXR `XrHandJointEXT` joints (palm,
-  wrist, thumb ×4, index to little ×5) as `[qx qy qz qw px py pz radius]`, exactly as received:
-  relative to the wrist (the wrist is the identity), OpenXR joint axes (−Z along the bone
-  toward the fingertip, +Y on the back of the hand, the same for both hands), metres.
-- `HandPose.wrist`: always `None`. Spine 3.0.0 does not send a world wrist pose, only the raw
-  back-of-hand IMU quaternion (reordered by Spine to `[y, x, z, -w]`) in an uncalibrated
-  sensor frame. Used as an arm target it would move the arm wrongly, so the receiver leaves
-  it out and `GloveModel` takes the arm rotation from the controller (one warning per side).
-  The raw value is available, unconverted, from `AirGloveReceiver.raw_wrist(side)`.
-
-Freshness (`stale_timeout`, default 0.2 s) is measured from when the client *received* the
-frame; Spine 3.0.0 sends no timestamp or sequence number (`seq` and `sender_time_us` are
-counted and stamped by the client). `AirGloveReceiver.frame(side)` returns the latest frame
-with `seq`, receive time and `age_s` and no freshness filter, for callers that need to tell
-new frames apart; `wrist_frame(side)`, `device_status()`, `alarms()` and `stats()` pass the
-rest of the client through.
-
-**Hand retargeting** reads `xr_joints` only. With `dex:<name>`, positions are taken
-relative to the wrist, mapped to the 21-point human hand (MANO order), and rotated every frame
-so the human palm frame (wrist + index/middle/little MCP) lands on the robot's q=0 palm frame;
-the wrist orientation never leaks into the fingers. With `geort:<name>`, the same 21 points go
-through the GeoRT network. Any other `retarget:` value raises an error.
+**Hand retargeting** reads `xr_joints` only: `dex:<name>` maps them to the 21-point human hand
+aligned to the robot's palm frame, `geort:<name>` feeds the same 21 points to the GeoRT network.
 
 ## Quick start
 
@@ -184,12 +163,10 @@ Presets: `QuestModel` (Quest bare-hand tracking), `GloveModel` (controller + glo
 `GloveModel(rig, hand_kwargs={"glove_port": 4040}, arm_kwargs={"port": 8443})`,
 `HandModel(hand_kwargs={...})`.
 
-Quest input comes only through the headset's browser (WebXR over WebSocket); there is no app
-to sideload. Controllers (`WebXRControllerReceiver`) and bare-hand tracking
-(`WebXRHandReceiver`, 26 OpenXR joints, so it uses the same dex/geort retargeting as the glove)
-share one port. The WebXR path is wireless by default: WebXR needs a secure context, so it
-serves HTTPS with a self-signed certificate on this machine's LAN IP. Pass `tls=False` for the
-wired `adb reverse` route. See `docs/API.md` (WebXR path).
+Quest input comes only through the headset's browser (WebXR); there is no app to sideload.
+Controllers (`WebXRControllerReceiver`) and bare-hand tracking (`WebXRHandReceiver`) share one
+port, over self-signed HTTPS by default (`tls=False` for wired `adb reverse`). See
+[API.md](docs/API.md) (WebXR path).
 
 For your own hardware combination, subclass `TeleopModel` and implement the one abstract hook,
 `_get_raw_target()`, which decides which source feeds the arm end-effector target. Calibration,
@@ -205,11 +182,6 @@ python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # insp
 
 python tools/align_frames.py robot --robot robots/nero.yaml               # align a robot to the canonical axes
 ```
-
-Judge arm-IK accuracy only on targets made by FK from valid joint angles. The error floor is
-then exactly 0, so any error left is the solver's. Trajectories synthesized in Cartesian space
-pass through unreachable poses and mix solver quality with reachability. (The fixed arm-IK
-benchmark is internal tooling and is not shipped here.)
 
 Run the tests with `pip install -e '.[all,dev]' && pytest`.
 

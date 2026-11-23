@@ -84,14 +84,7 @@ $PY examples/verify_rig.py --rig rigs/nero_orca_right.yaml --write
 | **yaw 정렬** | 사람의 정면을 로봇 정면에 맞추는 회전 스냅샷(`W`) | 매 세션, 기준 자세에서 | 안 됨(런타임) |
 | **reach 스케일** | 사람 팔 길이 → 로봇 팔 길이 비율 | 사용자가 바뀔 때 | rig yaml `calibration.input_reach` |
 
-`examples/quest_arm.py` 실행 중:
-
-```
-Enter          → yaw 캘리브 (기준 자세로 서서 누른다)
-r + Enter      → reach 캘리브 (8초간 팔을 최대 범위로 뻗는다) → rig 에 기록
-```
-
-코드에서는 `model.calibrate_yaw()` / `model.calibrate_reach(persist=True)`.
+`examples/quest_arm.py` 의 키 조작은 [QUICKSTART §4](QUICKSTART.md#4-캘리브레이션). 코드에서는 `model.calibrate_yaw()` / `model.calibrate_reach(persist=True)`.
 
 **`rig calibration.enabled` 는 reach 스케일만 게이트한다.** `false` 로 둬도 yaw
 캘리브는 그대로 동작한다. 스케일링은 `teleop/calibration.py` 한 곳에서만 한다.
@@ -230,10 +223,11 @@ $PY examples/quest_arm.py --sides right     # 기본값이 --side 하나
 - **전송은 별도 스레드**로 한다. CAN/dynamixel 쓰기가 수십 ms 블로킹하면 텔레옵
   루프가 그만큼 멈춘다.
 - **관절 이름 매핑을 검증**한다. 하드웨어 SDK 가 모르는 관절명을 조용히 버리는
-  경우가 있다(그래서 손가락 하나가 통째로 안 움직인다).
+  경우가 있다(그래서 손가락 하나가 통째로 안 움직인다). 확인할 로그는
+  [QUICKSTART §6](QUICKSTART.md#6-자주-걸리는-것).
 
 ```bash
 $PY examples/quest_arm.py --viz --robot     # viser 패널에서 연결 버튼
 ```
 
-`--robot` 은 `--viz` 와 함께 쓴다. 연결은 기본 꺼져 있고 패널에서 켠다.
+실행 옵션은 [QUICKSTART §5](QUICKSTART.md#5-실물-연결).

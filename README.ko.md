@@ -118,11 +118,8 @@ PY=$(which python) ./scripts/install_robot_deps.sh
 python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
 ```
 
-`pyAgxArm`(Nero 팔, CAN)은 예제만 쓰므로 `examples/requirements-robot.txt` 에 있습니다. `orca_core`(ORCA 손)는
-거기에도 넣을 수 없습니다. 모든 태그가 `numpy>=2.2.6` 을 선언해 numpy 1 환경과 충돌하고(실제 코드는 numpy
-1.26 에서 동작합니다), wheel 에 손 설정(`models/<버전>/<모델>/config.yaml`)이 빠져 있기 때문입니다. 그래서
-스크립트가 소스를 클론해 editable 로 설치합니다. 손 모델은 `orca_core` 기본값을 쓰고, 다른 모델은
-`examples/quest_arm.py --hand-model` 로 지정합니다.
+`pyAgxArm`(Nero 팔, CAN)은 `examples/requirements-robot.txt` 에 있고, `orca_core`(ORCA 손)는 스크립트가
+소스를 클론해 editable 로 설치합니다. 그 이유는 [빠른 시작](docs/QUICKSTART.md#1-설치)에 있습니다.
 
 ## 호환성
 
@@ -133,29 +130,15 @@ python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
 
 **Spine 과 AirGlove.** `GloveModel`·`HandModel` 의 기본 글러브 소스인 `AirGloveReceiver` 는
 [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)(`airglove-client` 0.4.0)를 감쌉니다. 이
-클라이언트가 Spine 3.0.0 의 OSC 프로토콜 3(메시지 번호 헤더, `/pair/N` 주소)을 처리합니다. whatslab 0.5.0
-부터 Spine 2.x 는 지원하지 않으며, Spine 2.x 에는 whatslab 0.4.x 를 쓰세요. Spine 은 PC 당 클라이언트 하나
-(UDP 4040)에만 보내므로, Spine PC 에서 글러브를 받을 수 있는 프로세스는 하나뿐입니다. Spine 페어는
-`AirGloveReceiver(pair=1)` 로 고릅니다. 손마다 다음을 줍니다.
+클라이언트가 Spine 3.0.0 의 OSC 프로토콜 3 을 처리합니다. whatslab 0.5.0 부터 Spine 2.x 는 지원하지 않으며,
+Spine 2.x 에는 whatslab 0.4.x 를 쓰세요. Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC 에서
+글러브를 받을 수 있는 프로세스는 하나뿐이고, Spine 페어는 `AirGloveReceiver(pair=1)` 로 고릅니다. 손마다
+`HandPose.xr_joints`(OpenXR 26관절, 손목 기준 `(26, 8)` 배열)를 줍니다. `HandPose.wrist` 는 항상 `None` 이라
+(Spine 은 캘리브레이션되지 않은 IMU 쿼터니언만 보냄) `GloveModel` 은 팔 회전을 컨트롤러에서 가져옵니다.
+필드 세부, 신선도, 그 밖의 클라이언트 호출은 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.
 
-- `HandPose.xr_joints` — `(26, 8)` 배열. OpenXR `XrHandJointEXT` 26관절(palm, wrist, 엄지 4, 검지~소지 각 5)의
-  `[qx qy qz qw px py pz radius]` 를 받은 그대로 담습니다. 손목 기준(손목 = 항등)이고, OpenXR 관절 축(−Z 는
-  뼈를 따라 손끝 방향, +Y 는 손등, 양손 같은 규칙)이며, 단위는 미터입니다.
-- `HandPose.wrist` — 항상 `None` 입니다. Spine 3.0.0 은 world 손목 자세를 보내지 않고, 캘리브레이션되지 않은
-  센서 프레임의 손등 IMU 원시 쿼터니언(Spine 이 `[y, x, z, -w]` 로 재배열)만 보냅니다. 이것을 팔 목표로 쓰면
-  팔이 엉뚱하게 움직이므로 수신기는 손목을 내지 않고, `GloveModel` 은 팔 회전을 컨트롤러에서 가져옵니다(손마다
-  경고 한 번). 원시값은 변환 없이 `AirGloveReceiver.raw_wrist(side)` 로 읽을 수 있습니다.
-
-신선도(`stale_timeout`, 기본 0.2초)는 클라이언트가 프레임을 *받은* 시점부터 잽니다. Spine 3.0.0 은 시각과
-순번을 보내지 않습니다(`seq`·`sender_time_us` 는 클라이언트가 세고 찍은 값입니다).
-`AirGloveReceiver.frame(side)` 는 최신 프레임을 `seq`·수신 시각·`age_s` 와 함께 신선도 필터 없이 돌려주며,
-새 프레임인지 가려야 하는 쪽에서 씁니다. `wrist_frame(side)`·`device_status()`·`alarms()`·`stats()` 는
-클라이언트 값을 그대로 넘깁니다.
-
-**손 리타게팅**은 `xr_joints` 만 읽습니다. `dex:<이름>` 이면 위치를 손목 기준으로 잡아 사람 손 21점(MANO
-순서)으로 옮기고, 매 프레임 사람 손바닥 프레임(손목 + 검지·중지·소지 MCP)을 로봇의 q=0 손바닥 프레임에 맞춰
-돌립니다. 그래서 손목 자세가 손가락으로 새지 않습니다. `geort:<이름>` 이면 같은 21점을 GeoRT 신경망으로
-풉니다. 그 밖의 `retarget:` 값은 에러가 납니다.
+**손 리타게팅**은 `xr_joints` 만 읽습니다. `dex:<이름>` 은 이를 로봇 손바닥 프레임에 맞춘 사람 손 21점으로
+옮기고, `geort:<이름>` 은 같은 21점을 GeoRT 신경망에 넣습니다.
 
 ## 빠른 시작
 
@@ -175,11 +158,9 @@ while True:
 `GloveModel(rig, hand_kwargs={"glove_port": 4040}, arm_kwargs={"port": 8443})`,
 `HandModel(hand_kwargs={...})`.
 
-Quest 입력은 헤드셋 브라우저(WebXR + WebSocket)로만 받습니다. 설치할 앱은 없습니다. 컨트롤러
-(`WebXRControllerReceiver`)와 맨손 핸드트래킹(`WebXRHandReceiver`, OpenXR 26관절이라 글러브와 같은
-dex·geort 리타게팅을 씀)이 한 포트를 함께 씁니다. WebXR 경로는 무선이 기본입니다. WebXR 은 보안 컨텍스트가
-필요하므로 이 PC 의 LAN IP 에 자체 서명 인증서로 HTTPS 를 엽니다. 유선 `adb reverse` 로 쓰려면 `tls=False` 를
-넘깁니다. 자세한 내용은 `docs/API.md` 의 「WebXR 경로」에 있습니다.
+Quest 입력은 헤드셋 브라우저(WebXR)로만 받고, 설치할 앱은 없습니다. 컨트롤러(`WebXRControllerReceiver`)와
+맨손 핸드트래킹(`WebXRHandReceiver`)이 한 포트를 함께 쓰며, 기본은 자체 서명 HTTPS 입니다(유선 `adb reverse` 는
+`tls=False`). 자세한 내용은 [API.md](docs/API.md) 「WebXR 경로」에 있습니다.
 
 다른 하드웨어 조합을 쓰려면 `TeleopModel` 을 상속해 추상 훅 `_get_raw_target()` 하나만 구현하면 됩니다. 이
 훅은 어느 소스를 팔 엔드이펙터 목표로 쓸지 정합니다. 캘리브레이션, IK, 리타게팅, 안전 필터는 이미 연결되어
@@ -195,10 +176,6 @@ python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # rig 
 
 python tools/align_frames.py robot --robot robots/nero.yaml               # 로봇을 정준 축에 정렬
 ```
-
-팔 IK 의 정확도는 유효한 관절각에서 FK 로 만든 목표로만 판정하세요. 그러면 오차 하한이 정확히 0 이라 남는
-오차는 모두 솔버 탓입니다. 직교 좌표로 합성한 궤적은 도달할 수 없는 자세를 지나므로 솔버 품질과 도달성이
-섞입니다. (고정 기준선 벤치마크는 내부 도구라 이 저장소에 넣지 않았습니다.)
 
 테스트는 `pip install -e '.[all,dev]' && pytest` 로 돌립니다.
 

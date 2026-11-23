@@ -213,9 +213,8 @@ ls -l /dev/serial/by-id/            # 어느 장치가 어느 ACM 인지
 
 ### 팔이 엉뚱한 곳으로 간다
 
-yaw 캘리브를 안 했거나(매 세션 필요), 한 팔 rig 에 반대쪽 컨트롤러를 물린
-경우다. 후자면 그쪽 IK 가 도달 불가 목표를 계속 쫓아 결과를 오염시킨다.
-`--sides right` 처럼 한쪽만 켠다.
+대개 yaw 캘리브를 안 했거나(매 세션 필요) 한 팔 rig 에 반대쪽 컨트롤러가 물린 것이다(`--sides right`).
+`--diag` 로 보는 법은 [GUIDE.md §4](GUIDE.md#4-진단).
 
 ---
 
@@ -223,5 +222,4 @@ yaw 캘리브를 안 했거나(매 세션 필요), 한 팔 rig 에 반대쪽 컨
 
 - 튜닝·진단 — [GUIDE.md](GUIDE.md)
 - 공개 API — [API.md](API.md)
-- 직접 만든 하드웨어 조합 — `TeleopModel` 을 상속해 `_get_raw_target()` 하나만
-  구현한다. 캘리브·IK·리타게팅·안전필터 배선은 이미 되어 있다.
+- 직접 만든 하드웨어 조합 — [README 빠른 시작](../README.ko.md#빠른-시작)(`TeleopModel` 상속)
