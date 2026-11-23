@@ -74,6 +74,8 @@ ruff check .
 pytest -q
 ```
 
+CI (`.github/workflows/ci.yml`) runs ruff and the tests on Python 3.10 and 3.12 for every PR.
+
 - Changes come with tests. A bug fix starts with a test that reproduces the bug.
 - The full test run occasionally ends in a segfault. It is a known issue in the path dex-retargeting
   uses to read URDFs (yourdfpy → pytransform3d), not in this repository; re-run and it passes.

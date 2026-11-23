@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0%20based-lightgrey.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python"/>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python"/>
   <img src="https://img.shields.io/badge/Spine-3.0.0-green.svg" alt="Spine"/>
 </p>
 
@@ -92,12 +92,13 @@ pip install -e '.[all]'   # editable, for development
 |---|---|---|
 | `receiver` | `airglove-client` (git tag v0.4.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
-| `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | the DexPilot engine |
+| `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
 
 GeoRT inference (`geort:`) needs only numpy. dex-retargeting 0.4.6 is the last release for
 numpy 1 and 0.5.0 is the first for numpy 2, so pip picks the one that matches your
-environment; it imports `torch` at module level and needs `nlopt<2.8`, `pin>=2.7` and
+environment; it needs `torch` (CPU is enough — add
+`--extra-index-url https://download.pytorch.org/whl/cpu` to skip the large CUDA build) and needs `nlopt<2.8`, `pin>=2.7` and
 Python < 3.13. numpy has no upper bound: numpy-1 environments (Isaac Sim 5.1, for example) pin
 `numpy<2` and `dex-retargeting<0.5` on their side. URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the

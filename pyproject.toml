@@ -7,7 +7,7 @@ name = "whatslab-sdk"
 version = "0.5.0"
 description = "WHATs LAB hand SDK — glove / hand-tracking input and robot-hand retargeting (ROS-independent)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "WHATs LAB Corp" }]
 classifiers = [
@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
-hand     = ["pin", "dex-retargeting>=0.4.6",
+hand     = ["pin", "dex-retargeting>=0.4.6", "torch",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]
 webxr    = ["websockets>=13"]
@@ -47,7 +47,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 99
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N"]

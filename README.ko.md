@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0%20based-lightgrey.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python"/>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python"/>
   <img src="https://img.shields.io/badge/Spine-3.0.0-green.svg" alt="Spine"/>
 </p>
 
@@ -87,11 +87,12 @@ pip install -e '.[all]'   # 개발용 editable
 |---|---|---|
 | `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
-| `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | DexPilot 엔진 |
+| `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. dex-retargeting 은 0.4.6 이 numpy 1 의 마지막, 0.5.0 이
-numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. 모듈 최상단에서 `torch` 를 import 하고
+numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. `torch` 가 필요하고(CPU 판으로 충분하다 — 큰 CUDA 판을 피하려면
+`--extra-index-url https://download.pytorch.org/whl/cpu` 를 붙인다)
 `nlopt<2.8`, `pin>=2.7`, Python 3.13 미만이 필요합니다. numpy 상한은 두지 않습니다 — numpy 1 환경(예:
 Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `dex-retargeting<0.5` 를 고정합니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,

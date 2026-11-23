@@ -70,6 +70,8 @@ ruff check .
 pytest -q
 ```
 
+CI(`.github/workflows/ci.yml`)가 PR 마다 ruff 와 테스트를 Python 3.10·3.12 에서 돌린다.
+
 - 변경은 테스트와 함께 넣는다. 버그 수정은 그 버그를 재현하는 테스트부터 쓴다.
 - 전체 테스트가 가끔 segfault 로 끝난다. dex-retargeting 이 URDF 를 읽는 경로(yourdfpy → pytransform3d)에서
   나는 기존 문제이고 이 저장소 코드 때문이 아니다. 다시 돌려서 통과하면 된다.
