@@ -14,7 +14,7 @@ class Receiver(Protocol):
 
 
 @runtime_checkable
-class HandController(Protocol):
+class Retargeter(Protocol):
 
     @property
     def joint_names(self) -> List[str]: ...

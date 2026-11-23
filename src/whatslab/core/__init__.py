@@ -1,7 +1,7 @@
-from .interfaces import HandController, Receiver
+from .interfaces import Receiver, Retargeter
 from .types import HandCommand, HandPose, InputSample
 
 __all__ = [
     "InputSample", "HandCommand", "HandPose",
-    "Receiver", "HandController",
+    "Receiver", "Retargeter",
 ]
