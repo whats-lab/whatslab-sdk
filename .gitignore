@@ -24,5 +24,4 @@ examples/vive_smoke.py
 hand_retarget_compare*.png
 hand_retarget_compare*.mp4
 
-CLAUDE.md
 tools/bench_arm_ik.py

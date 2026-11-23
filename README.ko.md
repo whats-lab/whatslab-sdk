@@ -187,6 +187,7 @@ pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
 
 - [**빠른 시작**](docs/QUICKSTART.md) — 클론부터 로봇 손이 글러브를 따라오기까지, 자주 걸리는 것
 - [**API 레퍼런스**](docs/API.md) — 하위 패키지별 공개 심볼과 시그니처
+- [**기여 가이드**](CONTRIBUTING.md) — 범위, 설계·코드 규칙
 
 ## 감사의 말
 

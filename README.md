@@ -197,6 +197,7 @@ Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with 
 - [**Quickstart**](docs/QUICKSTART.md) (Korean) — from clone to a robot hand following the glove,
   and what usually goes wrong
 - [**API reference**](docs/API.md) (Korean) — public symbols per subpackage, with signatures
+- [**Contributing**](CONTRIBUTING.md) (Korean) — scope, design rules and code rules for changes
 
 ## Acknowledgments
 
