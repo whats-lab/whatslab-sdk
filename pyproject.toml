@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
-hand     = ["pin", "dex-retargeting>=0.4.6", "torch",
+hand     = ["pin", "dex-retargeting>=0.4.6", "torch", "six",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]
 webxr    = ["websockets>=13"]
