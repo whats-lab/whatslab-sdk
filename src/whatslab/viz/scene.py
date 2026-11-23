@@ -10,7 +10,6 @@ import pinocchio as pin
 import trimesh
 import viser
 
-from whatslab.solvers.hand.human_fk import FINGERS, palm_frame
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
@@ -22,8 +21,6 @@ def get_server(port: int = 8080):
     srv = _servers.get(port)
     if srv is None:
         srv = viser.ViserServer(port=port)
-        srv.scene.add_frame("/canonical", show_axes=True,
-                            axes_length=0.2, axes_radius=0.006)
         _servers[port] = srv
         print(f"[viz] viser: http://localhost:{srv.get_port()}")
     return srv
@@ -42,8 +39,24 @@ def _rebased_urdf(urdf: str, root: str) -> Optional[str]:
     return text
 
 
-def _wxyz(R: np.ndarray) -> Tuple[float, float, float, float]:
-    q = pin.Quaternion(np.asarray(R, dtype=float))
+def _mesh_files(text: str, tag: str) -> List[str]:
+    blocks = re.findall(rf"<{tag}\b.*?</{tag}>", text, re.S)
+    return [f for b in blocks for f in re.findall(r'<mesh\b[^>]*filename="([^"]+)"', b)]
+
+
+def _mesh_loadable(filename: str, urdf_dir: str, pkg_dirs: List[str]) -> bool:
+    if filename.startswith("package://"):
+        rel = filename[len("package://"):]
+        paths = [os.path.join(d, rel) for d in pkg_dirs]
+    else:
+        path = filename[len("file://"):] if filename.startswith("file://") else filename
+        paths = [path if os.path.isabs(path) else os.path.join(urdf_dir, path)]
+    ext = os.path.splitext(filename)[1].lstrip(".").lower()
+    return ext in trimesh.available_formats() and any(os.path.isfile(p) for p in paths)
+
+
+def _wxyz(rot: np.ndarray) -> Tuple[float, float, float, float]:
+    q = pin.Quaternion(np.asarray(rot, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
 
 
@@ -60,21 +73,24 @@ class URDFScene:
         self.gmodel = None
         pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
         urdf_text = _rebased_urdf(urdf, mesh_dir)
-        for gtype in (pin.GeometryType.COLLISION, pin.GeometryType.VISUAL):
-            try:
-                if urdf_text is None:
-                    gm = pin.buildGeomFromUrdf(self.model, urdf, gtype,
-                                               package_dirs=pkg_dirs)
-                else:
-                    gm = pin.buildGeomFromUrdfString(self.model, urdf_text,
-                                                     gtype,
-                                                     package_dirs=pkg_dirs)
-            except Exception as e:
-                _log.info("%s 지오메트리 건너뜀: %s", gtype, e)
+        with open(urdf, "r") as f:
+            text = urdf_text if urdf_text is not None else f.read()
+        urdf_dir = os.path.dirname(os.path.abspath(urdf))
+        best = 0
+        for gtype, tag in ((pin.GeometryType.VISUAL, "visual"),
+                           (pin.GeometryType.COLLISION, "collision")):
+            files = _mesh_files(text, tag)
+            if not files or not all(_mesh_loadable(f, urdf_dir, pkg_dirs) for f in files):
                 continue
-            if len(gm.geometryObjects) > 0:
-                self.gmodel = gm
-                break
+            if urdf_text is None:
+                gm = pin.buildGeomFromUrdf(self.model, urdf, gtype, package_dirs=pkg_dirs)
+            else:
+                gm = pin.buildGeomFromUrdfString(self.model, urdf_text, gtype,
+                                                 package_dirs=pkg_dirs)
+            n = sum(1 for g in gm.geometryObjects
+                    if os.path.exists(str(g.meshPath)))
+            if n > best:
+                self.gmodel, best = gm, n
         if self.gmodel is not None:
             self.gdata = pin.GeometryData(self.gmodel)
             for g in self.gmodel.geometryObjects:
@@ -83,14 +99,9 @@ class URDFScene:
                         or not os.path.exists(path):
                     self.handles.append(None)
                     continue
-                try:
-                    mesh = trimesh.load(path, force="mesh")
-                    mesh.apply_scale(np.asarray(g.meshScale))
-                    self.handles.append(server.scene.add_mesh_trimesh(
-                        f"{root_path}/{g.name}", mesh))
-                except Exception as e:
-                    _log.info("메쉬 건너뜀 %s: %s", path, e)
-                    self.handles.append(None)
+                mesh = trimesh.load(path, force="mesh")
+                mesh.apply_scale(np.asarray(g.meshScale))
+                self.handles.append(server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:
             _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", urdf)
@@ -105,9 +116,9 @@ class URDFScene:
                 f"{root_path}/bones", points=np.zeros((max(n_bones, 1), 2, 3)),
                 colors=(200, 160, 70), line_width=3.0)
 
-    def set_root(self, T: np.ndarray) -> None:
-        self.root.position = tuple(float(v) for v in T[:3, 3])
-        self.root.wxyz = _wxyz(T[:3, :3])
+    def set_root(self, tf: np.ndarray) -> None:
+        self.root.position = tuple(float(v) for v in tf[:3, 3])
+        self.root.wxyz = _wxyz(tf[:3, :3])
 
     def q_from_named(self, name_to_val: Dict[str, float]) -> np.ndarray:
         q = pin.neutral(self.model)
@@ -121,11 +132,11 @@ class URDFScene:
         if self.mesh_mode:
             pin.updateGeometryPlacements(self.model, self.data,
                                          self.gmodel, self.gdata)
-            for h, oMg in zip(self.handles, self.gdata.oMg):
+            for h, o_to_g in zip(self.handles, self.gdata.oMg):
                 if h is None:
                     continue
-                h.position = tuple(oMg.translation)
-                h.wxyz = _wxyz(oMg.rotation)
+                h.position = tuple(o_to_g.translation)
+                h.wxyz = _wxyz(o_to_g.rotation)
         else:
             segs = []
             for j in range(1, self.model.njoints):
@@ -136,84 +147,6 @@ class URDFScene:
                     segs.append([self.data.oMi[par].translation.copy(), p.copy()])
             if segs:
                 self.bones.points = np.asarray(segs)
-
-    def frame_pose(self, frame_name: str) -> np.ndarray:
-        pin.updateFramePlacements(self.model, self.data)
-        return self.data.oMf[self.model.getFrameId(frame_name)].homogeneous
-
-
-class RobotArmViz:
-
-    def __init__(self, model, port: int = 8080, axis_len: float = 0.12):
-        self.model = model
-        self.port = port
-        self.axis_len = axis_len
-        self._arm = None
-        self._hand = None
-        self._target = None
-
-    def start(self) -> None:
-        rig = self.model.rig
-        srv = get_server(self.port)
-        mesh_dir = models_root()
-        self._arm = URDFScene(srv, rig.arm.urdf_abspath(), mesh_dir, "/arm")
-        self._arm.set_root(self.model.to_canonical(np.eye(4)))
-        if self.model.has_hand:
-            self._hand = URDFScene(srv, rig.hand.urdf_abspath(), mesh_dir,
-                                   "/arm/hand")
-            self._aMb = (rig.arm.ee_origin.T @ rig.attach.T
-                         @ rig.hand.axis_align.T)
-        self._target = srv.scene.add_frame("/target", show_axes=True,
-                                           axes_length=self.axis_len,
-                                           axes_radius=0.005)
-        self._ee = srv.scene.add_frame("/ee", show_axes=True,
-                                       axes_length=self.axis_len * 0.7,
-                                       axes_radius=0.008)
-
-    def update(self, q, target_pose=None, hand_q=None, hand_names=None,
-               timestamp: Optional[float] = None) -> None:
-        if self._arm is None:
-            self.start()
-        _ = timestamp
-        arm_named = dict(zip(self.model.arm_joint_names, np.asarray(q, dtype=float)))
-        self._arm.fk(self._arm.q_from_named(arm_named))
-        if self._hand is not None:
-            T_h = self._arm.frame_pose(self.model.rig.arm.ee_parent) @ self._aMb
-            self._hand.set_root(T_h)
-            hand_named = dict(arm_named)
-            if hand_q is not None and hand_names is not None:
-                hand_named.update(zip(hand_names, np.asarray(hand_q, dtype=float)))
-            self._hand.fk(self._hand.q_from_named(hand_named))
-        if target_pose is not None:
-            T = np.asarray(target_pose, dtype=float)
-            self._target.position = tuple(T[:3, 3])
-            self._target.wxyz = _wxyz(T[:3, :3])
-        T_ee = self.model.ee_pose(np.asarray(q, dtype=float))
-        self._ee.position = tuple(T_ee[:3, 3])
-        self._ee.wxyz = _wxyz(T_ee[:3, :3])
-
-
-_PALM_TO_WORLD = np.array([[1.0, 0.0, 0.0],
-                           [0.0, 0.0, -1.0],
-                           [0.0, 1.0, 0.0]])
-
-
-def upright_root(palm_origin, palm_frame_R) -> np.ndarray:
-    A = _PALM_TO_WORLD @ np.asarray(palm_frame_R, dtype=float).T
-    T = np.eye(4)
-    T[:3, :3] = A
-    T[:3, 3] = -A @ np.asarray(palm_origin, dtype=float)
-    return T
-
-
-def human_upright_root(fk, offset=None) -> np.ndarray:
-    hp = fk.neutral_points()
-    T = upright_root(*palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"]))
-    if offset is None:
-        return T
-    shift = np.eye(4)
-    shift[:3, 3] = np.asarray(offset, dtype=float)
-    return shift @ T
 
 
 class HandViz:
@@ -235,10 +168,9 @@ class HandViz:
         if self.root_pose is not None:
             self._scene.set_root(np.asarray(self.root_pose, dtype=float))
 
-    def update(self, q, timestamp: Optional[float] = None) -> None:
+    def update(self, q) -> None:
         if self._scene is None:
             self.start()
-        _ = timestamp
         named = dict(zip(self.joint_names, np.asarray(q, dtype=float).ravel()))
         self._scene.fk(self._scene.q_from_named(named))
 

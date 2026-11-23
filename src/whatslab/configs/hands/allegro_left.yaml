@@ -1,0 +1,11 @@
+name: allegro_left
+side: left
+urdf: allegro_hand/allegro_hand_left.urdf
+palm_links: {index: link_9.0, middle: link_5.0, pinky: link_1.0}
+human_hand_length: 0.19
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: wrist
+  finger_tip_link_names: [link_15.0_tip, link_11.0_tip, link_7.0_tip, link_3.0_tip]
+  low_pass_alpha: 0.5

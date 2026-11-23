@@ -1,12 +1,3 @@
-from .base import (
-    GLOVE_CLIENT_PORT,
-    GLOVE_OSC_PORT,
-    GLOVE_TARGET_IP,
-    GloveReceiverBase,
-)
-from .human_hand import GloveHumanAnglesReceiver, GloveHumanHandReceiver
-from .robot_hand import GloveRobotHandReceiver
+from .airglove import HAPTIC_LEVEL_MAX, AirGloveReceiver, GloveFrame, haptic_levels
 
-__all__ = ["GLOVE_OSC_PORT", "GLOVE_CLIENT_PORT", "GLOVE_TARGET_IP",
-           "GloveReceiverBase", "GloveHumanHandReceiver",
-           "GloveHumanAnglesReceiver", "GloveRobotHandReceiver"]
+__all__ = ["AirGloveReceiver", "GloveFrame", "HAPTIC_LEVEL_MAX", "haptic_levels"]

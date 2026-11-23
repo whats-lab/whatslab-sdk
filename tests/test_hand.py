@@ -1,88 +1,126 @@
 import numpy as np
 import pytest
 
-
-def test_uni_retargeter_end_to_end():
-    pytest.importorskip("onnxruntime")
-    from whatslab.solvers.hand import UniRetargeter
-
-    for robot in ("orca", "allegro", "tesollo", "robotis", "human"):
-        for side in ("left", "right"):
-            r = UniRetargeter(side, robot)
-            assert r.joint_names, f"{robot}/{side}"
-            neutral = {n: 0.0 for n in r.human_joint_names}
-            q = r.compute(neutral)
-            assert q.shape == (len(r.joint_names),)
-            assert np.all(np.isfinite(q))
-            lo, hi = r._feed["lo"], r._feed["hi"]
-            slack = 0.02 * (hi - lo)
-            assert np.all(q >= lo - slack) and np.all(q <= hi + slack)
+from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget.retargeter import HandRetargeter, engine_of
 
 
-def test_uni_retargeter_responds_to_input():
-    pytest.importorskip("onnxruntime")
-    from whatslab.solvers.hand import UniRetargeter
-
-    r = UniRetargeter("left", "orca")
-    q0 = r.compute({n: 0.0 for n in r.human_joint_names})
-    q1 = r.compute({n: 0.4 for n in r.human_joint_names})
-    assert np.abs(q1 - q0).max() > 0.05, "입력에 무반응 — 그래프가 상수화됐다"
+@pytest.mark.parametrize("name,engine", [("dex:orca", "dex:"), ("geort:orca_right", "geort:")])
+def test_engine_prefix(name, engine):
+    assert engine_of(name) == engine
 
 
-def test_uni_retargeter_config_alias():
-    pytest.importorskip("onnxruntime")
-    from whatslab.solvers.hand import UniRetargeter
-
-    a = UniRetargeter("left", "orca_hand")
-    b = UniRetargeter("left", "orca")
-    assert a.joint_names == b.joint_names
-    with pytest.raises(ValueError, match="표에 없는"):
-        UniRetargeter("left", "nope_hand")
+@pytest.mark.parametrize("name", ["orca_hand", "dex:", "geort:", "", None, "uni:orca"])
+def test_unknown_engine_rejected(name):
+    with pytest.raises(ValueError):
+        engine_of(name)
 
 
-def test_uni_retargeter_accepts_unprefixed_names():
-    pytest.importorskip("onnxruntime")
-    from whatslab.solvers.hand import UniRetargeter
+def test_retarget_package_import_is_light():
+    import importlib
+    import sys
 
-    r = UniRetargeter("left", "tesollo")
-    full = {n: 0.3 for n in r.human_joint_names}
-    bare = {n.split("_", 1)[1]: 0.3 for n in r.human_joint_names}
-    assert np.allclose(r.compute(full), r.compute(bare))
+    def ours():
+        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
 
-
-def test_hand_controller_from_input_sample():
-    pytest.importorskip("onnxruntime")
-    from whatslab.core.types import HandPose, InputSample
-    from whatslab.solvers.hand import HandRetargetController
-
-    ctrl = HandRetargetController("right", "orca_hand")
-    angles = {n: 0.0 for n in ctrl.engine.human_joint_names}
-    hand = HandPose(joint_angles=angles, tracked=True)
-    cmd = ctrl.compute(InputSample(hand=hand, tracked=True))
-    assert cmd.joint_names == ctrl.joint_names
-    assert cmd.joint_angles.shape == (len(ctrl.joint_names),)
-    cmd2 = ctrl.compute(InputSample(hand=None, tracked=False))
-    assert np.allclose(cmd2.joint_angles, cmd.joint_angles)
+    saved = {m: sys.modules.pop(m) for m in ours()}
+    try:
+        importlib.import_module("whatslab.retarget")
+        assert "whatslab.retarget.dex" not in sys.modules
+    finally:
+        for m in ours():
+            del sys.modules[m]
+        sys.modules.update(saved)
 
 
-def test_uni_retargeter_reads_the_side_it_was_asked_for():
-    pytest.importorskip("onnxruntime")
-    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
+def _geort_model_or_skip():
+    import os
 
-    for side in ("left", "right"):
-        r = UniRetargeter(side, "orca_hand")
-        assert all(n.startswith(side + "_") for n in r.human_joint_names)
+    from whatslab.retarget.geort.engine import DEFAULT_MODEL, MODEL_ENV
+    path = os.path.expanduser(os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
+    if not os.path.isfile(path):
+        pytest.skip("GeoRT 모델 없음")
 
 
-def test_uni_retargeter_responds_to_both_sides():
-    pytest.importorskip("onnxruntime")
-    import numpy as np
+def _hand():
+    j = np.zeros((26, 8))
+    j[:, 3] = 1.0
+    for root, x in {2: -0.03, 6: -0.02, 11: 0.0, 16: 0.02, 21: 0.04}.items():
+        for k in range(4 if root == 2 else 5):
+            j[root + k, 4:7] = [x, 0.0, -0.03 - 0.025 * k]
+    j[1, 4:7] = 0.0
+    return j
 
-    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
 
-    for side in ("left", "right"):
-        r = UniRetargeter(side, "orca_hand")
-        flat = {n: 0.0 for n in r.human_joint_names}
-        curl = {n: (0.8 if n.endswith(("_mcp_flex", "_pip")) else 0.0)
-                for n in r.human_joint_names}
-        assert np.abs(r.compute(curl) - r.compute(flat)).max() > 0.1, side
+def test_geort_through_retargeter():
+    _geort_model_or_skip()
+    ctrl = HandRetargeter("geort:orca_right", side="right")
+    assert len(ctrl.joint_names) == 16
+    cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True))
+    assert cmd.joint_angles.shape == (16,) and np.all(np.isfinite(cmd.joint_angles))
+    held = ctrl.compute(InputSample(hand=HandPose(tracked=False)))
+    assert np.array_equal(held.joint_angles, cmd.joint_angles)
+
+
+def test_geort_ignores_urdf_root():
+    _geort_model_or_skip()
+    ctrl = HandRetargeter("geort:orca_right", side="right", urdf_root="/tmp")
+    assert len(ctrl.joint_names) == 16
+
+
+def test_dex_preprocess_import_is_light():
+    import importlib
+    import sys
+
+    def ours():
+        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
+
+    saved = {m: sys.modules.pop(m) for m in ours()}
+    try:
+        retarget = importlib.import_module("whatslab.retarget")
+        assert callable(retarget.xr_to_mano) and callable(retarget.mirror_xr_joints)
+        assert "whatslab.retarget.dex.preprocess" in sys.modules
+        assert "whatslab.retarget.dex.engine" not in sys.modules
+    finally:
+        for m in ours():
+            del sys.modules[m]
+        sys.modules.update(saved)
+
+
+class _Source:
+    def __init__(self):
+        self.tracked = True
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def get(self, side):
+        if not self.tracked:
+            return InputSample(hand=HandPose(tracked=False))
+        return InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True)
+
+
+def test_safety_does_not_hide_tracking_loss():
+    _geort_model_or_skip()
+    from whatslab.hand import HandModel
+    from whatslab.safety import JointLimit, SafetyFilter
+
+    src = _Source()
+    m = HandModel("geort:orca_right", side="right", hand_source=src)
+    lim = m.retarget.engine.joint_limits
+    m.safety = SafetyFilter({n: JointLimit(lo, hi, float("inf"))
+                             for n, (lo, hi) in zip(m.retarget.joint_names, lim)}, dt=0.01)
+    assert len(m.get_q()["right"]) == 16
+    src.tracked = False
+    assert m.get_q() == {"right": {}}
+
+
+def test_geort_engine_satisfies_engine_protocol():
+    _geort_model_or_skip()
+    from whatslab.retarget import Engine, GeortEngine
+
+    assert isinstance(GeortEngine.from_config("orca_right"), Engine)
+    assert not isinstance(object(), Engine)

@@ -1,7 +1,16 @@
-from .glove import GloveHumanHandReceiver, GloveRobotHandReceiver
-from .quest import QuestControllerReceiver, QuestHandReceiver
-from .webxr import WebXRControllerReceiver
+import importlib
 
-__all__ = ["QuestControllerReceiver", "QuestHandReceiver",
-           "GloveHumanHandReceiver", "GloveRobotHandReceiver",
-           "WebXRControllerReceiver"]
+_EXPORTS = {
+    "AirGloveReceiver": ".glove",
+    "GloveFrame": ".glove",
+    "WebXRHandReceiver": ".webxr",
+}
+
+__all__ = [n for n, m in _EXPORTS.items() if m != ".glove"]
+
+
+def __getattr__(name):
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(module, __name__), name)

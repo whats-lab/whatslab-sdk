@@ -1,0 +1,13 @@
+name: orca_left
+side: left
+urdf: orca_hand/urdf/left.urdf
+palm_links: {index: I-PP_3df4f91d, middle: M-PP_08efa608, pinky: P-PP_1d411b9b}
+fixed_joints:
+  L-Carpals_719fff8c_to_TopTower-Model_4a80d30e: 0.0
+human_hand_length: 0.19
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: L-Carpals_719fff8c
+  finger_tip_link_names: [left_sensor_thumb_distal, left_sensor_index_distal, left_sensor_middle_distal, left_sensor_ring_distal, left_sensor_pinky_distal]
+  low_pass_alpha: 0.5

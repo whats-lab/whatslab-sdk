@@ -1,0 +1,11 @@
+name: robotis_right
+side: right
+urdf: robotis_hx5_d20/urdf/hx5_d20_right.urdf
+palm_links: {index: finger_r_link6, middle: finger_r_link10, pinky: finger_r_link18}
+human_hand_length: 0.19
+max_evals: 20
+retargeting:
+  type: DexPilot
+  wrist_link_name: hx5_d20_right_base
+  finger_tip_link_names: [finger_end_r_link1, finger_end_r_link2, finger_end_r_link3, finger_end_r_link4, finger_end_r_link5]
+  low_pass_alpha: 0.5

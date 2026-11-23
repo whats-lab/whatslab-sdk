@@ -6,21 +6,18 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-CC%20BY--NC--ND%204.0%20based-lightgrey.svg" alt="License"/></a>
-  <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python"/>
-  <img src="https://img.shields.io/badge/numpy-%3C2-blue.svg" alt="numpy"/>
-  <img src="https://img.shields.io/badge/tests-88%20passing-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python"/>
+  <img src="https://img.shields.io/badge/Spine-3.0.0-green.svg" alt="Spine"/>
 </p>
 
-**whatslab** is the WHATs LAB teleoperation core — a pure-Python SDK that turns human
-motion (VR controllers, hand-tracking, data gloves) into robot arm and hand joint
-angles. It is developed at WHATs LAB as the shared logic layer beneath our simulators
-(MuJoCo, Isaac Sim) and ROS2 stack.
+**whatslab** is the hand SDK of WHATs LAB Corp. It is a pure-Python library that turns a
+human hand (the AirGlove data glove, or Quest hand tracking) into robot-hand joint angles.
 
-whatslab has no dependency on ROS and runs in-process anywhere. It provides the *parts* —
-input receivers, calibration, hand/arm retargeting, visualization, dataset recording —
-and leaves the *assembly* (wiring a pipeline into a simulator or robot) to the consumer.
-Inputs are normalized to a single canonical frame (x=forward, z=up, right-handed), so
-downstream code never re-maps axes.
+whatslab does not depend on ROS and runs in-process anywhere (MuJoCo, Isaac Sim, ROS 2).
+Its scope is the hand: input receivers, hand retargeting, a joint safety filter and
+visualization. **Arm IK, wrist tracking and arm control are not part
+of it** — the SDK gives hand joints relative to the wrist; get the wrist pose from your own tracker
+(Vive, Quest controller, motion capture) and pass it to your arm controller.
 
 ## Table of contents
 
@@ -28,6 +25,7 @@ downstream code never re-maps axes.
 - [Installation](#installation)
 - [Compatibility](#compatibility)
 - [Quick start](#quick-start)
+- [Package layout](#package-layout)
 - [Examples & tools](#examples--tools)
 - [Documentation](#documentation)
 - [Acknowledgments](#acknowledgments)
@@ -35,142 +33,184 @@ downstream code never re-maps axes.
 
 ## Main features
 
-**whatslab is framework-agnostic:**
-- pure Python, zero ROS dependency — used in-process from MuJoCo, Isaac Sim, or ROS2
-- provides composable parts; the consumer owns the pipeline
-- strict dependency direction (`receiver → core`, `model → core·robot`)
-
-**whatslab is retargeting-first:**
-- hand: human-hand URDF joint angles from the glove → one forward pass of a single
-  learned ONNX model. No per-frame IK — 900Hz+ on one CPU thread, every robot hand
-  and both sides share one graph
-- arm: pinocchio analytic Jacobian + damped least squares
-- output is `{side: {joint_name: rad}}`, ready to publish
-
-**whatslab is calibrated:**
-- wrist yaw alignment (head-relative snapshot)
-- per-user arm reach scaling, persisted into the rig config
+- One hand input for every source: the OpenXR 26-joint hand (`HandPose.xr_joints`), from the
+  AirGlove (through Spine) or from Quest hand tracking (headset browser, WebXR)
+- Two retargeting engines:
+  - DexPilot vector retargeting ([dex-retargeting](https://github.com/dexsuite/dex-retargeting)),
+    1–2 ms per hand per frame, any robot hand with a URDF
+  - the **GeoRT soft-prompt** network: one forward pass in numpy, about 0.2 ms, one trained
+    model shared by several robot hands
+- Output is `{side: {joint_name: rad}}`, ready to publish; an optional `SafetyFilter` clamps
+  position and rate
+- Pure Python, no ROS dependency; strict dependency direction
+  (`receiver → core`, `retarget → core`, `hand → core·receiver·retarget`)
 
 ### Supported hands
 
-One ONNX graph covers every hand below, both sides. The name in the first column is
-what a rig's `retarget:` field takes; the alias in parentheses also resolves.
+**DexPilot** — `dex:<name>`, where `<name>` is a file in `configs/hands/` (`dex:orca` resolves
+to `orca_{side}`; a file path also works). A config for one side serves the other side by
+mirroring the input.
 
-| Hand | `retarget:` | URDF in `dexhand-description` |
+| Hand | Engine name | Config |
 |---|---|---|
-| Human reference hand (retargeting input) | `human` (`base_hand`) | `base_hand/urdf/{side}.urdf` |
-| ORCA Hand | `orca` (`orca_hand`) | `orca_hand/urdf/{side}.urdf` |
-| Allegro Hand | `allegro` (`allegro_hand`) | `allegro_hand/allegro_hand_{side}.urdf` |
-| Tesollo DG-5F | `tesollo` (`tesollo_dg5f`) | `tesollo_dg5f/dg5f_{side}.urdf` |
-| ROBOTIS HX5-D20 | `robotis` (`robotis_hx5_d20`) | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` |
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (wrist joint excluded, held at 0) |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP/DIP limited to −5..90°) |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (4 fingers; the human little finger is not used) |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (4 fingers; the human little finger is not used) |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (6 actuated joints; PIP follows the URDF mimic) |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (9 actuated joints; coupled joints follow the URDF mimic) |
 
-Any other hand raises on construction, listing the names the table does hold. To add
-one, generate its tables with retarget_net's `tools/onboard_urdf.py` — the URDF must
-carry the sensor-frame contract (`{side}_sensor_dorsum` plus `_proximal`/`_distal` per
-finger). A hand the model was not trained on needs a few hundred fine-tuning steps and
-a graph re-export before it performs.
+**GeoRT soft prompt** — `geort:<name>`, where `<name>` is a file in `configs/geort/` (a path
+ending in `.yaml` also works). The trained model ships with the package
+(`retarget/geort/assets/geort_prompt.npz`, about 5 MB). The model file is looked up in this order:
+the config's `model:`, then `$WHATSLAB_GEORT_MODEL`, then the bundled file. The model is
+right-handed; a left hand is mirrored onto it.
+
+The keys of both config formats are described in [API.md](docs/API.md).
+
+| Hand | Engine name | URDF in `dexhand-description` |
+|---|---|---|
+| ORCA Hand (right) | `geort:orca_right` | `orca_hand/urdf/right.urdf` |
+| ROBOTIS HX5-D20 (right) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
+
+The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are not in
+dexhand-description yet. Training tools are not part of this SDK.
 
 ## Installation
 
-Publicly available under a source-available license (not published on PyPI — install from source).
+Published under a source-available license. It is not on PyPI; install from source. The
+`Private :: Do Not Upload` classifier makes PyPI reject an accidental upload.
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm + viz + data
-pip install '.[hand]'     # partial: hand / arm / receiver / viz / data
+pip install '.[all]'      # receiver + hand + viz + webxr
+pip install '.[receiver]' # or any subset: receiver / hand / viz / webxr
 pip install -e '.[all]'   # editable, for development
 ```
 
-Teleoperating real hardware (nero arm + ORCA hand) needs extra drivers.
-`scripts/install_robot_deps.sh` handles them in one step.
+| Extra | Brings in | Needed for |
+|---|---|---|
+| `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
+| `webxr` | `websockets` | Quest hand tracking (headset browser) |
+| `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | the DexPilot engine |
+| `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
 
-```bash
-PY=$(which python) ./scripts/install_robot_deps.sh
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
-```
-
-`pyAgxArm` (CAN) ships in the `robot` extra, but `orca_core` cannot: every tag
-declares `numpy>=2.2.6` while this repo pins `numpy<2`, so resolution fails (the
-code itself runs fine on numpy 1.26). Its wheel also omits the hand configs
-(`models/<version>/<model>/config.yaml`), so the script clones the source and
-installs it editable. The hand model defaults to whatever `orca_core` picks;
-pass `--hand-model` for a different one.
-
-Robot/rig configs are bundled. URDF and meshes are provided by the separate
-single-source package [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf),
-pulled in by the `hand`/`arm` extras; override the asset tree with `WHATSLAB_MODELS_ROOT`.
+GeoRT inference (`geort:`) needs only numpy. dex-retargeting 0.4.6 is the last release for
+numpy 1 and 0.5.0 is the first for numpy 2, so pip picks the one that matches your
+environment; it needs `torch` (CPU is enough — add
+`--extra-index-url https://download.pytorch.org/whl/cpu` to skip the large CUDA build) and needs `nlopt<2.8`, `pin>=2.7` and
+Python < 3.13. numpy has no upper bound: numpy-1 environments (Isaac Sim 5.1, for example) pin
+`numpy<2` and `dex-retargeting<0.5` on their side. URDFs and meshes come from
+[`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
+`hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
 
 ## Compatibility
 
-Data-glove teleoperation goes through **Spine**, WHATs LAB's glove middleware.
-Supported Spine versions: **2.3.1 and below** (newer versions are not yet supported).
-Controller / hand-tracking (Quest) paths do not require Spine.
+| Input | Needs |
+|---|---|
+| AirGlove | **Spine 3.0.0** (OSC protocol 3) running on the same machine |
+| Quest hand tracking | the headset's browser (WebXR); no app to install, no Spine |
 
-The glove path follows Spine's OSC contract as documented in Spine's
-`docs/OSC_Protocol.md`: `GloveHumanHandReceiver` consumes `/{side}/quat/get`, and
-`GloveRobotHandReceiver` consumes `/{side}/joint_angles/get` (name/angle pairs) plus
-`/{side}/wrist/get`. Every Spine message carries the message type in `args[0]`.
+`AirGloveReceiver` wraps [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)
+(`airglove-client` 1.0.0). Spine 2.x is not supported since whatslab 1.0.0; use whatslab 0.4.x
+for it. Spine sends to one client per machine (UDP 4040), so only one process on the Spine PC
+can receive the glove. Per hand it delivers `HandPose.xr_joints`, the 26 OpenXR joints as a
+`(26, 8)` array relative to the wrist. No wrist pose is given: what Spine
+sends for the wrist is an uncalibrated IMU quaternion, not a wrist pose. Field-level details are in
+[API.md](docs/API.md) (OpenXR glove).
+
+Only need the raw glove data, another language (C/C++, C#, Unity, Unreal) or your own
+retargeting? Use [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client) directly. For
+ROS 2, see [whatslab-ros2](https://github.com/whats-lab/whatslab-ros2).
+
+Recording is left to your pipeline: the SDK gives plain data (OpenXR 26-joint hands,
+`{joint_name: rad}`, timestamps), so it fits LeRobot, HDF5 or your own format; on ROS 2,
+record the whatslab-ros2 topics with rosbag2.
 
 ## Quick start
 
 ```python
-from whatslab.teleop import GloveModel
+from whatslab.hand import HandModel
 
-m = GloveModel("rigs/nero_orca_right.yaml")   # arm = controller IK, hand = glove retarget
+m = HandModel("geort:orca_right", side="right")   # AirGlove → ORCA right hand
 m.start()
 
 while True:
-    q = m.get_q()             # {"right": {joint_name: rad, ...}}  — arm + hand merged
-    publish_joint_states(q)   # consumer's job: reorder into sim/ROS joint order
+    q = m.get_q()             # {"right": {joint_name: rad, ...}}; {} while the hand is not tracked
+    publish_joint_states(q)   # your job: reorder into your sim/ROS joint order
 ```
 
-Presets: `QuestModel` (hand-tracking), `GloveModel` (controller + glove),
-`HandModel` (hand only). `GloveModel` takes its arm target from either transport —
-`GloveModel(rig, arm_source="quest")` (OSC/UDP, default) or `arm_source="webxr"`
-(browser WebXR over WebSocket, no APK to sideload). The WebXR path defaults to
-wireless: it serves HTTPS with a self-signed cert on this machine's LAN IP, since
-WebXR needs a secure context. Pass `tls=False` for the wired `adb reverse` route.
-See `docs/API.md`. Both transports can be installed side by side. For a custom hardware combination, subclass `TeleopModel`
-and implement the single abstract hook `_get_raw_target()` — it decides which source
-feeds the arm EE target. Everything else (calibration, IK, retargeting, safety) is
-already wired.
+Quest hand tracking instead of the glove:
+
+```python
+from whatslab.receiver import WebXRHandReceiver
+m = HandModel("dex:orca", hand_source=WebXRHandReceiver())   # open the printed https URL in the headset
+```
+
+Your own hand source: build an `InputSample` and call `HandRetargeter` directly.
+
+```python
+from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget import HandRetargeter
+
+r = HandRetargeter("geort:orca_right", side="right")
+cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr, tracked=True)))   # xr: (26, 8) OpenXR joints
+cmd.joint_names, cmd.joint_angles
+```
+
+`HandRetargeter` picks the engine from the prefix (`dex:` → `DexEngine`, `geort:` → `GeortEngine`),
+resets the engine when tracking is lost and holds the last command when an input cannot be solved.
+Both engines expose `solve(xr_joints)` if you want the bare computation.
+
+## Package layout
+
+```
+whatslab/
+├── core/             types (HandPose, InputSample, HandCommand), Receiver interface, OpenXR joints
+├── receiver/
+│   ├── glove/        AirGloveReceiver (airglove-client, connection status and alarms)
+│   └── webxr/        WebXRHandReceiver, its websockets server, TLS certificate, headset page
+├── retarget/
+│   ├── retargeter.py HandRetargeter, Engine protocol, HandInputError
+│   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, palm frame, mirroring
+│   └── geort/        engine.py GeortEngine · preprocess.py Kabsch input frame · prompt.py model · bundled npz
+├── hand.py           HandModel: receiver → retargeter → optional SafetyFilter
+├── safety.py         SafetyFilter
+├── viz/              HandViz, URDFScene (viser)
+├── paths.py          configs / models roots
+└── configs/          hands/ (DexPilot, 14 files), geort/ (2 files)
+```
 
 ## Examples & tools
 
 ```bash
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml            # controller + glove
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist  # Quest hand-tracking
-python examples/verify_rig.py --rig rigs/nero_orca_right.yaml           # inspect rig kinematics
-
-python tools/align_frames.py robot --robot robots/nero.yaml            # align a robot to canonical axes
+python examples/airglove_hand.py --config geort:orca_right               # glove → robot hand, prints q
+python examples/airglove_hand.py --config dex:orca --viz                 # with the robot hand in viser
+python tools/bench_hand_retarget.py --help                               # retargeting quality metrics
 ```
 
-Judge arm-IK accuracy on targets generated by FK from valid joint angles — the error
-floor is then exactly 0, so whatever error remains is the solver's. Coordinate-space
-trajectories pass through unreachable poses and conflate solver quality with
-reachability. (The fixed arm-IK benchmark is internal tooling and is not shipped here.)
-
-Run the test suite with `pip install -e '.[all,dev]' && pytest`.
+Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with `ruff check .`
+(PEP 8 through ruff: pycodestyle, pep8-naming, isort and pyflakes; line length 99).
 
 ## Documentation
 
-- [**Real-robot quickstart**](docs/QUICKSTART.md) (Korean) — clone to running
-  teleop on a nero arm + ORCA hand, and what usually goes wrong.
-- [**Guide**](docs/GUIDE.md) — bringing up a new robot, calibration workflow, arm-IK
-  tuning and how to judge a change, diagnostics, sending to real hardware.
-- [**API reference**](docs/API.md) — public symbols per subpackage, with signatures.
-- [**Changelog**](CHANGELOG.md) — version history. **0.2.0 contains breaking changes**
-  (`model.ik[s]` → `model.sides[s].ik`, `RobotModel.solve` removed).
+- [**Quickstart**](docs/QUICKSTART.md) (Korean) — from clone to a robot hand following the glove,
+  and what usually goes wrong
+- [**API reference**](docs/API.md) (Korean) — public symbols per subpackage, with signatures
+- [**Contributing**](CONTRIBUTING.md) — scope, design rules and code rules for changes
 
 ## Acknowledgments
 
 whatslab builds on excellent open-source work:
-[Pinocchio](https://github.com/stack-of-tasks/pinocchio) (rigid-body kinematics/IK),
-[viser](https://github.com/nerfstudio-project/viser) (web 3D visualization), and
-[LeRobot](https://github.com/huggingface/lerobot) (dataset format).
+[Pinocchio](https://github.com/stack-of-tasks/pinocchio) (kinematics),
+[dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT),
+[GeoRT](https://zhaohengyin.github.io/geort) (geometric hand retargeting, which the soft-prompt
+model's training builds on),
+and [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization).
 
 ## License
 
 Licensed under the **주식회사 왓츠랩 (WHATs LAB Corp) Source Code License** (based on
-CC BY-NC-ND 4.0) — source-available, non-commercial, no derivatives. See [LICENSE](LICENSE).
+CC BY-NC-ND 4.0): source-available, non-commercial, no derivatives. See [LICENSE](LICENSE).
 
 Copyright © 주식회사 왓츠랩 (WHATs LAB Corp). All rights reserved.

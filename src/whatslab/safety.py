@@ -23,9 +23,10 @@ def load_limits_from_urdf(urdf_xml: str) -> Dict[str, JointLimit]:
         lim = j.find("limit")
         if name is None or lim is None:
             continue
+        default = ("-inf", "inf") if j.get("type") == "continuous" else ("0", "0")
         out[name] = JointLimit(
-            lower=float(lim.get("lower", "-inf")),
-            upper=float(lim.get("upper", "inf")),
+            lower=float(lim.get("lower", default[0])),
+            upper=float(lim.get("upper", default[1])),
             velocity=float(lim.get("velocity", "inf")),
         )
     return out
@@ -60,9 +61,8 @@ class SafetyFilter:
     def trip(self) -> None:
         self._estopped = True
 
-    def reset(self) -> bool:
+    def reset(self) -> None:
         self._estopped = False
-        return True
 
     @property
     def estopped(self) -> bool:
@@ -74,12 +74,6 @@ class SafetyFilter:
     @property
     def enabled(self) -> bool:
         return self._enabled
-
-    def clone(self) -> "SafetyFilter":
-        out = SafetyFilter(self._lim, self._dt, self._last, self._dt_max)
-        out._estopped = self._estopped
-        out._enabled = self._enabled
-        return out
 
     def seed(self, positions: Dict[str, float]) -> None:
         self._last = dict(positions)
