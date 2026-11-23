@@ -35,11 +35,13 @@ class HandModel:
         sample = self.hand_source.get(self.side)
         cmd = self.retarget.compute(sample)
         tracked = sample.hand is not None and sample.hand.tracked
-        q = dict(zip(cmd.joint_names, map(float, cmd.joint_angles))) if tracked else {}
-        if self.safety is not None:
-            now = time.monotonic()
-            dt = None if self._t_prev is None else now - self._t_prev
-            self._t_prev = now
-            q = self.safety.step(q, dt)
+        q: Dict[str, float] = {}
+        if tracked:
+            q = dict(zip(cmd.joint_names, map(float, cmd.joint_angles)))
+            if self.safety is not None:
+                now = time.monotonic()
+                dt = None if self._t_prev is None else now - self._t_prev
+                self._t_prev = now
+                q = self.safety.step(q, dt)
         self.q = q
         return {self.side: q}

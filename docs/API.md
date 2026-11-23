@@ -106,8 +106,9 @@ print(rx.url)                            # https://192.168.1.88:8443/
   `immersive-vr` 로 떨어진다.
 - **보안 컨텍스트가 필요하다.** WebXR 은 HTTPS 이거나 `localhost` 에서만 뜬다.
   - **무선(기본, `tls=True`)**: 자체 서명 인증서를 `~/.cache/whatslab/webxr/` 에 만들어
-    HTTPS + WSS 로 연다. URL 호스트는 이 PC 의 사설 IP 중 192.168 → 10 → 172 순으로 고른다(docker 브리지 172.x 를 피하려고).
-    인증서 SAN 에 `localhost` 와 이 머신의 모든 전역 IPv4 가
+    HTTPS + WSS 로 연다. URL 호스트는 OS 라우팅 테이블이 바깥으로 내보내는 출발 주소다(`preferred_ip`,
+    docker·libvirt·VPN 가상 인터페이스를 피한다. 경로가 없으면 `127.0.0.1`).
+    인증서 SAN 에 `localhost` 와 그 주소가
     들어간다(`openssl` 실행파일 필요, 유효기간 10년, 키 퍼미션 0600). IP 가 바뀌면
     자동으로 재발급한다. **헤드셋에서 최초 1회 인증서 경고를 수락**해야 한다 —
     페이지와 WebSocket 이 같은 오리진(같은 포트)이라 한 번 수락하면 WSS 도 통과한다.
@@ -228,7 +229,7 @@ dexhand-description 에 없는 URDF 기준이다.
 
 | 클래스 | 내용 |
 |---|---|
-| `URDFScene` | URDF 하나를 메쉬(STL)/스켈레톤 자동 판별 렌더 + 관절 구동. `set_root`, `q_from_named`, `fk`. |
+| `URDFScene` | URDF 하나를 메쉬/스켈레톤 자동 판별 렌더 + 관절 구동. visual 메쉬가 전부 있고 trimesh 로 읽을 수 있으면 visual, 아니면 collision, 둘 다 안 되면 스켈레톤. `set_root`, `q_from_named`, `fk`. |
 | `HandViz(urdf, joint_names, port=8080, root_path="/hand", root_pose=None)` | 로봇 손 URDF 하나를 q 로 구동한다(리타게팅 결과 확인). 사람 손 시각화는 Spine 이 맡는다. |
 
 ## whatslab.safety — 운동학 안전 유틸 (dep-light)

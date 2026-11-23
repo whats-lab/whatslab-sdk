@@ -153,18 +153,18 @@ def test_page_recovers_from_stalled_socket():
         assert needle in html
 
 
-def test_tls_cert_covers_local_ips(tmp_path):
+def test_tls_cert_covers_preferred_ip(tmp_path):
     import subprocess
 
-    from whatslab.receiver.webxr.tls import local_ips
+    from whatslab.receiver.webxr.tls import preferred_ip
     cert, key = _cert(tmp_path)
     assert os.path.isfile(cert) and os.path.isfile(key)
     assert oct(os.stat(key).st_mode & 0o777) == "0o600"
     txt = subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-text"],
                          capture_output=True, text=True).stdout
     assert "DNS:localhost" in txt
-    for ip in local_ips():
-        assert f"IP Address:{ip}" in txt
+    ip = preferred_ip()
+    assert ip.startswith("127.") or f"IP Address:{ip}" in txt
 
 
 def test_tls_cert_is_cached(tmp_path):
@@ -202,11 +202,28 @@ def test_plain_http_client_is_rejected_by_tls_server(tmp_path):
         srv.stop()
 
 
-def test_preferred_ip_prefers_lan_over_docker_bridge(monkeypatch):
+class _UdpSocket:
+    def __init__(self, rc, addr):
+        self.rc, self.addr = rc, addr
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def connect_ex(self, target):
+        return self.rc
+
+    def getsockname(self):
+        return (self.addr, 40000)
+
+
+def test_preferred_ip_is_the_routed_source_address(monkeypatch):
     from whatslab.receiver.webxr import tls
-    monkeypatch.setattr(tls, "local_ips", lambda: ["172.17.0.1", "10.0.0.5", "192.168.1.88"])
-    assert tls.preferred_ip() == "192.168.1.88"
-    monkeypatch.setattr(tls, "local_ips", lambda: [])
+    monkeypatch.setattr(tls.socket, "socket", lambda *a: _UdpSocket(0, "172.20.1.5"))
+    assert tls.preferred_ip() == "172.20.1.5"
+    monkeypatch.setattr(tls.socket, "socket", lambda *a: _UdpSocket(101, ""))
     assert tls.preferred_ip() == "127.0.0.1"
 
 

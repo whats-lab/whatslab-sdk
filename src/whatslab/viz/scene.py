@@ -39,6 +39,22 @@ def _rebased_urdf(urdf: str, root: str) -> Optional[str]:
     return text
 
 
+def _mesh_files(text: str, tag: str) -> List[str]:
+    blocks = re.findall(rf"<{tag}\b.*?</{tag}>", text, re.S)
+    return [f for b in blocks for f in re.findall(r'<mesh\b[^>]*filename="([^"]+)"', b)]
+
+
+def _mesh_loadable(filename: str, urdf_dir: str, pkg_dirs: List[str]) -> bool:
+    if filename.startswith("package://"):
+        rel = filename[len("package://"):]
+        paths = [os.path.join(d, rel) for d in pkg_dirs]
+    else:
+        path = filename[len("file://"):] if filename.startswith("file://") else filename
+        paths = [path if os.path.isabs(path) else os.path.join(urdf_dir, path)]
+    ext = os.path.splitext(filename)[1].lstrip(".").lower()
+    return ext in trimesh.available_formats() and any(os.path.isfile(p) for p in paths)
+
+
 def _wxyz(rot: np.ndarray) -> Tuple[float, float, float, float]:
     q = pin.Quaternion(np.asarray(rot, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
@@ -57,8 +73,15 @@ class URDFScene:
         self.gmodel = None
         pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
         urdf_text = _rebased_urdf(urdf, mesh_dir)
+        with open(urdf, "r") as f:
+            text = urdf_text if urdf_text is not None else f.read()
+        urdf_dir = os.path.dirname(os.path.abspath(urdf))
         best = 0
-        for gtype in (pin.GeometryType.VISUAL, pin.GeometryType.COLLISION):
+        for gtype, tag in ((pin.GeometryType.VISUAL, "visual"),
+                           (pin.GeometryType.COLLISION, "collision")):
+            files = _mesh_files(text, tag)
+            if not files or not all(_mesh_loadable(f, urdf_dir, pkg_dirs) for f in files):
+                continue
             if urdf_text is None:
                 gm = pin.buildGeomFromUrdf(self.model, urdf, gtype, package_dirs=pkg_dirs)
             else:

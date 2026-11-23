@@ -94,14 +94,18 @@ def test_step_negative_dt_is_clamped_to_zero():
 def test_hand_model_passes_measured_dt_to_filter():
     import time
 
-    from whatslab.core.types import InputSample
+    import numpy as np
+
+    from whatslab.core.types import HandPose, InputSample
     from whatslab.hand import HandModel
 
     class _Source:
         def start(self): ...
         def stop(self): ...
         def get(self, side):
-            return InputSample()
+            xr = np.zeros((26, 8))
+            xr[:, 3] = 1.0
+            return InputSample(hand=HandPose(xr_joints=xr, tracked=True), tracked=True)
 
     m = HandModel("geort:orca_right", hand_source=_Source())
     seen = []

@@ -66,3 +66,53 @@ def test_geort_ignores_urdf_root():
     _geort_model_or_skip()
     ctrl = HandRetargeter("geort:orca_right", side="right", urdf_root="/tmp")
     assert len(ctrl.joint_names) == 16
+
+
+def test_dex_preprocess_import_is_light():
+    import importlib
+    import sys
+
+    def ours():
+        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
+
+    saved = {m: sys.modules.pop(m) for m in ours()}
+    try:
+        retarget = importlib.import_module("whatslab.retarget")
+        assert callable(retarget.xr_to_mano) and callable(retarget.mirror_xr_joints)
+        assert "whatslab.retarget.dex.preprocess" in sys.modules
+        assert "whatslab.retarget.dex.engine" not in sys.modules
+    finally:
+        for m in ours():
+            del sys.modules[m]
+        sys.modules.update(saved)
+
+
+class _Source:
+    def __init__(self):
+        self.tracked = True
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def get(self, side):
+        if not self.tracked:
+            return InputSample(hand=HandPose(tracked=False))
+        return InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True)
+
+
+def test_safety_does_not_hide_tracking_loss():
+    _geort_model_or_skip()
+    from whatslab.hand import HandModel
+    from whatslab.safety import JointLimit, SafetyFilter
+
+    src = _Source()
+    m = HandModel("geort:orca_right", side="right", hand_source=src)
+    lim = m.retarget.engine.joint_limits
+    m.safety = SafetyFilter({n: JointLimit(lo, hi, float("inf"))
+                             for n, (lo, hi) in zip(m.retarget.joint_names, lim)}, dt=0.01)
+    assert len(m.get_q()["right"]) == 16
+    src.tracked = False
+    assert m.get_q() == {"right": {}}
