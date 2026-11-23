@@ -20,7 +20,7 @@ class HandModel:
             hand_source = AirGloveReceiver(**(hand_kwargs or {}))
         self.side = side
         self.hand_source = hand_source
-        self.retarget = HandRetargeter(side, hand_config, urdf_root=urdf_root, **kwargs)
+        self.retarget = HandRetargeter(hand_config, side=side, urdf_root=urdf_root, **kwargs)
         self.safety = None
         self.q: Dict[str, float] = {}
         self._t_prev: Optional[float] = None

@@ -143,7 +143,7 @@ m = HandModel("dex:orca", hand_source=WebXRHandReceiver())   # 출력되는 http
 from whatslab.core.types import HandPose, InputSample
 from whatslab.retarget import HandRetargeter
 
-r = HandRetargeter("right", "geort:orca_right")
+r = HandRetargeter("geort:orca_right", side="right")
 cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr, tracked=True)))   # xr: (26, 8) OpenXR 관절
 cmd.joint_names, cmd.joint_angles
 ```

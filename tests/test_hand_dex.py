@@ -199,7 +199,7 @@ def test_retargeter_mirrors_opposite_side_input():
 
 def test_retargeter_uses_xr_joints():
     _require_urdf("orca_right")
-    ctrl = HandRetargeter("right", "dex:orca")
+    ctrl = HandRetargeter("dex:orca", side="right")
     assert ctrl.engine_name == "dex:"
     assert ctrl.engine.config.name == "orca_right"
     assert not any("Carpals" in n and "TopTower" in n for n in ctrl.joint_names)
@@ -217,14 +217,14 @@ def test_retargeter_uses_xr_joints():
 def test_retargeter_rejects_onnx_kwargs():
     _require_urdf("orca_right")
     with pytest.raises(TypeError, match="모르는 인자"):
-        HandRetargeter("right", "dex:orca", onnx_path="x.onnx")
+        HandRetargeter("dex:orca", side="right", onnx_path="x.onnx")
 
 
 def test_degenerate_input_holds_last_command():
     _require_urdf("orca_right")
     from whatslab.retarget import HandInputError
 
-    ctrl = HandRetargeter("right", "dex:orca")
+    ctrl = HandRetargeter("dex:orca", side="right")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True)))
     for bad in (np.zeros((26, 8)), np.full((26, 8), np.nan)):
@@ -238,7 +238,7 @@ def test_dex_respects_xr_valid():
     _require_urdf("orca_right")
     from whatslab.retarget import HandInputError
 
-    ctrl = HandRetargeter("right", "dex:orca")
+    ctrl = HandRetargeter("dex:orca", side="right")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True))).joint_angles
     valid = np.ones(26, dtype=bool)
@@ -258,7 +258,7 @@ def test_dex_respects_xr_valid():
 
 def test_robot_side_is_config_side_for_dex():
     _require_urdf("orca_right")
-    assert HandRetargeter("left", "dex:orca_right").robot_side == "right"
+    assert HandRetargeter("dex:orca_right", side="left").robot_side == "right"
 
 
 def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
@@ -267,6 +267,6 @@ def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
     j[0, :4] = 0.0
     valid = np.ones(26, dtype=bool)
     valid[0] = False
-    ctrl = HandRetargeter("left", "dex:orca_right")
+    ctrl = HandRetargeter("dex:orca_right", side="left")
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=j, xr_valid=valid, tracked=True)))
     assert np.all(np.isfinite(cmd.joint_angles))

@@ -18,7 +18,7 @@ ORCA = "orca_right"
 
 
 def _ctrl(tmp_path, model, side="right", **over):
-    return HandRetargeter(side, f"geort:{_cfg(tmp_path, model, **over)}")
+    return HandRetargeter(f"geort:{_cfg(tmp_path, model, **over)}", side=side)
 
 
 def _solver(tmp_path, model, side="right", **over):

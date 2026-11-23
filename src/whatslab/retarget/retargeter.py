@@ -40,8 +40,8 @@ class HandRetargeter:
 
     def __init__(
         self,
-        side: str,
         config_name: str = "dex:orca",
+        side: str = "right",
         urdf_root=None,
         **kwargs,
     ):

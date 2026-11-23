@@ -54,7 +54,7 @@ def _hand():
 
 def test_geort_through_retargeter():
     _geort_model_or_skip()
-    ctrl = HandRetargeter("right", "geort:orca_right")
+    ctrl = HandRetargeter("geort:orca_right", side="right")
     assert len(ctrl.joint_names) == 16
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True))
     assert cmd.joint_angles.shape == (16,) and np.all(np.isfinite(cmd.joint_angles))
@@ -64,5 +64,5 @@ def test_geort_through_retargeter():
 
 def test_geort_ignores_urdf_root():
     _geort_model_or_skip()
-    ctrl = HandRetargeter("right", "geort:orca_right", urdf_root="/tmp")
+    ctrl = HandRetargeter("geort:orca_right", side="right", urdf_root="/tmp")
     assert len(ctrl.joint_names) == 16

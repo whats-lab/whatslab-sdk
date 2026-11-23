@@ -152,7 +152,7 @@ Your own hand source: build an `InputSample` and call `HandRetargeter` directly.
 from whatslab.core.types import HandPose, InputSample
 from whatslab.retarget import HandRetargeter
 
-r = HandRetargeter("right", "geort:orca_right")
+r = HandRetargeter("geort:orca_right", side="right")
 cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr, tracked=True)))   # xr: (26, 8) OpenXR joints
 cmd.joint_names, cmd.joint_angles
 ```
