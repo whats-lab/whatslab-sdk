@@ -335,7 +335,7 @@ class WebXRServer:
         try:
             self._handler(msg)
         except Exception:
-            # 72–90 Hz 라 트레이스백은 한 번만 남긴다(연결 스레드끼리 잠금 아래에서 센다).
+            # handler 예외로 연결 스레드가 죽지 않게 잡는다. 72–90 Hz 라 트레이스백은 한 번만.
             with self._lock:
                 self._handler_errors += 1
                 first = self._handler_errors == 1

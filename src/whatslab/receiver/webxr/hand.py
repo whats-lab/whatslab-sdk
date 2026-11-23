@@ -83,15 +83,18 @@ class WebXRHandReceiver:
 
     @property
     def port(self) -> int:
+        """실제로 연 포트(port=0 이면 시작 뒤 정해진다)."""
         return self._srv.port
 
     @property
     def url(self) -> str:
+        """헤드셋 브라우저로 열 주소."""
         host = preferred_ip() if self._srv.scheme == "https" else "localhost"
         return f"{self._srv.scheme}://{host}:{self._srv.port}/"
 
     @property
     def running(self) -> bool:
+        """서버가 열려 있는지."""
         return self._srv.is_running
 
     def start(self) -> None:

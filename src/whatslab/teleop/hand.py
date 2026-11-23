@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Dict, Optional
 
+from whatslab.core.interfaces import Receiver
 from whatslab.solvers.hand import HandRetargetController
 
 
@@ -14,7 +15,7 @@ class HandModel:
     """
 
     def __init__(self, hand_config: str = "dex:orca", side: str = "right",
-                 urdf_root: Optional[str] = None, hand_source=None,
+                 urdf_root: Optional[str] = None, hand_source: Optional[Receiver] = None,
                  hand_kwargs: Optional[dict] = None, **kwargs):
         if hand_source is not None and hand_kwargs:
             raise ValueError("hand_source 인스턴스와 hand_kwargs 는 함께 줄 수 없다")
@@ -32,12 +33,15 @@ class HandModel:
         self._t_prev: Optional[float] = None
 
     def start(self) -> None:
+        """수신기를 시작한다."""
         self.hand_source.start()
 
     def stop(self) -> None:
+        """수신기를 멈춘다."""
         self.hand_source.stop()
 
     def get_q(self) -> Dict[str, Dict[str, float]]:
+        """이번 틱의 ``{side: {관절: rad}}``. 추적이 끊긴 틱에는 빈 dict."""
         sample = self.hand_source.get(self.side)
         q: Dict[str, float] = {}
         if sample.hand is not None and sample.hand.tracked:
