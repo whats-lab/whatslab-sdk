@@ -14,7 +14,7 @@
 Quest 핸드트래킹)을 로봇 손 관절각으로 바꾸는 순수 Python 라이브러리입니다.
 
 ROS 에 의존하지 않아 MuJoCo, Isaac Sim, ROS 2 어디서든 프로세스 안에서 씁니다. 범위는 손입니다 — 입력 수신,
-손 리타게팅, 관절 안전 필터, 시각화, 데이터셋 녹화. **팔 IK, 손목 추적, 팔 제어는 들어 있지 않습니다.**
+손 리타게팅, 관절 안전 필터, 시각화. **팔 IK, 손목 추적, 팔 제어는 들어 있지 않습니다.**
 글러브는 손목 기준 손 관절을 주고, 손목을 어디에 둘지는 사용하는 쪽의 트래커와 팔 제어기가 정합니다.
 
 ## 목차
@@ -72,8 +72,8 @@ ROS 에 의존하지 않아 MuJoCo, Isaac Sim, ROS 2 어디서든 프로세스 �
 source-available 라이선스로 공개합니다. PyPI 에는 없고 소스에서 설치합니다.
 
 ```bash
-pip install '.[all]'      # receiver + hand + viz + data
-pip install '.[receiver]' # 또는 일부만: receiver / hand / viz / data
+pip install '.[all]'      # receiver + hand + viz
+pip install '.[receiver]' # 또는 일부만: receiver / hand / viz
 pip install -e '.[all]'   # 개발용 editable
 ```
 
@@ -82,7 +82,6 @@ pip install -e '.[all]'   # 개발용 editable
 | `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력. WebXR 입력은 추가 설치 없음 |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
-| `data` | `pyarrow`, `imageio[ffmpeg]` | LeRobot v2.1 데이터셋 녹화 |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. dex-retargeting 은 0.4.6 이 numpy 1 의 마지막, 0.5.0 이
 numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. 모듈 최상단에서 `torch` 를 import 하고
@@ -107,6 +106,9 @@ Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC �
 글러브 원시 데이터만 필요하거나, 다른 언어(C/C++, C#, Unity, Unreal)를 쓰거나, 리타게팅을 직접 하려면
 [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client) 를 바로 쓰세요. ROS 2 는
 [whatslab-ros2](https://github.com/whats-lab/whatslab-ros2) 를 보세요.
+
+녹화는 사용하는 쪽 파이프라인에 맡깁니다. SDK 는 단순한 데이터(OpenXR 26관절 손, `{관절 이름: rad}`, 시각)를
+주므로 LeRobot, HDF5, 자체 포맷 어디에든 붙습니다. ROS 2 에서는 whatslab-ros2 토픽을 rosbag2 로 녹화하면 됩니다.
 
 ## 빠른 시작
 
@@ -151,8 +153,7 @@ whatslab 은 훌륭한 오픈소스 위에 만들었습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(기구학),
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT),
 [GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅, 소프트 프롬프트 모델 학습의 바탕),
-[viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
-[LeRobot](https://github.com/huggingface/lerobot)(데이터셋 형식).
+[viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화).
 
 ## 라이선스
 

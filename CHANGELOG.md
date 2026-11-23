@@ -19,6 +19,8 @@ Spine 3.0.0(OSC 프로토콜 3) 대응을 마무리하고 손 리타게팅을 Op
 - 수신기 `WebXRControllerReceiver`(컨트롤러 grip), `ViveTracker`. `InputSample.controller`·`joint_q`,
   `core.interfaces.ArmSolver`·`GlobalArmSolver`, `viz.RobotArmViz`.
 - 동봉 설정 `configs/robots/`·`configs/rigs/`, `arm` extra.
+- 데이터 녹화 `whatslab.data`(`LeRobotRecorder`), 변환 도구 `tools/export_targets.py`, `data` extra. 녹화는
+  사용하는 쪽 파이프라인 몫이다(LeRobot·HDF5·rosbag2 등). 필요하면 0.4.x 의 구현을 가져다 쓴다.
 - 예제 `quest_arm.py`·`verify_rig.py`·`robot_io.py`·`requirements-robot.txt`, `scripts/install_robot_deps.sh`,
   도구 `align_frames.py`·`export_combined_urdf.py`·`export_combined_usd.py`, 문서 `docs/GUIDE.md`.
 - 아래 항목 중 팔·rig·Quest 컨트롤러에 관한 것(`QuestModel` 팔 EE, rig `solver:`, `robot_limits` 자동 전달 등)은

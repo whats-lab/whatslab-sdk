@@ -38,9 +38,7 @@ receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.
 hand     = ["pin", "dex-retargeting>=0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]           # 로봇 손 URDF 3D 시각화 (viser, pinocchio FK)
-# lerobot 라이브러리 없이 v2.1 데이터셋을 기록하는 경량 sink (isaacsim numpy1.26 env 비오염 목적).
-data     = ["pyarrow>=14", "imageio[ffmpeg]>=2.30"]
-all      = ["whatslab-sdk[receiver,hand,viz,data]"]
+all      = ["whatslab-sdk[receiver,hand,viz]"]
 dev      = ["pytest"]
 
 [tool.setuptools]

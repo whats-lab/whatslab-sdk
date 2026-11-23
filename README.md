@@ -14,8 +14,8 @@
 human hand (the AirGlove data glove, or Quest hand tracking) into robot-hand joint angles.
 
 whatslab does not depend on ROS and runs in-process anywhere (MuJoCo, Isaac Sim, ROS 2).
-Its scope is the hand: input receivers, hand retargeting, a joint safety filter,
-visualization and dataset recording. **Arm IK, wrist tracking and arm control are not part
+Its scope is the hand: input receivers, hand retargeting, a joint safety filter and
+visualization. **Arm IK, wrist tracking and arm control are not part
 of it** — the glove gives hand joints relative to the wrist, and placing the wrist is the job of
 your own tracker and arm controller.
 
@@ -78,8 +78,8 @@ dexhand-description yet. Training tools are not part of this SDK.
 Published under a source-available license. It is not on PyPI; install from source.
 
 ```bash
-pip install '.[all]'      # receiver + hand + viz + data
-pip install '.[receiver]' # or any subset: receiver / hand / viz / data
+pip install '.[all]'      # receiver + hand + viz
+pip install '.[receiver]' # or any subset: receiver / hand / viz
 pip install -e '.[all]'   # editable, for development
 ```
 
@@ -88,7 +88,6 @@ pip install -e '.[all]'   # editable, for development
 | `receiver` | `airglove-client` (git tag v0.4.0) | AirGlove (Spine) input. WebXR input needs nothing extra. |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
-| `data` | `pyarrow`, `imageio[ffmpeg]` | LeRobot v2.1 dataset recording |
 
 GeoRT inference (`geort:`) needs only numpy. dex-retargeting 0.4.6 is the last release for
 numpy 1 and 0.5.0 is the first for numpy 2, so pip picks the one that matches your
@@ -115,6 +114,10 @@ uncalibrated IMU quaternion, not a wrist pose. Field-level details are in
 Only need the raw glove data, another language (C/C++, C#, Unity, Unreal) or your own
 retargeting? Use [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client) directly. For
 ROS 2, see [whatslab-ros2](https://github.com/whats-lab/whatslab-ros2).
+
+Recording is left to your pipeline: the SDK gives plain data (OpenXR 26-joint hands,
+`{joint_name: rad}`, timestamps), so it fits LeRobot, HDF5 or your own format; on ROS 2,
+record the whatslab-ros2 topics with rosbag2.
 
 ## Quick start
 
@@ -161,8 +164,7 @@ whatslab builds on excellent open-source work:
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT),
 [GeoRT](https://zhaohengyin.github.io/geort) (geometric hand retargeting, which the soft-prompt
 model's training builds on),
-[viser](https://github.com/nerfstudio-project/viser) (web 3D visualization) and
-[LeRobot](https://github.com/huggingface/lerobot) (dataset format).
+and [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization).
 
 ## License
 
