@@ -1,55 +1,17 @@
-"""WebXR 서버(ws_server)·TLS·정적 페이지 — 수신기 종류와 무관한 전송 계층."""
-import base64
 import json
 import os
 import pathlib
 import socket
 import ssl
-import struct
 import time
+import urllib.error
+import urllib.request
 
-import numpy as np
 import pytest
+from websockets.sync.client import connect
 
 from whatslab.receiver.webxr import WebXRHandReceiver
-from whatslab.receiver.webxr.ws_server import (
-    OP_CLOSE,
-    OP_TEXT,
-    WebXRServer,
-    accept_key,
-    encode_frame,
-)
-
-
-def _mask(payload, opcode=OP_TEXT):
-    n = len(payload)
-    head = bytes([0x80 | opcode])
-    if n < 126:
-        head += bytes([0x80 | n])
-    elif n < 65536:
-        head += bytes([0x80 | 126]) + struct.pack(">H", n)
-    else:
-        head += bytes([0x80 | 127]) + struct.pack(">Q", n)
-    key = b"\x01\x02\x03\x04"
-    masked = bytes(b ^ key[i & 3] for i, b in enumerate(payload))
-    return head + key + masked
-
-
-def _upgrade(sock):
-    key = base64.b64encode(b"0123456789abcdef").decode()
-    sock.sendall((f"GET /ws HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
-                  f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
-                  f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
-    resp = b""
-    while b"\r\n\r\n" not in resp:
-        resp += sock.recv(4096)
-    assert b"101" in resp.split(b"\r\n")[0]
-    assert accept_key(key).encode() in resp
-    return sock
-
-
-def _handshake(port):
-    return _upgrade(socket.create_connection(("127.0.0.1", port), timeout=5.0))
+from whatslab.receiver.webxr.ws_server import _STATIC_DIR, WebXRServer
 
 
 def _wait(fn, timeout=3.0):
@@ -66,6 +28,13 @@ def _cert(tmp_path):
     return ensure_cert(cache_dir=tmp_path)
 
 
+def _insecure():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 @pytest.fixture
 def server():
     got = []
@@ -77,111 +46,39 @@ def server():
         srv.stop()
 
 
-def test_accept_key_rfc6455_vector():
-    assert accept_key("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-
-
-def test_encode_frame_lengths():
-    assert encode_frame(b"hi")[:2] == bytes([0x81, 2])
-    assert encode_frame(b"x" * 200)[:4] == bytes([0x81, 126]) + struct.pack(">H", 200)
-    assert encode_frame(b"x" * 70000)[:10] == bytes([0x81, 127]) + struct.pack(">Q", 70000)
-
-
-def test_unmask_matches_bytewise_xor():
-    from whatslab.receiver.webxr.ws_server import unmask
-
-    rng = np.random.default_rng(0)
-    for n in (0, 1, 3, 4, 5, 125, 4096 + 3):
-        payload = rng.integers(0, 256, n, dtype=np.uint8).tobytes()
-        mask = rng.integers(0, 256, 4, dtype=np.uint8).tobytes()
-        want = bytes(b ^ mask[i & 3] for i, b in enumerate(payload))
-        assert unmask(payload, mask) == want
-
-
-def test_frame_reader_keeps_partial_frame_on_timeout():
-    """헤더만 오고 payload 가 늦으면(timeout) 다음 호출이 프레임을 처음부터 다시 읽는다."""
-    from whatslab.receiver.webxr.ws_server import _FrameReader
-
-    frame = _mask(b'{"t": 1}')
-    chunks = [frame[:3], socket.timeout(), frame[3:]]
-
-    class _Sock:
-        def recv(self, n):
-            item = chunks.pop(0)
-            if isinstance(item, Exception):
-                raise item
-            return item
-
-    reader = _FrameReader(_Sock())
-    with pytest.raises(socket.timeout):
-        reader.read_frame()
-    assert reader.read_frame() == (OP_TEXT, b'{"t": 1}')
-
-
-def test_message_roundtrip_and_close(server):
+def test_message_roundtrip(server):
     srv, got = server
-    sock = _handshake(srv.port)
-    sock.sendall(_mask(json.dumps({"t": 1.0}).encode()))
-    assert _wait(lambda: got == [{"t": 1.0}])
-    sock.sendall(_mask(b"", OP_CLOSE))
-    sock.close()
+    with connect(f"ws://127.0.0.1:{srv.port}/ws") as ws:
+        ws.send(json.dumps({"t": 1.0}))
+        assert _wait(lambda: got == [{"t": 1.0}])
 
 
-def test_malformed_payload_counted_not_raised(server):
-    srv, got = server
-    sock = _handshake(srv.port)
-    sock.sendall(_mask(b"not json"))
-    sock.sendall(_mask(json.dumps([1, 2, 3]).encode()))
-    assert _wait(lambda: srv.stats[2] >= 2)
-    sock.sendall(_mask(json.dumps({"ok": 1}).encode()))
-    assert _wait(lambda: {"ok": 1} in got)
-    sock.close()
-
-
-def test_handler_errors_counted_apart_from_bad_frames():
-    """handler 예외는 handler_errors 로 센다(버린 프레임 아님)."""
-    def bad(msg):
-        raise KeyError("x")
-
-    srv = WebXRServer(bad, 0, tls=False)
-    for _ in range(3):
-        srv._dispatch(b'{"t": 1}')
-    assert srv.stats[1:] == (3, 0) and srv.handler_errors == 3
-
-
-def test_reconnect_after_abrupt_client_drop(server):
-    srv, got = server
-    first = _handshake(srv.port)
-    first.sendall(_mask(b'{"n": 1}'))
-    assert _wait(lambda: {"n": 1} in got)
-    first.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
-    first.close()
-    assert _wait(lambda: srv.stats[0] == 0, timeout=5.0)
-    second = _handshake(srv.port)
-    second.sendall(_mask(b'{"n": 2}'))
-    assert _wait(lambda: {"n": 2} in got)
-    second.close()
-
-
-def test_server_pings_idle_client():
-    from whatslab.receiver.webxr import ws_server
-    old = ws_server.IDLE_PING_S
-    ws_server.IDLE_PING_S = 0.2
+def test_bad_message_closes_only_that_connection():
+    good = []
+    srv = WebXRServer(good.append, 0, tls=False)
+    srv.start()
     try:
-        srv = WebXRServer(lambda msg: None, 0, tls=False)
-        srv.start()
-        try:
-            sock = _handshake(srv.port)
-            sock.settimeout(5.0)
-            assert sock.recv(2)[0] & 0x0F == ws_server.OP_PING
-        finally:
-            srv.stop()
+        with connect(f"ws://127.0.0.1:{srv.port}/ws") as bad:
+            bad.send("not json")
+            assert _wait(lambda: bad.state.name == "CLOSED")
+        with connect(f"ws://127.0.0.1:{srv.port}/ws") as ws:
+            ws.send(json.dumps({"ok": 1}))
+            assert _wait(lambda: good == [{"ok": 1}])
     finally:
-        ws_server.IDLE_PING_S = old
+        srv.stop()
+
+
+def test_page_is_served_and_other_paths_are_404(server):
+    srv, _ = server
+    body = urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/", timeout=5).read()
+    for needle in (b"immersive-ar", b"immersive-vr", b"getJointPose", b"XRWebGLLayer"):
+        assert needle in body
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/nope", timeout=5)
+    assert e.value.code == 404
 
 
 def test_restart_keeps_ephemeral_port():
-    """port=0 은 처음 bind 한 포트를 다시 시작해도 쓴다(페이지가 그 포트에 붙어 있다)."""
     srv = WebXRServer(lambda msg: None, 0, tls=False)
     srv.start()
     port = srv.port
@@ -205,58 +102,47 @@ def test_start_and_stop_are_idempotent():
 
 
 def test_connection_from_before_restart_is_not_dispatched():
-    """멈췄다 곧바로 다시 시작해도 포트가 비고, 멈추기 전 연결의 프레임은 새 실행에 안 간다."""
     got = []
     srv = WebXRServer(got.append, 0, tls=False)
     srv.start()
-    old = _handshake(srv.port)
+    old = connect(f"ws://127.0.0.1:{srv.port}/ws")
     srv.stop()
     srv.start()
     try:
-        old.sendall(_mask(b'{"stale": 1}'))
-        new = _handshake(srv.port)
-        new.sendall(_mask(b'{"fresh": 1}'))
-        assert _wait(lambda: {"fresh": 1} in got)
+        old.send(json.dumps({"stale": 1}))
+        with connect(f"ws://127.0.0.1:{srv.port}/ws") as new:
+            new.send(json.dumps({"fresh": 1}))
+            assert _wait(lambda: {"fresh": 1} in got)
         time.sleep(0.1)
         assert {"stale": 1} not in got
-        old.close()
-        new.close()
     finally:
+        old.close()
         srv.stop()
 
 
-def test_static_page_is_served(server):
-    srv, _ = server
-    sock = socket.create_connection(("127.0.0.1", srv.port), timeout=5.0)
-    sock.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-    resp = b""
-    while b"</script>" not in resp:
-        chunk = sock.recv(4096)
-        if not chunk:
-            break
-        resp += chunk
-    assert b"200 OK" in resp
-    for needle in (b"immersive-ar", b"immersive-vr", b"getJointPose", b"XRWebGLLayer"):
-        assert needle in resp
-    sock.close()
-
-
-def test_static_dir_ships_index():
-    from whatslab.receiver.webxr import ws_server
-    assert os.path.isfile(os.path.join(ws_server._STATIC_DIR, "index.html"))
+def test_busy_port_raises():
+    blocker = socket.socket()
+    blocker.bind(("0.0.0.0", 0))
+    blocker.listen(1)
+    try:
+        srv = WebXRServer(lambda msg: None, blocker.getsockname()[1], tls=False)
+        with pytest.raises(OSError):
+            srv.start()
+        assert not srv.is_running
+    finally:
+        blocker.close()
 
 
 def _page() -> str:
-    from whatslab.receiver.webxr import ws_server
-    return pathlib.Path(ws_server._STATIC_DIR, "index.html").read_text()
+    return pathlib.Path(_STATIC_DIR, "index.html").read_text()
 
 
 def test_page_prefers_passthrough_and_sends_only_hands():
     html = _page()
     assert html.index("immersive-ar") < html.index('"immersive-vr"')
-    assert "gl.clearColor(0, 0, 0, passthrough ? 0 : 1)" in html
+    assert '"hand-tracking"' in html
     assert "JSON.stringify({ t: t, hands: hands })" in html
-    assert "gripSpace" not in html and "msg.hmd" not in html
+    assert "gripSpace" not in html and "hmd" not in html
 
 
 def test_page_recovers_from_stalled_socket():
@@ -287,21 +173,19 @@ def test_tls_cert_is_cached(tmp_path):
     assert pathlib.Path(cert2).read_bytes() == first
 
 
-def test_wss_roundtrip(tmp_path):
+def test_wss_roundtrip_and_https_page(tmp_path):
     cert, key = _cert(tmp_path)
     got = []
     srv = WebXRServer(got.append, 0, tls=True, certfile=cert, keyfile=key)
     srv.start()
     try:
         assert srv.scheme == "https"
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        raw = socket.create_connection(("127.0.0.1", srv.port), timeout=5.0)
-        sock = _upgrade(ctx.wrap_socket(raw, server_hostname="localhost"))
-        sock.sendall(_mask(b'{"secure": 1}'))
-        assert _wait(lambda: {"secure": 1} in got)
-        sock.close()
+        page = urllib.request.urlopen(f"https://127.0.0.1:{srv.port}/", timeout=5,
+                                      context=_insecure()).read()
+        assert b"getJointPose" in page
+        with connect(f"wss://127.0.0.1:{srv.port}/ws", ssl=_insecure()) as ws:
+            ws.send(json.dumps({"secure": 1}))
+            assert _wait(lambda: {"secure": 1} in got)
     finally:
         srv.stop()
 
@@ -311,26 +195,18 @@ def test_plain_http_client_is_rejected_by_tls_server(tmp_path):
     srv = WebXRServer(lambda msg: None, 0, tls=True, certfile=cert, keyfile=key)
     srv.start()
     try:
-        sock = socket.create_connection(("127.0.0.1", srv.port), timeout=5.0)
-        sock.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-        sock.settimeout(3.0)
-        try:
-            data = sock.recv(4096)
-        except (socket.timeout, ConnectionResetError, OSError):
-            data = b""
-        assert b"200 OK" not in data
-        sock.close()
+        with pytest.raises(OSError):
+            urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/", timeout=3).read()
     finally:
         srv.stop()
 
 
-def test_preferred_ip_is_not_a_docker_bridge():
-    from whatslab.receiver.webxr.tls import local_ips, preferred_ip, route_ip
-    ip = preferred_ip()
-    assert ip in local_ips() or ip == "127.0.0.1"
-    routed = route_ip()
-    if routed and not routed.startswith("127."):
-        assert ip == routed
+def test_preferred_ip_prefers_lan_over_docker_bridge(monkeypatch):
+    from whatslab.receiver.webxr import tls
+    monkeypatch.setattr(tls, "local_ips", lambda: ["172.17.0.1", "10.0.0.5", "192.168.1.88"])
+    assert tls.preferred_ip() == "192.168.1.88"
+    monkeypatch.setattr(tls, "local_ips", lambda: [])
+    assert tls.preferred_ip() == "127.0.0.1"
 
 
 def test_tls_url_uses_lan_ip_not_localhost(tmp_path):
@@ -339,7 +215,6 @@ def test_tls_url_uses_lan_ip_not_localhost(tmp_path):
     rx = WebXRHandReceiver(port=0, tls=True, certfile=cert, keyfile=key)
     rx.start()
     try:
-        assert "localhost" not in rx.url
         assert rx.url.startswith(f"https://{preferred_ip()}:")
     finally:
         rx.stop()

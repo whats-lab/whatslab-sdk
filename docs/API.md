@@ -106,7 +106,7 @@ print(rx.url)                            # https://192.168.1.88:8443/
   `immersive-vr` 로 떨어진다.
 - **보안 컨텍스트가 필요하다.** WebXR 은 HTTPS 이거나 `localhost` 에서만 뜬다.
   - **무선(기본, `tls=True`)**: 자체 서명 인증서를 `~/.cache/whatslab/webxr/` 에 만들어
-    HTTPS + WSS 로 연다. URL 호스트는 기본 경로의 src IP(= 헤드셋이 붙을 LAN IP)다.
+    HTTPS + WSS 로 연다. URL 호스트는 이 PC 의 사설 IP 중 192.168 → 10 → 172 순으로 고른다(docker 브리지 172.x 를 피하려고).
     인증서 SAN 에 `localhost` 와 이 머신의 모든 전역 IPv4 가
     들어간다(`openssl` 실행파일 필요, 유효기간 10년, 키 퍼미션 0600). IP 가 바뀌면
     자동으로 재발급한다. **헤드셋에서 최초 1회 인증서 경고를 수락**해야 한다 —
@@ -116,8 +116,9 @@ print(rx.url)                            # https://192.168.1.88:8443/
     `localhost` 로 본다(인증서 불필요). URL 도 이때만 `localhost` 가 된다.
 - 전송은 WebSocket(TCP)이라 UDP 처럼 늦은 프레임을 버리지 않는다. 브라우저 쪽에서
   `bufferedAmount` 가 밀리면 그 프레임을 **보내지 않고 버린다**(지연 누적 방지).
-- 의존성이 없다. WebSocket 핸드셰이크·프레임 디코딩은 표준 라이브러리로 구현했다
-  (`receiver/webxr/ws_server.py`) — 새 extra 가 필요 없다.
+- 서버는 `websockets`(`webxr` extra)의 동기 서버다. 같은 포트에서 WebSocket 이 아닌 요청에는 페이지를 준다.
+  메시지가 JSON 객체가 아니거나 처리 중 예외가 나면 그 연결만 닫히고(로그), 페이지가 다시 붙는다.
+  ping·무응답 끊기는 라이브러리 기본값(20 s)이다.
 
 ## whatslab.solvers.hand — 손 리타게팅
 

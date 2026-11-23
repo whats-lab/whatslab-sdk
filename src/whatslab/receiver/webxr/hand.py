@@ -1,15 +1,3 @@
-"""WebXR 핸드트래킹 — 브라우저(Quest 등)가 보내는 손 관절 25개를 OpenXR 26관절로 받는다.
-
-WebXR Hand Input 의 25관절(wrist, thumb-metacarpal … pinky-finger-tip)은 OpenXR
-`XrHandJointEXT` 에서 palm 하나만 빠진 같은 순서·같은 관절 축(−Z 손끝 방향, +Y 손등)이다.
-palm 은 Spine·AirGlove-Client 와 같은 규칙(중지 중수골·근위 관절 위치의 중점,
-방향 = 중지 중수골)으로 만든다.
-
-메시지: ``{"hands": {"left": [25×8 float], "right": …}}`` — 관절마다
-``[qx qy qz qw px py pz radius]``, 세션 바닥 좌표(local-floor). `get(side)` 는 손목 기준
-26×8(`HandPose.xr_joints`)만 준다 — 손목 자세는 이 SDK 의 범위가 아니다.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -26,14 +14,13 @@ from .tls import preferred_ip
 from .ws_server import WebXRServer
 
 WEBXR_PORT = 8443
-WEBXR_HAND_JOINT_COUNT = 25  # WebXR XRHandJoint (OpenXR 26 에서 palm 제외)
+WEBXR_HAND_JOINT_COUNT = 25
 WEBXR_WRIST = 0
 WEBXR_MIDDLE_METACARPAL = 10
 WEBXR_MIDDLE_PROXIMAL = 11
 
 
 def webxr_hand_to_openxr26(joints25: np.ndarray) -> Optional[np.ndarray]:
-    """WebXR 25관절(세션 좌표) → OpenXR 26관절(손목 기준). 값이 유한하지 않으면 None."""
     a = np.asarray(joints25, dtype=float).reshape(WEBXR_HAND_JOINT_COUNT, XR_JOINT_FIELDS)
     if not np.all(np.isfinite(a)):
         return None
@@ -53,18 +40,12 @@ def webxr_hand_to_openxr26(joints25: np.ndarray) -> Optional[np.ndarray]:
     out[0, 0:4] = rel_quat[WEBXR_MIDDLE_METACARPAL]
     out[0, 4:7] = 0.5 * (rel_pos[WEBXR_MIDDLE_METACARPAL] + rel_pos[WEBXR_MIDDLE_PROXIMAL])
     out[0, 7] = a[WEBXR_MIDDLE_METACARPAL, 7]
-    out[1, 0:4] = (0.0, 0.0, 0.0, 1.0)  # 손목은 항등 (수치 오차 제거)
+    out[1, 0:4] = (0.0, 0.0, 0.0, 1.0)
     out[1, 4:7] = 0.0
     return out
 
 
 class WebXRHandReceiver:
-    """헤드셋 브라우저의 WebXR 핸드트래킹 → OpenXR 26관절(양손).
-
-    정적 페이지(static/index.html)와 WebSocket 을 한 포트에서 연다. 기본은 자체 서명 HTTPS
-    (``tls=True``, 인증서는 `ensure_cert` 가 자동 생성), 유선 ``adb reverse`` 는 ``tls=False``.
-    ``stale_timeout`` 초 동안 새 프레임이 없으면 추적 아님(0 이면 끄기).
-    """
 
     def __init__(
         self,
@@ -83,26 +64,21 @@ class WebXRHandReceiver:
 
     @property
     def port(self) -> int:
-        """실제로 연 포트(port=0 이면 시작 뒤 정해진다)."""
         return self._srv.port
 
     @property
     def url(self) -> str:
-        """헤드셋 브라우저로 열 주소."""
         host = preferred_ip() if self._srv.scheme == "https" else "localhost"
         return f"{self._srv.scheme}://{host}:{self._srv.port}/"
 
     @property
     def running(self) -> bool:
-        """서버가 열려 있는지."""
         return self._srv.is_running
 
     def start(self) -> None:
-        """서버를 열어 수신을 시작한다. 이미 시작했으면 아무것도 안 한다."""
         self._srv.start()
 
     def stop(self) -> None:
-        """서버를 닫는다. 시작 안 했으면 아무것도 안 한다."""
         self._srv.stop()
 
     def _on_message(self, msg: dict) -> None:
@@ -113,10 +89,7 @@ class WebXRHandReceiver:
             raw = hands.get(side)
             if not isinstance(raw, list) or len(raw) != WEBXR_HAND_JOINT_COUNT * XR_JOINT_FIELDS:
                 continue
-            try:
-                joints = webxr_hand_to_openxr26(np.asarray(raw, dtype=float))
-            except (TypeError, ValueError):
-                continue
+            joints = webxr_hand_to_openxr26(np.asarray(raw, dtype=float))
             if joints is None:
                 continue
             with self._lock:
@@ -124,7 +97,6 @@ class WebXRHandReceiver:
                 self._timestamp[side] = time.monotonic()
 
     def get(self, side: str) -> InputSample:
-        """side 의 최신 손 샘플."""
         with self._lock:
             joints = self._joints[side]
             ts = self._timestamp[side]
@@ -141,5 +113,4 @@ class WebXRHandReceiver:
         return InputSample(hand=hand, tracked=tracked, timestamp=ts)
 
     def connected(self, side: str) -> bool:
-        """그 side 손이 지금 추적 중인지."""
         return self.get(side).tracked

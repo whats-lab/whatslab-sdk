@@ -2,7 +2,9 @@ import json
 import time
 
 import numpy as np
+import pytest
 from scipy.spatial.transform import Rotation
+from websockets.sync.client import connect
 
 from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS
 from whatslab.receiver.webxr import (
@@ -11,7 +13,7 @@ from whatslab.receiver.webxr import (
 )
 from whatslab.receiver.webxr.hand import WEBXR_MIDDLE_METACARPAL, WEBXR_MIDDLE_PROXIMAL
 
-from test_webxr_receiver import _handshake, _mask, _wait
+from test_webxr_receiver import _wait
 
 
 def _hand26(seed=0):
@@ -102,13 +104,11 @@ def test_hand_roundtrip_over_socket():
     hands = WebXRHandReceiver(port=0, tls=False)
     hands.start()
     try:
-        sock = _handshake(hands.port)
         j25 = _to_world25(_hand26(5), np.array([0.0, 1.0, -0.3]), [0.0, 0.0, 0.0, 1.0])
-        msg = {"t": 1, "hands": {"right": j25.reshape(-1).tolist()}}
-        sock.sendall(_mask(json.dumps(msg).encode()))
-        assert _wait(lambda: hands.get("right").tracked)
+        with connect(f"ws://127.0.0.1:{hands.port}/ws") as ws:
+            ws.send(json.dumps({"t": 1, "hands": {"right": j25.reshape(-1).tolist()}}))
+            assert _wait(lambda: hands.get("right").tracked)
         assert hands.get("right").hand.xr_joints.shape == (XR_JOINT_COUNT, XR_JOINT_FIELDS)
-        sock.close()
     finally:
         hands.stop()
 
@@ -142,15 +142,9 @@ def test_failed_start_leaves_no_server_reference():
     blocker.listen(1)
     port = blocker.getsockname()[1]
     rx = WebXRHandReceiver(port=port, tls=False)
-    try:
-        try:
-            rx.start()
-        except OSError:
-            pass
-        else:
-            raise AssertionError("포트가 점유돼 있으면 start 가 실패해야 한다")
-    finally:
-        blocker.close()
+    with pytest.raises(OSError):
+        rx.start()
+    blocker.close()
     rx.start()
     srv = rx._srv
     assert srv.is_running
@@ -159,7 +153,6 @@ def test_failed_start_leaves_no_server_reference():
 
 
 def test_webxr_path_imports_without_airglove_client():
-    """선택 의존성(airglove-client·dex·pinocchio) 없이 WebXR 경로와 패키지 star import 가 된다."""
     import subprocess
     import sys
 

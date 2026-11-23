@@ -78,14 +78,15 @@ dexhand-description yet. Training tools are not part of this SDK.
 Published under a source-available license. It is not on PyPI; install from source.
 
 ```bash
-pip install '.[all]'      # receiver + hand + viz
-pip install '.[receiver]' # or any subset: receiver / hand / viz
+pip install '.[all]'      # receiver + hand + viz + webxr
+pip install '.[receiver]' # or any subset: receiver / hand / viz / webxr
 pip install -e '.[all]'   # editable, for development
 ```
 
 | Extra | Brings in | Needed for |
 |---|---|---|
-| `receiver` | `airglove-client` (git tag v0.4.0) | AirGlove (Spine) input. WebXR input needs nothing extra. |
+| `receiver` | `airglove-client` (git tag v0.4.0) | AirGlove (Spine) input |
+| `webxr` | `websockets` | Quest hand tracking (headset browser) |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
 

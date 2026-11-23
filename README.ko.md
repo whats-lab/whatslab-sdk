@@ -73,14 +73,15 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 source-available 라이선스로 공개합니다. PyPI 에는 없고 소스에서 설치합니다.
 
 ```bash
-pip install '.[all]'      # receiver + hand + viz
-pip install '.[receiver]' # 또는 일부만: receiver / hand / viz
+pip install '.[all]'      # receiver + hand + viz + webxr
+pip install '.[receiver]' # 또는 일부만: receiver / hand / viz / webxr
 pip install -e '.[all]'   # 개발용 editable
 ```
 
 | extra | 설치되는 것 | 용도 |
 |---|---|---|
-| `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력. WebXR 입력은 추가 설치 없음 |
+| `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력 |
+| `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
 

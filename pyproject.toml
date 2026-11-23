@@ -38,7 +38,8 @@ receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.
 hand     = ["pin", "dex-retargeting>=0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]           # 로봇 손 URDF 3D 시각화 (viser, pinocchio FK)
-all      = ["whatslab-sdk[receiver,hand,viz]"]
+webxr    = ["websockets>=13"]                   # Quest 맨손(헤드셋 브라우저) 수신 서버
+all      = ["whatslab-sdk[receiver,hand,viz,webxr]"]
 dev      = ["pytest"]
 
 [tool.setuptools]
