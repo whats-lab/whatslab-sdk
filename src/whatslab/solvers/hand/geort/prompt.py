@@ -524,3 +524,17 @@ def load_prompt_model(path: Path) -> PromptModel:
             _REMEDY,
         ) from e
     return model
+
+
+def model_format(path: Path) -> str:
+    """모델 파일의 ``format`` 문자열. 읽을 수 없으면 빈 문자열."""
+    try:
+        with np.load(path.expanduser(), allow_pickle=False) as data:
+            return _text(data, "format")
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        return ""
+
+
+def is_prompt_model(path: Path) -> bool:
+    """GeoRT 프롬프트 모델(v1·v2) 파일인지."""
+    return model_format(path) in PROMPT_FORMATS
