@@ -1,6 +1,5 @@
 import pytest
 
-from whatslab.core.constants import SIDES
 from whatslab.safety import JointLimit, SafetyFilter, load_limits_from_urdf, tighten
 
 URDF = """<robot name="t">
@@ -92,16 +91,18 @@ def test_step_negative_dt_is_clamped_to_zero():
     assert f.step({"j1": 5.0}, -1.0)["j1"] == pytest.approx(0.3)
 
 
-def test_teleop_model_passes_measured_dt_to_filter():
+def test_hand_model_passes_measured_dt_to_filter():
     import time
 
-    from whatslab.teleop.base import TeleopModel
+    from whatslab.teleop import HandModel
 
-    class _Model(TeleopModel):
-        def _get_raw_target(self):
-            return {s: None for s in SIDES}
+    class _Source:
+        def start(self): ...
+        def stop(self): ...
+        def get(self, side):
+            return None
 
-    m = _Model(None)
+    m = HandModel("geort:orca_right", hand_source=_Source())
     seen = []
 
     class _Spy:
@@ -110,36 +111,11 @@ def test_teleop_model_passes_measured_dt_to_filter():
             return {}
 
     m.safety = _Spy()
-    m.solve = lambda data: {"right": {}}
-    m.get_data = lambda: {s: {} for s in SIDES}
-    m._apply_calib = lambda d: d
-
     m.get_q()
     assert seen == [None]
     time.sleep(0.02)
     m.get_q()
     assert seen[-1] is not None and seen[-1] >= 0.015
-
-
-def test_each_side_gets_its_own_filter_state():
-    from whatslab.teleop.base import TeleopModel
-
-    class _Model(TeleopModel):
-        def _get_raw_target(self):
-            return {s: None for s in SIDES}
-
-    lim = {"j1": JointLimit(-10.0, 10.0, 1.0)}
-    m = _Model(None)
-    m.safety = SafetyFilter(lim, dt=1.0, initial={"j1": 0.0})
-    m.get_data = lambda: {s: {} for s in SIDES}
-    m._apply_calib = lambda d: d
-    m.solve = lambda data: {"left": {"j1": -5.0}, "right": {"j1": 5.0}}
-
-    for _ in range(3):
-        q = m.get_q()
-    assert q["right"]["j1"] > 0.0 and q["left"]["j1"] < 0.0, (
-        f"side 가 필터 상태를 공유해 서로를 끌어당긴다: {q}")
-    assert q["right"]["j1"] == pytest.approx(-q["left"]["j1"])
 
 
 def test_urdf_limit_defaults_follow_spec():

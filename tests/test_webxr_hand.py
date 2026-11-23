@@ -3,11 +3,11 @@ import time
 
 import numpy as np
 from scipy.spatial.transform import Rotation
+from webxr_pose_receiver import PoseReceiver
 
 from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS
 from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL
 from whatslab.receiver.webxr import (
-    WebXRControllerReceiver,
     WebXRHandReceiver,
     webxr_hand_to_openxr26,
 )
@@ -104,7 +104,7 @@ def test_hand_goes_stale():
 def test_controller_and_hand_receivers_share_one_port_over_socket(free_port):
     hands = WebXRHandReceiver(port=free_port, tls=False)
     hands.start()
-    ctrl = WebXRControllerReceiver(port=free_port, tls=False)
+    ctrl = PoseReceiver(port=free_port, tls=False)
     ctrl.start()
     try:
         sock = _handshake(hands.port)
@@ -122,22 +122,6 @@ def test_controller_and_hand_receivers_share_one_port_over_socket(free_port):
     finally:
         ctrl.stop()
         hands.stop()
-
-
-def test_quest_model_uses_webxr_wrist_as_arm_target():
-    from whatslab.teleop import QuestModel
-
-    class _Robot:
-        has_arm = False
-        has_hand = False
-        rig = None
-
-    m = QuestModel(_Robot(), hand_kwargs={"port": 0, "tls": False, "pos_frame": "room"})
-    j25 = _to_world25(_hand26(), np.array([0.2, 1.0, -0.4]), [0.0, 0.0, 0.0, 1.0])
-    m.arm_source._on_message({"hands": {"left": j25.reshape(-1).tolist()}})
-    target = m._get_raw_target()
-    assert target["right"] is None
-    assert np.allclose(target["left"].pos, Y_UP_RH_TO_CANONICAL @ np.array([0.2, 1.0, -0.4]))
 
 
 def test_page_requests_hand_tracking():
@@ -166,7 +150,7 @@ def test_stopped_receiver_no_longer_gets_messages(free_port):
 def test_one_failing_handler_does_not_block_others(free_port):
     hands = WebXRHandReceiver(port=free_port, tls=False)
     hands.start()
-    ctrl = WebXRControllerReceiver(port=free_port, tls=False)
+    ctrl = PoseReceiver(port=free_port, tls=False)
     ctrl.start()
     try:
         j25 = _to_world25(_hand26(), np.zeros(3), [0.0, 0.0, 0.0, 1.0])
@@ -182,7 +166,7 @@ def test_one_failing_handler_does_not_block_others(free_port):
 
 
 def test_controller_goes_stale_by_default():
-    ctrl = WebXRControllerReceiver(port=0, tls=False)
+    ctrl = PoseReceiver(port=0, tls=False)
     ctrl._on_message({"right": {"pos": [0.0, 1.0, 0.0], "quat": [0.0, 0.0, 0.0, 1.0]}})
     assert ctrl.get("right").tracked
     time.sleep(0.25)
@@ -221,22 +205,6 @@ def test_receiver_start_stop_is_idempotent():
     rx.stop()
 
 
-def test_quest_model_reads_receiver_once_per_tick():
-    from whatslab.teleop import QuestModel
-
-    class _Robot:
-        has_arm = False
-        has_hand = False
-        rig = None
-
-    m = QuestModel(_Robot(), hand_kwargs={"port": 0, "tls": False, "pos_frame": "room"})
-    calls = []
-    real = m.arm_source.get
-    m.arm_source.get = lambda s: calls.append(s) or real(s)
-    m.get_data()
-    assert sorted(calls) == ["left", "right"]
-
-
 def test_failed_start_leaves_no_server_reference():
     import socket
 
@@ -268,19 +236,13 @@ def test_webxr_path_imports_without_airglove_client():
 
     code = (
         "import sys; sys.modules['airglove_client'] = None\n"
-        "from whatslab.teleop import HandModel, QuestModel\n"
+        "from whatslab.teleop import HandModel\n"
         "from whatslab.receiver import WebXRHandReceiver\n"
         "from whatslab.receiver import *\n"
         "from whatslab.teleop import *\n"
         "sys.modules['dex_retargeting'] = None; sys.modules['pinocchio'] = None\n"
         "from whatslab.solvers import *\n"
         "from whatslab.solvers.hand import *\n"
-        "try:\n"
-        "    from whatslab.teleop import GloveModel\n"
-        "except ImportError:\n"
-        "    pass\n"
-        "else:\n"
-        "    raise SystemExit('GloveModel 은 airglove-client 를 요구해야 한다')\n"
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                           timeout=60)

@@ -1,7 +1,7 @@
 import numpy as np
 
 from whatslab.core.constants import XR_JOINT_COUNT
-from whatslab.core.interfaces import ArmSolver, HandController, Receiver
+from whatslab.core.interfaces import HandController, Receiver
 from whatslab.core.types import (
     HandCommand,
     HandPose,
@@ -33,7 +33,7 @@ def test_pose_matrix_roundtrip():
 def test_input_sample_defaults():
     s = InputSample()
     assert s.tracked is False
-    assert s.controller is None and s.hand is None
+    assert s.hand is None
 
 
 def test_handpose_defaults():
@@ -58,4 +58,3 @@ def test_protocols_are_runtime_checkable():
     assert isinstance(_R(), Receiver)
     assert not isinstance(object(), Receiver)
     assert hasattr(HandController, "_is_runtime_protocol") or True
-    assert ArmSolver is not None

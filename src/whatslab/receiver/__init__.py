@@ -6,7 +6,6 @@ _EXPORTS = {
     "AirGloveReceiver": ".glove",
     "GloveFrame": ".glove",
     "GloveWrist": ".glove",
-    "WebXRControllerReceiver": ".webxr",
     "WebXRHandReceiver": ".webxr",
 }
 

@@ -39,7 +39,7 @@ def main():
     m = HandModel(
         hand_config=args.config, side=args.side, urdf_root=args.urdf_root if dex else None
     )
-    ctrl = m.sides[args.side].retarget
+    ctrl = m.retarget
 
     viz_robot = None
     if args.viz:

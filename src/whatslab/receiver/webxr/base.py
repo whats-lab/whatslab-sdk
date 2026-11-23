@@ -65,7 +65,7 @@ def parse_pose(item: object) -> Optional[Tuple[np.ndarray, np.ndarray]]:
 class WebXRReceiverBase:
     """브라우저 WebXR 페이지(static/index.html)가 WebSocket 으로 보내는 프레임을 받는다.
 
-    같은 고정 포트의 수신기들(컨트롤러·손)은 서버 하나를 공유하고, 메시지는 시작한 수신기 모두에
+    같은 고정 포트의 수신기들은 서버 하나를 공유하고, 메시지는 시작한 수신기 모두에
     간다. port=0 은 수신기마다 따로 임시 포트를 잡으므로 공유하지 않는다.
     """
 

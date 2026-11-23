@@ -256,18 +256,6 @@ def test_bare_geort_name_uses_packaged_config_not_cwd(tmp_path, monkeypatch):
     assert read_config(path).name == ORCA
 
 
-def test_rig_geort_is_clipped_to_robot_urdf_limits(geort_model):
-    pytest.importorskip("pinocchio")
-    from whatslab.robot import RobotModel
-
-    robot = RobotModel("rigs/nero_orca_right.yaml")
-    urdf = robot.hand_joint_limits()
-    ctrl = robot.make_hand_controller("geort:orca_right", "right")
-    lim = ctrl.engine.joint_limits
-    for name, (lo, hi) in zip(ctrl.joint_names, lim):
-        assert lo >= urdf[name][0] - 1e-12 and hi <= urdf[name][1] + 1e-12, name
-
-
 def test_robot_limits_with_no_matching_joint_is_error(tmp_path, geort_model):
     other = {"some_other_hand_joint": (0.0, 1.0)}
     with pytest.raises(GeortConfigError) as e:
@@ -297,22 +285,8 @@ def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):
     assert len(calls) == 1
 
 
-def test_dex_controller_does_not_read_rig_hand_urdf(monkeypatch):
-    pytest.importorskip("pinocchio")
-    pytest.importorskip("dex_retargeting")
-    from whatslab.robot import RobotModel
-
-    robot = RobotModel("rigs/nero_orca_right.yaml")
-
-    def fail():
-        raise AssertionError("dex 엔진이 rig 손 URDF 범위를 읽었다")
-
-    monkeypatch.setattr(robot, "hand_joint_limits", fail)
-    assert robot.make_hand_controller("dex:orca", "right").engine_name == "dex:"
-
-
 def test_reset_clears_last_error(tmp_path, geort_model):
-    """텔레옵은 추적이 끊기면 reset 만 부른다 — 재획득 뒤 첫 실패도 경고되게 비운다."""
+    """HandModel 은 추적이 끊기면 reset 만 부른다 — 재획득 뒤 첫 실패도 경고되게 비운다."""
     ctrl = _ctrl(tmp_path, geort_model)
     valid = np.ones(26, dtype=bool)
     valid[12] = False

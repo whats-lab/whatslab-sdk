@@ -3,10 +3,26 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
-## [0.5.0] — 2026-11-19
+## [0.5.0] — 2026-11-23
 
 Spine 3.0.0(OSC 프로토콜 3) 대응을 마무리하고 손 리타게팅을 OpenXR 26관절 입력 하나로 통일한다.
 아래 [Unreleased] 항목(글러브 OpenXR 수신·DexPilot)도 이 버전에 들어간다.
+
+### 제거 — 팔 (호환 없는 변경)
+
+이 SDK 의 범위를 **손**으로 좁힌다. 팔 IK·손목 추적·팔 제어는 사용하는 쪽 몫이다. 팔 텔레옵이 필요하면 0.4.x 를 쓴다.
+
+- 패키지 `whatslab.robot`(`RobotModel`, `RobotArmIK`, rig·robot 로더, 캘리브 저장), `whatslab.solvers.arm`(팔 IK).
+- `whatslab.teleop` 의 `TeleopModel`·`SideModel`·`GloveModel`·`QuestModel`·`ArmCalibration`(yaw·reach 캘리브).
+  `HandModel` 은 남기되 독립 클래스로 바꿨다: `get_q()` 는 `{side: q}`, 컨트롤러는 `HandModel.retarget`(전에는
+  `sides[side].retarget`), 안전 필터는 `HandModel.safety`.
+- 수신기 `WebXRControllerReceiver`(컨트롤러 grip), `ViveTracker`. `InputSample.controller`·`joint_q`,
+  `core.interfaces.ArmSolver`·`GlobalArmSolver`, `viz.RobotArmViz`.
+- 동봉 설정 `configs/robots/`·`configs/rigs/`, `arm` extra.
+- 예제 `quest_arm.py`·`verify_rig.py`·`robot_io.py`·`requirements-robot.txt`, `scripts/install_robot_deps.sh`,
+  도구 `align_frames.py`·`export_combined_urdf.py`·`export_combined_usd.py`, 문서 `docs/GUIDE.md`.
+- 아래 항목 중 팔·rig·Quest 컨트롤러에 관한 것(`QuestModel` 팔 EE, rig `solver:`, `robot_limits` 자동 전달 등)은
+  이 제거로 더는 해당하지 않는다.
 
 ### 변경 — 이름 (호환 없는 변경)
 

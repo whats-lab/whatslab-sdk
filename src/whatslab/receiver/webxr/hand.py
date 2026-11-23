@@ -61,9 +61,9 @@ def webxr_hand_to_openxr26(joints25: np.ndarray) -> Optional[np.ndarray]:
 class WebXRHandReceiver(WebXRReceiverBase):
     """WebXR 핸드트래킹 손목 6D + OpenXR 26관절.
 
-    컨트롤러 수신기와 같은 고정 포트를 주면 서버를 함께 쓴다(port=0 은 수신기마다 따로인 임시
+    다른 수신기와 같은 고정 포트를 주면 서버를 함께 쓴다(port=0 은 수신기마다 따로인 임시
     포트라 공유하지 않는다). 메시지는 ``start()`` 한 수신기만 받는다 — 서버를 공유해도 각 수신기가
-    ``start()`` 해야 한다(TeleopModel.start 가 한다).
+    ``start()`` 해야 한다(HandModel.start 가 한다).
     """
 
     def __init__(

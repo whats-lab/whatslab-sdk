@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -46,10 +46,8 @@ class HandPose:
 
 @dataclass
 class InputSample:
-    controller: Optional[Pose] = None
     hand: Optional[HandPose] = None
     hmd: Optional[Pose] = None
-    joint_q: Optional[Dict[str, float]] = None
     tracked: bool = False
     timestamp: float = 0.0
 

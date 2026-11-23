@@ -1,7 +1,6 @@
-# 팔(pinocchio)·손 dex(dex-retargeting, torch)는 무겁다 — 하위 패키지를 쓸 때만
+# 손 dex(dex-retargeting, torch)는 무겁다 — 하위 패키지를 쓸 때만
 # 불러오도록 지연 import 한다. (`whatslab.solvers.hand.geort` 만 쓰는 쪽은 numpy 만 있으면
 # 된다.)
-_ARM = ("ArmIK", "DiffArmIK", "backend_cls", "xyzrpy_to_mat")
 _HAND = (
     "HandRetargetController",
     "engine_of",
@@ -13,17 +12,13 @@ _HAND = (
     "mirror_xr_joints",
 )
 
-# star import 가 팔(pinocchio)·dex 를 끌어오지 않게 numpy 만 쓰는 이름만 __all__ 에 둔다.
+# star import 가 dex 를 끌어오지 않게 numpy 만 쓰는 이름만 __all__ 에 둔다.
 __all__ = [
     "HandRetargetController", "engine_of", "GeortHandSolver", "xr_to_mano", "mirror_xr_joints",
 ]
 
 
 def __getattr__(name):
-    if name in _ARM:
-        from . import arm
-
-        return getattr(arm, name)
     if name in _HAND:
         from . import hand
 

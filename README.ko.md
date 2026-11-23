@@ -10,18 +10,16 @@
   <img src="https://img.shields.io/badge/Spine-3.0.0-green.svg" alt="Spine"/>
 </p>
 
-**whatslab** 은 주식회사 왓츠랩(WHATs LAB Corp)의 텔레오퍼레이션 코어입니다. 사람의 동작(VR 컨트롤러,
-핸드트래킹, 데이터 글러브)을 로봇 팔·손의 관절각으로 바꾸는 순수 파이썬 SDK이며, 왓츠랩의 시뮬레이터
-(MuJoCo, Isaac Sim)와 ROS 2 스택이 함께 쓰는 로직 계층입니다.
+**whatslab** 은 주식회사 왓츠랩(WHATs LAB Corp)의 손 SDK 입니다. 사람 손(데이터 글러브 AirGlove, 또는
+Quest 핸드트래킹)을 로봇 손 관절각으로 바꾸는 순수 Python 라이브러리입니다.
 
-ROS 에 의존하지 않아 어디서든 같은 프로세스 안에서 동작합니다. 입력 수신, 캘리브레이션, 손·팔 리타게팅,
-시각화, 데이터셋 기록 같은 *부품*을 제공하고, 이를 시뮬레이터나 로봇 파이프라인으로 엮는 *조립*은 사용하는
-쪽에 맡깁니다. 모든 입력은 하나의 정준 좌표계(x 앞, z 위, 오른손 좌표계)로 맞춰지므로, 이후 코드에서 축을
-다시 맞출 필요가 없습니다.
+ROS 에 의존하지 않아 MuJoCo, Isaac Sim, ROS 2 어디서든 프로세스 안에서 씁니다. 범위는 손입니다 — 입력 수신,
+손 리타게팅, 관절 안전 필터, 시각화, 데이터셋 녹화. **팔 IK, 손목 추적, 팔 제어는 들어 있지 않습니다.**
+글러브는 손목 기준 손 관절을 주고, 손목을 어디에 둘지는 사용하는 쪽의 트래커와 팔 제어기가 정합니다.
 
 ## 목차
 
-- [주요 특징](#주요-특징)
+- [주요 기능](#주요-기능)
 - [설치](#설치)
 - [호환성](#호환성)
 - [빠른 시작](#빠른-시작)
@@ -30,51 +28,38 @@ ROS 에 의존하지 않아 어디서든 같은 프로세스 안에서 동작합
 - [감사의 말](#감사의-말)
 - [라이선스](#라이선스)
 
-## 주요 특징
+## 주요 기능
 
-**프레임워크에 묶이지 않음**
-- 순수 파이썬이고 ROS 의존이 없어, MuJoCo·Isaac Sim·ROS 2 어디서든 같은 프로세스 안에서 씁니다
-- 부품만 제공하고 파이프라인은 사용하는 쪽이 가집니다
-- 의존 방향이 한쪽으로 정해져 있습니다 (`receiver → core`, `robot → core·solvers`, `teleop → core·robot·solvers`)
-
-**리타게팅 중심**
-- 손: 입력은 OpenXR 26관절 손(`HandPose.xr_joints`) 하나이고(AirGlove 또는 Quest 핸드트래킹), 엔진은
-  두 가지입니다
+- 모든 입력이 같은 손 형식: OpenXR 26관절(`HandPose.xr_joints`). AirGlove(Spine 경유)와 Quest
+  핸드트래킹(헤드셋 브라우저 WebXR) 모두 이 형식으로 들어옵니다.
+- 리타게팅 엔진 두 가지
   - DexPilot 벡터 리타게팅([dex-retargeting](https://github.com/dexsuite/dex-retargeting)) — 손당 프레임
-    1~2ms, URDF 만 있으면 어떤 로봇 손이든 됩니다
-  - **GeoRT 소프트 프롬프트** 신경망 — numpy 로 한 번 순전파, 약 0.2ms, 학습된 모델 하나를 여러 로봇
-    손이 함께 씁니다
-- 팔: pinocchio 해석 야코비안 + 감쇠 최소제곱(DLS)
-- 출력은 그대로 발행할 수 있는 `{side: {joint_name: rad}}` 형태입니다
-
-**캘리브레이션 내장**
-- 손목 yaw 정렬(머리 기준 스냅샷)
-- 사용자별 팔 도달 범위(reach) 보정 — rig 설정에 저장해 다음 세션에 다시 씁니다
+    1~2ms, URDF 가 있는 로봇 손이면 어느 것이든
+  - **GeoRT 소프트 프롬프트** 신경망 — numpy 순전파 한 번(약 0.2ms), 학습 모델 하나를 여러 로봇 손이 공유
+- 출력은 `{side: {관절 이름: rad}}` 로 바로 발행할 수 있고, 선택으로 `SafetyFilter` 가 위치·속도를 제한합니다.
+- 순수 Python, ROS 의존 없음. 의존 방향이 한쪽으로 정해져 있습니다
+  (`receiver → core`, `solvers → core`, `teleop → core·receiver·solvers`).
 
 ### 지원하는 손
 
-로봇 설정의 `retarget:` 이 엔진과 손을 고릅니다.
+**DexPilot** — `dex:<이름>`. `<이름>` 은 `configs/hands/` 의 파일입니다(`dex:orca` 는 `orca_{side}`, 파일
+경로도 됩니다). 한쪽 손 설정으로 반대쪽 손도 입력을 거울상으로 바꿔 씁니다.
 
-**DexPilot** — `retarget: dex:<이름>`. `<이름>` 은 `configs/hands/` 의 파일입니다(`dex:orca` →
-`orca_{side}`, 파일 경로도 됩니다). 한쪽 손 설정으로 반대쪽 손을 쓰면 입력을 거울상으로 바꿔 씁니다.
-
-| 손 | `retarget:` | 설정 |
+| 손 | 엔진 이름 | 설정 |
 |---|---|---|
-| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (손목 관절은 빼고 0 으로 고정) |
-| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP·DIP 를 −5..90° 로 제한) |
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (손목 관절 제외, 0 고정) |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP·DIP −5..90° 제한) |
 | ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
-| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (손가락 4개 — 사람 소지는 쓰지 않음) |
-| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (손가락 4개 — 사람 소지는 쓰지 않음) |
-| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (구동 6축, PIP 는 URDF mimic 을 따름) |
-| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic 을 따름) |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (손가락 4개, 사람 새끼손가락 미사용) |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (손가락 4개, 사람 새끼손가락 미사용) |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (구동 6축, PIP 는 URDF mimic) |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic) |
 
-**GeoRT 소프트 프롬프트** — `retarget: geort:<이름>`. `<이름>` 은 `configs/geort/` 의 파일입니다
-(`.yaml` 로 끝나는 경로도 됩니다). 학습된 모델은 패키지에 함께 들어 있습니다
-(`solvers/hand/geort/assets/geort_prompt.npz`, 약 5MB). 설정의 `model:` 이나 `WHATSLAB_GEORT_MODEL` 로
-다른 모델을 쓸 수 있습니다. 모델은 오른손용이고, 왼손은 좌우를 뒤집어 씁니다. rig 에서 쓰면 출력을 로봇
-손 URDF 의 관절 범위로도 자릅니다.
+**GeoRT 소프트 프롬프트** — `geort:<이름>`. `<이름>` 은 `configs/geort/` 의 파일입니다(`.yaml` 로 끝나는
+경로도 됩니다). 학습된 모델이 패키지에 들어 있고(`solvers/hand/geort/assets/geort_prompt.npz`, 약 5MB),
+설정의 `model:` 이나 `WHATSLAB_GEORT_MODEL` 로 바꿀 수 있습니다. 모델은 오른손용이고 왼손은 거울상으로 씁니다.
 
-| 손 | `retarget:` | `dexhand-description` 안의 URDF |
+| 손 | 엔진 이름 | `dexhand-description` URDF |
 |---|---|---|
 | ORCA Hand (오른손) | `geort:orca_right` | `orca_hand/urdf/right.urdf` |
 | ROBOTIS HX5-D20 (오른손) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
@@ -84,121 +69,94 @@ ROS 에 의존하지 않아 어디서든 같은 프로세스 안에서 동작합
 
 ## 설치
 
-공개 소스(source-available) 라이선스로 배포합니다. PyPI 에는 없으므로 소스에서 설치합니다.
+source-available 라이선스로 공개합니다. PyPI 에는 없고 소스에서 설치합니다.
 
 ```bash
-pip install '.[all]'      # receiver + hand + arm + viz + data
-pip install '.[hand]'     # 필요한 것만: receiver / hand / arm / viz / data
+pip install '.[all]'      # receiver + hand + viz + data
+pip install '.[receiver]' # 또는 일부만: receiver / hand / viz / data
 pip install -e '.[all]'   # 개발용 editable
 ```
 
-| extra | 설치되는 것 | 필요한 경우 |
+| extra | 설치되는 것 | 용도 |
 |---|---|---|
-| `receiver` | `airglove-client` (git 태그 v0.4.0) | AirGlove(Spine) 입력. WebXR 입력은 추가 설치가 필요 없습니다. |
+| `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력. WebXR 입력은 추가 설치 없음 |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `dexhand-description` | DexPilot 엔진 |
-| `arm` | `pin`, `dexhand-description` | 팔 IK, rig, `whatslab.teleop` 프리셋 |
-| `viz` | `viser`, `trimesh`, `pin` | 로봇 시각화, `tools/align_frames.py` |
-| `data` | `pyarrow`, `imageio[ffmpeg]` | LeRobot v2.1 데이터셋 기록 |
+| `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
+| `data` | `pyarrow`, `imageio[ffmpeg]` | LeRobot v2.1 데이터셋 녹화 |
 
-numpy 는 상한이 없습니다. dex-retargeting 은 0.4.6 이 numpy 1 용 마지막 버전, 0.5.0 이 numpy 2 용 첫
-버전이라 pip 가 환경에 맞는 쪽을 고릅니다. numpy 1 을 쓰는 환경(Isaac Sim 5.1)은 그쪽에서 `numpy<2` 와
-`dex-retargeting<0.5` 를 고정합니다. dex-retargeting 은 모듈 최상단에서 `torch` 를 import 하고
-`nlopt<2.8`·`pin>=2.7`·Python 3.13 미만이 필요합니다. GeoRT 추론(`whatslab.solvers.hand.geort`) 자체는
-numpy 만 있으면 됩니다.
-
-로봇·rig 설정은 패키지에 들어 있습니다. URDF 와 메쉬는 별도 패키지
-[`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) 이 제공하며(`hand`/`arm`
-extra 가 함께 설치), 다른 자산 경로를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
-
-실물 하드웨어(Nero 팔 + ORCA 손)로 텔레옵하려면 패키지 의존성이 아닌 드라이버가 더 필요합니다.
-`scripts/install_robot_deps.sh` 가 한 번에 설치합니다.
-
-```bash
-PY=$(which python) ./scripts/install_robot_deps.sh
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
-```
-
-`pyAgxArm`(Nero 팔, CAN)은 `examples/requirements-robot.txt` 에 있고, `orca_core`(ORCA 손)는 스크립트가
-소스를 클론해 editable 로 설치합니다. 그 이유는 [빠른 시작](docs/QUICKSTART.md#1-설치)에 있습니다.
+GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. dex-retargeting 은 0.4.6 이 numpy 1 의 마지막, 0.5.0 이
+numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. 모듈 최상단에서 `torch` 를 import 하고
+`nlopt<2.8`, `pin>=2.7`, Python 3.13 미만이 필요합니다. URDF·메쉬는 별도 패키지
+[`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
+다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
 
 ## 호환성
 
 | 입력 | 필요한 것 |
 |---|---|
 | AirGlove | 같은 PC 에서 도는 **Spine 3.0.0**(OSC 프로토콜 3) |
-| Quest 컨트롤러·핸드트래킹 | 헤드셋 브라우저(WebXR). 앱 설치도 Spine 도 필요 없습니다 |
+| Quest 핸드트래킹 | 헤드셋 브라우저(WebXR). 앱 설치도 Spine 도 필요 없습니다 |
 
-**Spine 과 AirGlove.** `GloveModel`·`HandModel` 의 기본 글러브 소스인 `AirGloveReceiver` 는
-[AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)(`airglove-client` 0.4.0)를 감쌉니다. 이
-클라이언트가 Spine 3.0.0 의 OSC 프로토콜 3 을 처리합니다. whatslab 0.5.0 부터 Spine 2.x 는 지원하지 않으며,
-Spine 2.x 에는 whatslab 0.4.x 를 쓰세요. Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC 에서
-글러브를 받을 수 있는 프로세스는 하나뿐이고, Spine 페어는 `AirGloveReceiver(pair=1)` 로 고릅니다. 손마다
-`HandPose.xr_joints`(OpenXR 26관절, 손목 기준 `(26, 8)` 배열)를 줍니다. `HandPose.wrist` 는 항상 `None` 이라
-(Spine 은 캘리브레이션되지 않은 IMU 쿼터니언만 보냄) `GloveModel` 은 팔 회전을 컨트롤러에서 가져옵니다.
-필드 세부, 신선도, 그 밖의 클라이언트 호출은 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.
+`AirGloveReceiver` 는 [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)(`airglove-client`
+0.4.0)를 감쌉니다. whatslab 0.5.0 부터 Spine 2.x 는 지원하지 않으며, Spine 2.x 에는 whatslab 0.4.x 를 쓰세요.
+Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC 에서 글러브를 받을 수 있는 프로세스는
+하나뿐입니다. 손마다 `HandPose.xr_joints`(OpenXR 26관절, 손목 기준 `(26, 8)` 배열)를 줍니다.
+`HandPose.wrist` 는 항상 `None` 입니다 — Spine 은 손목 자세가 아니라 캘리브레이션되지 않은 IMU 쿼터니언만
+보냅니다. 필드 세부는 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.
 
-**손 리타게팅**은 `xr_joints` 만 읽습니다. `dex:<이름>` 은 이를 로봇 손바닥 프레임에 맞춘 사람 손 21점으로
-옮기고, `geort:<이름>` 은 같은 21점을 GeoRT 신경망에 넣습니다.
+글러브 원시 데이터만 필요하거나, 다른 언어(C/C++, C#, Unity, Unreal)를 쓰거나, 리타게팅을 직접 하려면
+[AirGlove-Client](https://github.com/whats-lab/AirGlove-Client) 를 바로 쓰세요. ROS 2 는
+[whatslab-ros2](https://github.com/whats-lab/whatslab-ros2) 를 보세요.
 
 ## 빠른 시작
 
 ```python
-from whatslab.teleop import GloveModel
+from whatslab.teleop import HandModel
 
-m = GloveModel("rigs/nero_orca_right.yaml")   # 팔 = WebXR 컨트롤러 → IK, 손 = AirGlove → 리타게팅
+m = HandModel("geort:orca_right", side="right")   # AirGlove → ORCA 오른손
 m.start()
 
 while True:
-    q = m.get_q()             # {"right": {joint_name: rad, ...}}  — 팔 + 손을 합친 값
+    q = m.get_q()             # {"right": {joint_name: rad, ...}} — 손이 안 잡히면 {}
     publish_joint_states(q)   # 사용하는 쪽에서 sim/ROS 관절 순서로 재배열
 ```
 
-프리셋은 `QuestModel`(Quest 맨손 핸드트래킹), `GloveModel`(컨트롤러 + 글러브), `HandModel`(손 단독) 세
-가지입니다. 수신기 옵션은 dict 로 넘깁니다:
-`GloveModel(rig, hand_kwargs={"glove_port": 4040}, arm_kwargs={"port": 8443})`,
-`HandModel(hand_kwargs={...})`.
+글러브 대신 Quest 핸드트래킹:
 
-Quest 입력은 헤드셋 브라우저(WebXR)로만 받고, 설치할 앱은 없습니다. 컨트롤러(`WebXRControllerReceiver`)와
-맨손 핸드트래킹(`WebXRHandReceiver`)이 한 포트를 함께 쓰며, 기본은 자체 서명 HTTPS 입니다(유선 `adb reverse` 는
-`tls=False`). 자세한 내용은 [API.md](docs/API.md) 「WebXR 경로」에 있습니다.
-
-다른 하드웨어 조합을 쓰려면 `TeleopModel` 을 상속해 추상 훅 `_get_raw_target()` 하나만 구현하면 됩니다. 이
-훅은 어느 소스를 팔 엔드이펙터 목표로 쓸지 정합니다. 캘리브레이션, IK, 리타게팅, 안전 필터는 이미 연결되어
-있습니다.
+```python
+from whatslab.receiver import WebXRHandReceiver
+m = HandModel("dex:orca", hand_source=WebXRHandReceiver())   # 출력되는 https 주소를 헤드셋에서 연다
+```
 
 ## 예제와 도구
 
 ```bash
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml              # 컨트롤러 + 글러브
-python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --arm wrist  # Quest 맨손 핸드트래킹
-python examples/airglove_hand.py --config geort:orca_right                # 글러브 → 로봇 손 단독
-python examples/verify_rig.py --rig rigs/nero_orca_right.yaml             # rig 기구학 점검
-
-python tools/align_frames.py robot --robot robots/nero.yaml               # 로봇을 정준 축에 정렬
+python examples/airglove_hand.py --config geort:orca_right               # 글러브 → 로봇 손, q 출력
+python examples/airglove_hand.py --config dex:orca --viz                 # viser 로 로봇 손 보기
+python tools/bench_hand_retarget.py --help                               # 리타게팅 품질 지표
 ```
 
 테스트는 `pip install -e '.[all,dev]' && pytest` 로 돌립니다.
 
 ## 문서
 
-- [**실물 텔레옵 빠른 시작**](docs/QUICKSTART.md) — 클론부터 Nero 팔 + ORCA 손 텔레옵까지의 절차와 자주 걸리는 문제
-- [**사용 가이드**](docs/GUIDE.md) — 새 로봇 올리기, 캘리브레이션, 팔 IK 튜닝과 변경 판정법, 진단, 실물 전송
-- [**API 레퍼런스**](docs/API.md) — 서브패키지별 공개 심볼과 시그니처
-- [**변경 이력**](CHANGELOG.md) — 버전별 변경 내역. **0.5.0 에 호환 없는 변경이 있습니다**
-  (Spine 3.0.0 전용, `AirGloveReceiver`, `dex:`/`geort:` 리타게팅, Quest 는 WebXR 로만)
+- [**빠른 시작**](docs/QUICKSTART.md) — 클론부터 로봇 손이 글러브를 따라오기까지, 자주 걸리는 것
+- [**API 레퍼런스**](docs/API.md) — 하위 패키지별 공개 심볼과 시그니처
+- [**변경 이력**](CHANGELOG.md) — 버전 기록. **0.5.0 은 호환되지 않는 변경을 포함합니다**
+  (손 전용, Spine 3.0.0 전용, `AirGloveReceiver`, `dex:`/`geort:` 리타게팅, Quest 는 WebXR).
 
 ## 감사의 말
 
-whatslab 은 다음 오픈소스 위에서 만들어졌습니다:
-[Pinocchio](https://github.com/stack-of-tasks/pinocchio)(강체 기구학·IK),
+whatslab 은 훌륭한 오픈소스 위에 만들었습니다:
+[Pinocchio](https://github.com/stack-of-tasks/pinocchio)(기구학),
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT),
-[GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅 — 소프트 프롬프트 모델 학습의 바탕),
+[GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅, 소프트 프롬프트 모델 학습의 바탕),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화),
 [LeRobot](https://github.com/huggingface/lerobot)(데이터셋 형식).
 
 ## 라이선스
 
-**주식회사 왓츠랩(WHATs LAB Corp) 소스 코드 라이선스**(CC BY-NC-ND 4.0 기반)를 따릅니다. source-available,
-비상업, 2차 저작물 금지입니다. 자세한 내용은 [LICENSE](LICENSE) 를 참고하세요.
+**주식회사 왓츠랩(WHATs LAB Corp) 소스 코드 라이선스**(CC BY-NC-ND 4.0 기반)를 따릅니다
+— source-available, 비영리, 2차 저작물 금지. 자세한 내용은 [LICENSE](LICENSE) 를 참고하세요.
 
 Copyright © 주식회사 왓츠랩(WHATs LAB Corp). All rights reserved.

@@ -170,7 +170,7 @@ class WebXRServer:
         return "https" if self._tls else "http"
 
     def add_handler(self, fn: Callable[[dict], None]) -> None:
-        """메시지 하나를 모든 핸들러에 넘긴다 — 같은 포트의 컨트롤러·손 수신기가 함께 받는다."""
+        """메시지 하나를 모든 핸들러에 넘긴다 — 같은 포트의 수신기들이 함께 받는다."""
         with self._lock:
             if fn not in self._handlers:
                 self._handlers.append(fn)

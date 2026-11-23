@@ -268,7 +268,7 @@ def _cached_prompt_model(path: str, mtime_ns: int) -> PromptModel:
 
 
 def _load_prompt_model_cached(path: Path) -> PromptModel:
-    """같은 모델 파일은 한 번만 읽는다(양손·여러 rig).
+    """같은 모델 파일은 한 번만 읽는다(양손·여러 솔버).
 
     파일이 바뀌면(mtime) 다시 읽는다. 모델은 불변이라 솔버끼리 공유해도 된다.
     형식 검사는 load_prompt_model 이 한다.

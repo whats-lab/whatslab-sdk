@@ -5,7 +5,6 @@ import socket
 import subprocess
 import sys
 import time
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,14 +15,14 @@ import whatslab.receiver
 import whatslab.receiver.glove
 from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES, XR_WRIST
 from whatslab.core.interfaces import Receiver
+from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL, to_canonical_pose
 from whatslab.receiver.glove import airglove
 from whatslab.receiver.glove.airglove import (
     AirGloveReceiver,
     haptic_levels,
     openxr_quat_to_canonical,
 )
-from whatslab.receiver.webxr import WebXRControllerReceiver
-from whatslab.teleop.models.glove import HAND_SOURCES, GloveModel
+from whatslab.teleop import HandModel
 
 CORE_ENV = "AIRGLOVE_CORE_DIR"
 REPLAYER = "tools/spine_replay.py"
@@ -217,11 +216,9 @@ def test_raw_dorsum_wrist_is_not_used_as_hand_wrist(fake_client):
 
 
 def test_glove_wrist_matches_webxr_conversion():
-    webxr = WebXRControllerReceiver(port=0, tls=False)
     for seed in range(20):
         q = Rotation.random(random_state=seed).as_quat()
-        webxr._on_message({"right": {"pos": [0.0, 0.0, 0.0], "quat": q.tolist()}})
-        w = webxr.get("right").controller.quat
+        _, w = to_canonical_pose(Y_UP_RH_TO_CANONICAL, np.zeros(3), q)
         g = openxr_quat_to_canonical(q)
         assert (Rotation.from_quat(w).inv() * Rotation.from_quat(g)).magnitude() < 1e-9
 
@@ -307,56 +304,23 @@ def test_connected_ignores_old_device_status(fake_client):
     assert rx.connected("right") is True
 
 
-class _FakeRig:
-    solver = SimpleNamespace(reach_max=None)
-    hand = None
-    calibration = SimpleNamespace(input_reach=None, enabled=True)
-
-
-class _FakeRobot:
-    has_arm = True
-    has_hand = False
-    arm_joint_names = ["arm1", "arm2"]
-
-    def __init__(self):
-        self.rig = _FakeRig()
-
-    solver = SimpleNamespace(solve=lambda tf: np.array([tf[0, 3], tf[1, 3]]))
-
-    def to_base(self, tf):
-        return np.asarray(tf, dtype=float)
-
-
-def test_glove_model_defaults_to_airglove_with_receiver_kwargs(fake_client):
-    assert "airglove" in HAND_SOURCES
-    m = GloveModel(_FakeRobot(), hand_kwargs={"glove_port": 47140, "client_port": 47142},
-                   arm_kwargs={"port": 47160, "tls": False})
+def test_hand_model_defaults_to_airglove_with_receiver_kwargs(fake_client):
+    m = HandModel("geort:orca_right", hand_kwargs={"glove_port": 47140, "client_port": 47142})
     assert isinstance(m.hand_source, AirGloveReceiver)
-    m.hand_source.start()
+    m.start()
     c = fake_client.instances[-1]
     assert c.args[1] == 47140 and c.args[3] == 47142
-
-    q = Rotation.from_euler("zyx", [0.4, 0.2, -0.3]).as_quat()
-    c.wrists[Side.RIGHT] = WristFrame(q.astype(np.float32), 1, 1, 0.01)
+    assert m.get_q() == {"right": {}}
     c.hands[Side.RIGHT] = _frame()
-    m.arm_source._on_message({"left": {"pos": [1.0, 2.0, 3.0], "quat": [0.0, 0.0, 0.0, 1.0]}})
-
-    data = m.get_data()["right"]
-    assert data["fingers"].hand.xr_joints.shape == (26, 8)
-    got = Rotation.from_quat(data["arm_pose"].quat)
-    assert got.magnitude() < 1e-6
-    assert data["tracked"] is True
-    m.send_feedback({"side": "right", "forces": [0, 1, 2, 3, 9]})
-    assert c.haptics == [(Side.RIGHT, [0, 1, 2, 3, 3])]
+    q = m.get_q()["right"]
+    assert list(q) == m.retarget.joint_names
     m.stop()
     assert c.closed
 
 
-def test_glove_model_rejects_unknown_hand_source():
-    assert set(HAND_SOURCES) == {"airglove"}
-    for legacy in ("angles", "robot", "nope"):
-        with pytest.raises(ValueError):
-            GloveModel(_FakeRobot(), hand_source=legacy)
+def test_hand_model_rejects_source_with_kwargs():
+    with pytest.raises(ValueError):
+        HandModel(hand_source=object(), hand_kwargs={"glove_port": 4040})
 
 
 def _free_port_pair():

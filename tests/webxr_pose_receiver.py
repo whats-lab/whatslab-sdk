@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
 from whatslab.core.constants import SIDES
-from whatslab.core.types import InputSample, Pose
+from whatslab.core.types import Pose
+from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL, to_canonical_pose
+from whatslab.receiver.webxr.base import WEBXR_PORT, WebXRReceiverBase, parse_pose
 
-from ..base import Y_UP_RH_TO_CANONICAL, to_canonical_pose
-from .base import WEBXR_PORT, WebXRReceiverBase, parse_pose
+
+@dataclass
+class PoseSample:
+    controller: Optional[Pose] = None
+    hmd: Optional[Pose] = None
+    tracked: bool = False
+    timestamp: float = 0.0
 
 
-class WebXRControllerReceiver(WebXRReceiverBase):
-    """WebXR 컨트롤러(grip) 6D. 메시지의 `left` / `right` 항목 `{pos, quat}`.
+class PoseReceiver(WebXRReceiverBase):
+    """테스트 전용: 메시지의 `left` / `right` 항목 `{pos, quat}` 을 받는 최소 WebXR 수신기.
+
+    SDK 는 손만 받지만 서버·TLS·pos_frame 은 수신기 종류와 무관하므로 자세 하나로 검증한다.
 
     ``stale_timeout`` 초 동안 새 자세가 없으면 추적 아님 — 컨트롤러를 내려놓아 Quest 가 손
     추적으로 바뀌면 페이지가 그 쪽 grip 을 보내지 않으므로, 마지막 자세를 계속 추적 중으로 내지
@@ -52,7 +63,7 @@ class WebXRControllerReceiver(WebXRReceiverBase):
                 s["valid"] = True
                 s["timestamp"] = time.monotonic()
 
-    def get(self, side: str) -> InputSample:
+    def get(self, side: str) -> PoseSample:
         """side 의 최신 컨트롤러 샘플(정준 프레임, pos_frame 기준)."""
         with self._lock:
             s = self._state[side]
@@ -69,7 +80,7 @@ class WebXRControllerReceiver(WebXRReceiverBase):
             quat = self.relative_quat(quat, hmd_quat, hmd_valid)
         controller = Pose(pos + self._pos_offset, quat) if valid else None
         hmd = Pose(hmd_pos, hmd_quat) if hmd_valid else None
-        return InputSample(controller=controller, hmd=hmd, tracked=tracked, timestamp=ts)
+        return PoseSample(controller=controller, hmd=hmd, tracked=tracked, timestamp=ts)
 
     def connected(self, side: str) -> bool:
         return self.get(side).tracked

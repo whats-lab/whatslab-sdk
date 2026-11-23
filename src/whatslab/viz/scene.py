@@ -143,57 +143,6 @@ class URDFScene:
         return self.data.oMf[self.model.getFrameId(frame_name)].homogeneous
 
 
-class RobotArmViz:
-
-    def __init__(self, model, port: int = 8080, axis_len: float = 0.12):
-        self.model = model
-        self.port = port
-        self.axis_len = axis_len
-        self._arm = None
-        self._hand = None
-        self._target = None
-
-    def start(self) -> None:
-        rig = self.model.rig
-        srv = get_server(self.port)
-        mesh_dir = models_root()
-        self._arm = URDFScene(srv, rig.arm.urdf_abspath(), mesh_dir, "/arm")
-        self._arm.set_root(self.model.to_canonical(np.eye(4)))
-        if self.model.has_hand:
-            self._hand = URDFScene(srv, rig.hand.urdf_abspath(), mesh_dir,
-                                   "/arm/hand")
-            self._tf_ee_to_hand = (rig.arm.ee_origin.transform @ rig.attach.transform
-                                   @ rig.hand.axis_align.transform)
-        self._target = srv.scene.add_frame("/target", show_axes=True,
-                                           axes_length=self.axis_len,
-                                           axes_radius=0.005)
-        self._ee = srv.scene.add_frame("/ee", show_axes=True,
-                                       axes_length=self.axis_len * 0.7,
-                                       axes_radius=0.008)
-
-    def update(self, q, target_pose=None, hand_q=None, hand_names=None,
-               timestamp: Optional[float] = None) -> None:
-        if self._arm is None:
-            self.start()
-        _ = timestamp
-        arm_named = dict(zip(self.model.arm_joint_names, np.asarray(q, dtype=float)))
-        self._arm.fk(self._arm.q_from_named(arm_named))
-        if self._hand is not None:
-            tf_h = self._arm.frame_pose(self.model.rig.arm.ee_parent) @ self._tf_ee_to_hand
-            self._hand.set_root(tf_h)
-            hand_named = dict(arm_named)
-            if hand_q is not None and hand_names is not None:
-                hand_named.update(zip(hand_names, np.asarray(hand_q, dtype=float)))
-            self._hand.fk(self._hand.q_from_named(hand_named))
-        if target_pose is not None:
-            tf = np.asarray(target_pose, dtype=float)
-            self._target.position = tuple(tf[:3, 3])
-            self._target.wxyz = _wxyz(tf[:3, :3])
-        tf_ee = self.model.ee_pose(np.asarray(q, dtype=float))
-        self._ee.position = tuple(tf_ee[:3, 3])
-        self._ee.wxyz = _wxyz(tf_ee[:3, :3])
-
-
 class HandViz:
 
     def __init__(self, urdf: str, joint_names, port: int = 8080,

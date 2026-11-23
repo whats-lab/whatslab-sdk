@@ -10,7 +10,6 @@ pin = pytest.importorskip("pinocchio")
 from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  # noqa: E402
 from whatslab.core.types import HandPose, InputSample  # noqa: E402
 from whatslab.paths import models_root  # noqa: E402
-from whatslab.robot import RobotModel, load_rig  # noqa: E402
 from whatslab.solvers.hand import (  # noqa: E402
     DexHandConfig,
     HandRetargetController,
@@ -220,17 +219,6 @@ def test_controller_rejects_onnx_kwargs():
     _require_urdf("orca_right")
     with pytest.raises(TypeError, match="모르는 인자"):
         HandRetargetController("right", "dex:orca", onnx_path="x.onnx")
-
-
-def test_rig_selects_dex_and_keeps_wrist_for_arm():
-    _require_urdf("orca_right")
-    rig = load_rig("rigs/nero_orca_right.yaml")
-    assert rig.hand.retarget == "dex:orca"
-    robot = RobotModel(rig)
-    for side in ("left", "right"):
-        ctrl = robot.make_hand_controller(rig.hand.retarget, side)
-        assert ctrl.engine_name == "dex:" and ctrl.engine.config.side == side
-        assert not set(ctrl.joint_names) & set(robot.arm_joint_names)
 
 
 def test_degenerate_input_holds_last_command():

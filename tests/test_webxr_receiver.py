@@ -9,9 +9,9 @@ import time
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
+from webxr_pose_receiver import PoseReceiver
 
 from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL
-from whatslab.receiver.webxr import WebXRControllerReceiver
 from whatslab.receiver.webxr.ws_server import (
     OP_CLOSE,
     OP_TEXT,
@@ -88,7 +88,7 @@ def test_webxr_axes_map_to_canonical():
 
 
 def test_controller_roundtrip_over_socket():
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx.start()
     try:
         port = rx.port
@@ -113,7 +113,7 @@ def test_controller_roundtrip_over_socket():
 
 
 def test_stale_timeout_marks_untracked():
-    rx = WebXRControllerReceiver(port=0, stale_timeout=0.05, tls=False)
+    rx = PoseReceiver(port=0, stale_timeout=0.05, tls=False)
     rx.start()
     try:
         sock = _handshake(rx.port)
@@ -127,7 +127,7 @@ def test_stale_timeout_marks_untracked():
 
 
 def test_malformed_payload_counted_not_raised():
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx.start()
     try:
         sock = _handshake(rx.port)
@@ -206,7 +206,7 @@ def test_tls_cert_is_cached(tmp_path):
 def test_wss_roundtrip(tmp_path):
     import ssl
     cert, key = ensure_cert_for(tmp_path)
-    rx = WebXRControllerReceiver(port=0, tls=True, certfile=cert, keyfile=key)
+    rx = PoseReceiver(port=0, tls=True, certfile=cert, keyfile=key)
     rx.start()
     try:
         assert rx.url.startswith("https://")
@@ -234,7 +234,7 @@ def test_wss_roundtrip(tmp_path):
 
 def test_plain_http_client_is_rejected_by_tls_server(tmp_path):
     cert, key = ensure_cert_for(tmp_path)
-    rx = WebXRControllerReceiver(port=0, tls=True, certfile=cert, keyfile=key)
+    rx = PoseReceiver(port=0, tls=True, certfile=cert, keyfile=key)
     rx.start()
     try:
         sock = socket.create_connection(("127.0.0.1", rx.port), timeout=5.0)
@@ -262,7 +262,7 @@ def test_preferred_ip_is_not_a_docker_bridge():
 def test_tls_url_uses_lan_ip_not_localhost(tmp_path):
     from whatslab.receiver.webxr.tls import preferred_ip
     cert, key = ensure_cert_for(tmp_path)
-    rx = WebXRControllerReceiver(port=0, tls=True, certfile=cert, keyfile=key)
+    rx = PoseReceiver(port=0, tls=True, certfile=cert, keyfile=key)
     rx.start()
     try:
         assert "localhost" not in rx.url
@@ -272,7 +272,7 @@ def test_tls_url_uses_lan_ip_not_localhost(tmp_path):
 
 
 def test_plain_url_uses_localhost_for_adb_reverse():
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx.start()
     try:
         assert rx.url.startswith("http://localhost:")
@@ -281,7 +281,7 @@ def test_plain_url_uses_localhost_for_adb_reverse():
 
 
 def test_tls_is_on_by_default():
-    rx = WebXRControllerReceiver(port=0)
+    rx = PoseReceiver(port=0)
     rx.start()
     try:
         assert rx.url.startswith("https://")
@@ -305,7 +305,7 @@ PAYLOAD = {"hmd": {"pos": [1.0, 1.6, 2.0], "quat": [0.0, 0.0, 0.0, 1.0]},
 
 
 def test_pos_frame_room_is_absolute():
-    rx = WebXRControllerReceiver(port=0, tls=False, pos_frame="room")
+    rx = PoseReceiver(port=0, tls=False, pos_frame="room")
     rx.start()
     try:
         sock = _feed(rx, PAYLOAD)
@@ -317,7 +317,7 @@ def test_pos_frame_room_is_absolute():
 
 
 def test_pos_frame_hmd_subtracts_head_position():
-    rx = WebXRControllerReceiver(port=0, tls=False, pos_frame="hmd")
+    rx = PoseReceiver(port=0, tls=False, pos_frame="hmd")
     rx.start()
     try:
         sock = _feed(rx, PAYLOAD)
@@ -331,7 +331,7 @@ def test_pos_frame_hmd_subtracts_head_position():
 
 
 def test_pos_frame_hmd_yaw_is_default_and_derotates():
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     assert rx.pos_frame == "hmd_yaw"
     rx.start()
     try:
@@ -348,7 +348,7 @@ def test_pos_frame_hmd_yaw_is_default_and_derotates():
 
 
 def test_pos_frame_falls_back_to_raw_without_hmd():
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx.start()
     try:
         sock = _feed(rx, {"right": {"pos": [0.0, 0.0, -1.0], "quat": [0, 0, 0, 1]}})
@@ -361,11 +361,11 @@ def test_pos_frame_falls_back_to_raw_without_hmd():
 
 def test_pos_frame_rejects_unknown():
     with pytest.raises(ValueError):
-        WebXRControllerReceiver(port=0, tls=False, pos_frame="nope")
+        PoseReceiver(port=0, tls=False, pos_frame="nope")
 
 
 def test_reconnect_after_abrupt_client_drop():
-    rx = WebXRControllerReceiver(port=0, tls=False, pos_frame="room")
+    rx = PoseReceiver(port=0, tls=False, pos_frame="room")
     rx.start()
     try:
         first = _handshake(rx.port)
@@ -394,7 +394,7 @@ def test_server_pings_idle_client():
     old = ws_server.IDLE_PING_S
     ws_server.IDLE_PING_S = 0.2
     try:
-        rx = WebXRControllerReceiver(port=0, tls=False)
+        rx = PoseReceiver(port=0, tls=False)
         rx.start()
         try:
             sock = _handshake(rx.port)
@@ -417,18 +417,12 @@ def test_page_recovers_from_stalled_socket():
     assert "bufferedAmount > BUFFER_MAX" in html
 
 
-def test_glove_model_rejects_unknown_arm_source():
-    pytest.importorskip("pinocchio")
-    from whatslab.teleop.models.glove import ARM_SOURCES
-    assert set(ARM_SOURCES) == {"webxr"}
-
-
 @pytest.mark.parametrize("pos_frame, removes_yaw", [("hmd_yaw", True), ("room", False)])
 def test_controller_orientation_follows_pos_frame(pos_frame, removes_yaw):
     """컨트롤러 방위도 위치와 같은 기준 — hmd_yaw 면 머리 yaw 를 뺀다."""
     from scipy.spatial.transform import Rotation
 
-    rx = WebXRControllerReceiver(port=0, tls=False, pos_frame=pos_frame)
+    rx = PoseReceiver(port=0, tls=False, pos_frame=pos_frame)
     head = Rotation.from_euler("y", 0.7).as_quat().tolist()  # WebXR y-up 의 yaw
     rx._on_message({"hmd": {"pos": [0.0, 1.6, 0.0], "quat": head},
                     "right": {"pos": [0.0, 1.2, -0.3], "quat": [0.0, 0.0, 0.0, 1.0]}})
@@ -444,7 +438,7 @@ def test_controller_orientation_follows_pos_frame(pos_frame, removes_yaw):
 ])
 def test_malformed_pose_is_ignored(item):
     """잘못된 hmd·컨트롤러 항목은 버린다 — 저장했다가 get() 이 죽지 않게."""
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx._on_message({"hmd": item, "right": item})
     s = rx.get("right")
     assert s.controller is None and s.hmd is None
@@ -452,8 +446,8 @@ def test_malformed_pose_is_ignored(item):
 
 def test_port_zero_servers_are_private():
     """port=0 서버는 공유하지 않는다 — 실제 포트로도 레지스트리에서 찾지 않는다."""
-    a = WebXRControllerReceiver(port=0, tls=False)
-    b = WebXRControllerReceiver(port=0, tls=False)
+    a = PoseReceiver(port=0, tls=False)
+    b = PoseReceiver(port=0, tls=False)
     assert a._srv is not b._srv
     a.start()
     try:
@@ -475,7 +469,7 @@ def test_unmask_matches_bytewise_xor():
 
 def test_restart_keeps_ephemeral_port():
     """port=0 은 처음 bind 한 포트를 다시 시작해도 쓴다(페이지가 그 포트에 붙어 있다)."""
-    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx = PoseReceiver(port=0, tls=False)
     rx.start()
     port = rx.port
     rx.stop()
@@ -487,8 +481,8 @@ def test_restart_keeps_ephemeral_port():
 
 
 def test_shared_fixed_port_survives_any_restart_order(free_port):
-    a = WebXRControllerReceiver(port=free_port, tls=False)
-    b = WebXRControllerReceiver(port=free_port, tls=False)
+    a = PoseReceiver(port=free_port, tls=False)
+    b = PoseReceiver(port=free_port, tls=False)
     assert a._srv is b._srv
     a.start()
     b.start()
@@ -587,6 +581,6 @@ def test_connection_from_before_restart_is_not_dispatched():
 
 def test_same_port_with_other_settings_is_rejected(free_port):
     """같은 포트를 다른 tls 로 달라고 하면 앞 서버 설정을 조용히 쓰지 않고 거부한다."""
-    WebXRControllerReceiver(port=free_port, tls=False)
+    PoseReceiver(port=free_port, tls=False)
     with pytest.raises(ValueError):
-        WebXRControllerReceiver(port=free_port, tls=True)
+        PoseReceiver(port=free_port, tls=True)

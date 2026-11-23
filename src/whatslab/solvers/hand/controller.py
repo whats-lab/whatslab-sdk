@@ -54,8 +54,8 @@ class HandRetargetController:
     `HandInputError`, geort 의 `GeortInputError` — 그 밖의 예외는 올린다) 직전 명령을
     유지하고(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진
     상태(low-pass·warm start)를 한 번 비운다. 첫 입력 전 명령은 0 을 관절범위로 자른 값이다.
-    텔레옵(`SideModel`)은 추적이 없는 틱에 compute 를 부르지 않고 손 관절을 q 에서 뺀다(팔과
-    같은 규칙) — 직전 명령 유지는 직접 부르는 쪽에 적용된다.
+    `HandModel` 은 추적이 없는 틱에 compute 를 부르지 않고 손 관절을 q 에서 뺀다 — 직전 명령
+    유지는 직접 부르는 쪽에 적용된다.
 
     ``robot_limits`` ({관절: (lo, hi)}) 는 geort 출력을 실제 로봇 범위로 더 좁힌다(dex 는 URDF
     범위를 직접 쓰므로 무시). ``urdf_root`` 는 dex 만 쓰고 geort 에서는 무시한다. 두 인자 모두
