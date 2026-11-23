@@ -39,7 +39,8 @@ receiver, retarget ← hand.py
 
 ### Retargeting engines
 
-`HandRetargeter` is the entry point; engines only compute.
+`HandRetargeter` is the entry point; engines only compute. The engine contract is the `Engine` Protocol
+in `retarget/retargeter.py` (structural, no base class); a test checks each engine against it.
 
 | An engine provides | `HandRetargeter` handles |
 |---|---|

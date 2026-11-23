@@ -38,7 +38,8 @@ receiver, retarget ← hand.py
 
 ### 리타게팅 엔진
 
-`HandRetargeter` 가 창구이고, 엔진은 계산만 한다.
+`HandRetargeter` 가 창구이고, 엔진은 계산만 한다. 엔진의 약속은 `retarget/retargeter.py` 의 `Engine` Protocol 이다
+(구조적 타이핑, 상속 없음). 엔진마다 이것을 만족하는지 테스트로 확인한다.
 
 | 엔진이 할 일 | `HandRetargeter` 가 할 일 |
 |---|---|

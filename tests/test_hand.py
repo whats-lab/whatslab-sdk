@@ -116,3 +116,11 @@ def test_safety_does_not_hide_tracking_loss():
     assert len(m.get_q()["right"]) == 16
     src.tracked = False
     assert m.get_q() == {"right": {}}
+
+
+def test_geort_engine_satisfies_engine_protocol():
+    _geort_model_or_skip()
+    from whatslab.retarget import Engine, GeortEngine
+
+    assert isinstance(GeortEngine.from_config("orca_right"), Engine)
+    assert not isinstance(object(), Engine)

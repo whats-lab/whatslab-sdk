@@ -10,6 +10,7 @@ import numpy as np
 import yaml
 
 from whatslab.core.constants import OPENXR26_TO_HAND21, SIDES, XR_JOINT_COUNT, XR_JOINT_FIELDS
+from whatslab.paths import configs_root
 
 from .errors import GeortConfigError, GeortInputError
 from .preprocess import POSITION
@@ -132,8 +133,6 @@ def _model_path(raw: Optional[str], base: Path) -> Path:
 
 
 def config_path(config: "str | os.PathLike[str]") -> Path:
-    from whatslab.paths import configs_root
-
     if not str(config).endswith((".yaml", ".yml")):
         return Path(configs_root()) / "geort" / f"{config}.yaml"
     p = Path(config).expanduser()

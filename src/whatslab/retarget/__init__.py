@@ -1,6 +1,9 @@
+import importlib
+
 _LAZY = {
     "HandRetargeter": ".retargeter",
     "HandInputError": ".retargeter",
+    "Engine": ".retargeter",
     "engine_of": ".retargeter",
     "masked_keypoints": ".retargeter",
     "DexEngine": ".dex",
@@ -18,5 +21,4 @@ def __getattr__(name):
     mod = _LAZY.get(name)
     if mod is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
     return getattr(importlib.import_module(mod, __name__), name)

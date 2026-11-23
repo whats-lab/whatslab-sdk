@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Protocol, Sequence, runtime_checkable
 
 import numpy as np
 
@@ -16,6 +16,15 @@ ENGINES = (DEX_PREFIX, GEORT_PREFIX)
 
 class HandInputError(ValueError):
     pass
+
+
+@runtime_checkable
+class Engine(Protocol):
+    joint_names: Sequence[str]
+    joint_limits: np.ndarray
+
+    def solve(self, xr_joints: np.ndarray) -> np.ndarray: ...
+    def reset(self) -> None: ...
 
 
 def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.ndarray:
@@ -50,7 +59,7 @@ class HandRetargeter:
         if self.engine_name == DEX_PREFIX:
             from .dex import DexEngine
 
-            self._engine = DexEngine(name, side=side, urdf_root=urdf_root, **kwargs)
+            self._engine: Engine = DexEngine(name, side=side, urdf_root=urdf_root, **kwargs)
         else:
             from .geort import GeortEngine
 
@@ -65,7 +74,7 @@ class HandRetargeter:
         return list(self._engine.joint_names)
 
     @property
-    def engine(self):
+    def engine(self) -> Engine:
         return self._engine
 
     def reset(self) -> None:

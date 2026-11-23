@@ -13,6 +13,7 @@ from whatslab.paths import models_root  # noqa: E402
 from whatslab.retarget import (  # noqa: E402
     DexEngine,
     DexHandConfig,
+    Engine,
     HandRetargeter,
     hand_config_names,
     mirror_xr_joints,
@@ -270,3 +271,7 @@ def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
     ctrl = HandRetargeter("dex:orca_right", side="left")
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=j, xr_valid=valid, tracked=True)))
     assert np.all(np.isfinite(cmd.joint_angles))
+
+
+def test_dex_engine_satisfies_engine_protocol():
+    assert isinstance(DexEngine("orca_right"), Engine)

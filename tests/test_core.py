@@ -1,5 +1,5 @@
 from whatslab.core.constants import XR_JOINT_COUNT
-from whatslab.core.interfaces import Receiver, Retargeter
+from whatslab.core.interfaces import Receiver
 from whatslab.core.types import HandCommand, HandPose, InputSample
 
 
@@ -27,10 +27,5 @@ def test_protocols_are_runtime_checkable():
         def stop(self): ...
         def get(self, side): ...
 
-    class _H:
-        joint_names = ["a"]
-        def compute(self, sample): ...
-
     assert isinstance(_R(), Receiver)
     assert not isinstance(object(), Receiver)
-    assert isinstance(_H(), Retargeter)
