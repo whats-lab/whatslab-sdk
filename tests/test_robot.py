@@ -1,10 +1,11 @@
 import os
+
 import numpy as np
 import pytest
 
-from conftest import require_sensor_urdf
-
 from whatslab.robot import RobotModel, RobotSpec, configs_root, load_rig
+
+from conftest import require_sensor_urdf
 
 
 def test_configs_root_and_load_rig():
@@ -47,24 +48,23 @@ def test_model_canonical_sandwich():
     assert len(m.arm_joint_names) == len(expect) + 1
 
     q0 = np.full(len(m.arm_joint_names), 0.3)
-    T_c = m.ee_pose(q0)
-    T_b = m.solver.fk(q0)
-    assert np.allclose(T_c, m.to_canonical(T_b))
-    assert np.allclose(m.to_base(T_c), T_b, atol=1e-12)
-    assert np.sign(T_c[0, 3]) == -np.sign(T_b[0, 3]) or abs(T_b[0, 3]) < 1e-9
+    tf_c = m.ee_pose(q0)
+    tf_b = m.solver.fk(q0)
+    assert np.allclose(tf_c, m.to_canonical(tf_b))
+    assert np.allclose(m.to_base(tf_c), tf_b, atol=1e-12)
+    assert np.sign(tf_c[0, 3]) == -np.sign(tf_b[0, 3]) or abs(tf_b[0, 3]) < 1e-9
 
     from whatslab.robot import RobotArmIK
     ik = RobotArmIK(m)
     ik.sync_state(q0 + 0.1)
     for _ in range(80):
-        q = ik.solve(T_c)
-    err = np.linalg.norm(m.ee_pose(q)[:3, 3] - T_c[:3, 3])
+        q = ik.solve(tf_c)
+    err = np.linalg.norm(m.ee_pose(q)[:3, 3] - tf_c[:3, 3])
     assert err < 5e-3, f"sandwich solve 오차 {err*1e3:.2f}mm"
 
 
 def test_model_arm_only_and_hand_only():
     pytest.importorskip("pinocchio")
-    rig = load_rig("rigs/nero_orca_right.yaml")
     rig_a = load_rig("rigs/nero_orca_right.yaml")
     rig_a.hand = None
     rig_a.target_ee = None
@@ -92,10 +92,11 @@ def test_model_reach_clamp():
     m = RobotModel(rig)
     from whatslab.robot import RobotArmIK
     ik = RobotArmIK(m)
-    T = np.eye(4); T[:3, 3] = [3.0, 0.0, 0.0]
+    tf = np.eye(4)
+    tf[:3, 3] = [3.0, 0.0, 0.0]
     ik.sync_state(np.zeros(len(m.arm_joint_names)))
     for _ in range(150):
-        q = ik.solve(T)
+        q = ik.solve(tf)
     r = float(np.linalg.norm(m.solver.fk(q)[:3, 3]))
     assert r <= 0.7 + 1e-2, f"reach 클램프 실패: 반경 {r:.3f} > 0.7 (먼 목표가 안 잘림)"
 
@@ -109,7 +110,7 @@ def test_robot_model_accepts_path_or_config():
     b = RobotModel("rigs/nero_orca_right.yaml")
     assert b.rig.name == a.rig.name
     assert b.arm_joint_names == a.arm_joint_names
-    assert np.allclose(b._M, a._M)
+    assert np.allclose(b._tf_to_canonical, a._tf_to_canonical)
     assert a.rig is rig
 
 

@@ -13,13 +13,13 @@ import yaml
 from dex_retargeting.retargeting_config import RetargetingConfig
 from scipy.spatial.transform import Rotation
 
+from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
-from .xr_input import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
+from .controller import DEX_PREFIX
+from .xr_input import HandInputError, mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
-DEX_PREFIX = "dex:"
 HANDS_DIR = "hands"
-_SIDES = ("left", "right")
 _DEX_KEYS = frozenset(f.name for f in fields(RetargetingConfig))
 _DEFAULT_HUMAN_HAND_LENGTH = 0.19
 
@@ -27,6 +27,10 @@ logging.getLogger("dex_retargeting.yourdfpy").setLevel(logging.ERROR)
 
 
 def is_dex_config(name) -> bool:
+    """`dex:` 접두사가 붙었는지.
+
+    접두사 없는 손 이름·경로도 받는 resolve_hand_config 용이다. 엔진 판별은 engine_of.
+    """
     return isinstance(name, str) and name.startswith(DEX_PREFIX)
 
 
@@ -50,13 +54,13 @@ def resolve_hand_config(name: str, side: Optional[str] = None) -> str:
     for c in cands:
         if os.path.isfile(c):
             return c
-    raise FileNotFoundError(f"손 리타게팅 config 없음: {name!r} (side={side}) — "
-                            f"가능한 것: {hand_config_names()}")
+    raise FileNotFoundError(
+        f"손 리타게팅 config 없음: {name!r} (side={side}) — 가능한 것: {hand_config_names()}"
+    )
 
 
 @dataclass
 class DexHandConfig:
-
     name: str
     side: str
     urdf: str
@@ -72,7 +76,7 @@ class DexHandConfig:
     @staticmethod
     def from_dict(d: dict, path: Optional[str] = None) -> "DexHandConfig":
         side = d.get("side")
-        if side not in _SIDES:
+        if side not in SIDES:
             raise ValueError(f"hand config side 는 left|right: {side!r}")
         rt = dict(d.get("retargeting") or {})
         unknown = set(rt) - _DEX_KEYS
@@ -84,17 +88,23 @@ class DexHandConfig:
         except KeyError as e:
             raise ValueError(f"palm_links 에 index/middle/pinky 가 필요하다: {e}") from None
         frame = d.get("mano_to_root")
-        limits = {str(k): (float(v[0]), float(v[1]))
-                  for k, v in (d.get("joint_limits_deg") or {}).items()}
+        limits = {
+            str(k): (float(v[0]), float(v[1]))
+            for k, v in (d.get("joint_limits_deg") or {}).items()
+        }
         return DexHandConfig(
             name=str(d.get("name") or os.path.splitext(os.path.basename(path or "hand"))[0]),
-            side=side, urdf=str(d["urdf"]), retargeting=rt, palm_links=palm_links,
+            side=side,
+            urdf=str(d["urdf"]),
+            retargeting=rt,
+            palm_links=palm_links,
             fixed_joints={str(k): float(v) for k, v in (d.get("fixed_joints") or {}).items()},
             joint_limits=limits,
             human_hand_length=float(d.get("human_hand_length", _DEFAULT_HUMAN_HAND_LENGTH)),
             mano_to_root_rpy=None if frame is None else tuple(float(v) for v in frame["rpy"]),
             max_evals=None if d.get("max_evals") is None else int(d["max_evals"]),
-            path=path)
+            path=path,
+        )
 
     @staticmethod
     def load(name: str, side: Optional[str] = None) -> "DexHandConfig":
@@ -104,19 +114,26 @@ class DexHandConfig:
 
 
 class XRHandRetargeter:
-
-    def __init__(self, config, side: Optional[str] = None, urdf_root: Optional[str] = None,
-                 max_evals: Optional[int] = None, **overrides):
+    def __init__(
+        self,
+        config,
+        side: Optional[str] = None,
+        urdf_root: Optional[str] = None,
+        max_evals: Optional[int] = None,
+        **overrides,
+    ):
         cfg = config if isinstance(config, DexHandConfig) else DexHandConfig.load(config, side)
         self.config = cfg
         self.side = cfg.side if side is None else str(side).lower()
-        if self.side not in _SIDES:
+        if self.side not in SIDES:
             raise ValueError(f"side 는 left|right: {side!r}")
         self.mirror = self.side != cfg.side
         unknown = set(overrides) - _DEX_KEYS
         if unknown:
-            raise TypeError(f"XRHandRetargeter 가 모르는 인자: {sorted(unknown)} — "
-                            f"dex-retargeting RetargetingConfig 필드만 덮어쓸 수 있다")
+            raise TypeError(
+                f"XRHandRetargeter 가 모르는 인자: {sorted(unknown)} — "
+                f"dex-retargeting RetargetingConfig 필드만 덮어쓸 수 있다"
+            )
         self.urdf_path = os.path.join(urdf_root or models_root(), cfg.urdf)
         if not os.path.isfile(self.urdf_path):
             raise FileNotFoundError(f"{cfg.name}: URDF 없음 {self.urdf_path}")
@@ -139,14 +156,18 @@ class XRHandRetargeter:
         wrist = rt.get("wrist_link_name")
         if wrist is None:
             raise ValueError(f"{cfg.name}: retargeting.wrist_link_name 이 필요하다")
-        self._R_robot = palm_frame(pos(wrist), *(pos(n) for n in cfg.palm_links), side=cfg.side)
-        self._R_fixed = (None if cfg.mano_to_root_rpy is None else
-                         Rotation.from_euler("xyz", cfg.mano_to_root_rpy).as_matrix())
+        self._rot_robot = palm_frame(pos(wrist), *(pos(n) for n in cfg.palm_links), side=cfg.side)
+        self._rot_fixed = (
+            None
+            if cfg.mano_to_root_rpy is None
+            else Rotation.from_euler("xyz", cfg.mano_to_root_rpy).as_matrix()
+        )
         tips = rt.get("finger_tip_link_names") or []
         if rt.get("scaling_factor") is None:
             ref = tips[2] if len(tips) > 2 else (rt.get("target_link_names") or [wrist])[-1]
-            rt["scaling_factor"] = float(np.linalg.norm(pos(ref) - pos(wrist))
-                                         / cfg.human_hand_length)
+            rt["scaling_factor"] = float(
+                np.linalg.norm(pos(ref) - pos(wrist)) / cfg.human_hand_length
+            )
         self.scaling_factor = float(rt["scaling_factor"])
         self._wrist_root = pos(wrist)
 
@@ -155,15 +176,19 @@ class XRHandRetargeter:
         self.type = opt.retargeting_type
         self.joint_names: List[str] = list(opt.target_joint_names)
         dof = opt.robot.dof_joint_names
-        self._fixed_qpos = np.array([cfg.fixed_joints.get(dof[i], 0.0) for i in opt.idx_pin2fixed],
-                                    dtype=float)
+        self._fixed_qpos = np.array(
+            [cfg.fixed_joints.get(dof[i], 0.0) for i in opt.idx_pin2fixed], dtype=float
+        )
         self._idx_target = np.asarray(opt.idx_pin2target, dtype=int)
         self._apply_limits(cfg.joint_limits)
         self.max_evals = cfg.max_evals if max_evals is None else int(max_evals)
         if self.max_evals:
             opt.opt.set_maxeval(self.max_evals)
-        self._human_idx = (None if opt.target_link_human_indices is None
-                           else np.asarray(opt.target_link_human_indices, dtype=int))
+        self._human_idx = (
+            None
+            if opt.target_link_human_indices is None
+            else np.asarray(opt.target_link_human_indices, dtype=int)
+        )
         self._last_mano: Optional[np.ndarray] = None
 
     @staticmethod
@@ -175,6 +200,7 @@ class XRHandRetargeter:
             if not model.existFrame(name):
                 raise ValueError(f"URDF 에 없는 링크: {name}")
             return data.oMf[model.getFrameId(name)].translation.copy()
+
         return pos
 
     def _apply_limits(self, overrides: Dict[str, Tuple[float, float]]) -> None:
@@ -182,7 +208,9 @@ class XRHandRetargeter:
         for pat, (lo, hi) in overrides.items():
             hit = [i for i, n in enumerate(self.joint_names) if fnmatch.fnmatchcase(n, pat)]
             if not hit:
-                raise ValueError(f"{self.config.name}: joint_limits_deg 패턴에 맞는 관절이 없다: {pat}")
+                raise ValueError(
+                    f"{self.config.name}: joint_limits_deg 패턴에 맞는 관절이 없다: {pat}"
+                )
             for i in hit:
                 lim[i] = np.radians([lo, hi])
         self._seq.optimizer.set_joint_limit(lim)
@@ -195,16 +223,16 @@ class XRHandRetargeter:
 
     @property
     def mano_to_root(self) -> Optional[np.ndarray]:
-        return None if self._R_fixed is None else self._R_fixed.copy()
+        return None if self._rot_fixed is None else self._rot_fixed.copy()
 
     def human_keypoints(self, xr_joints) -> np.ndarray:
         xr = mirror_xr_joints(xr_joints) if self.mirror else xr_joints
         mano = xr_to_mano(xr)
-        if self._R_fixed is not None:
-            R = self._R_fixed
+        if self._rot_fixed is not None:
+            rot = self._rot_fixed
         else:
-            R = self._R_robot @ mano_palm_frame(mano, self.config.side).T
-        return mano @ R.T
+            rot = self._rot_robot @ mano_palm_frame(mano, self.config.side).T
+        return mano @ rot.T
 
     def reference(self, keypoints: np.ndarray) -> np.ndarray:
         if self.type == "POSITION":
@@ -212,10 +240,16 @@ class XRHandRetargeter:
         return keypoints[self._human_idx[1]] - keypoints[self._human_idx[0]]
 
     def compute(self, xr_joints) -> np.ndarray:
+        """OpenXR 26관절 → 로봇 손 관절각(joint_names 순서). 풀 수 없는 입력이면 HandInputError."""
         kp = self.human_keypoints(xr_joints)
+        if not np.all(np.isfinite(kp)):
+            raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")
         self._last_mano = kp
         q = self._seq.retarget(self.reference(kp), fixed_qpos=self._fixed_qpos)
-        return np.asarray(q, dtype=float)[self._idx_target]
+        q = np.asarray(q, dtype=float)[self._idx_target]
+        if not np.all(np.isfinite(q)):
+            raise HandInputError("dex-retargeting 해가 유한하지 않다")
+        return q
 
     @property
     def last_keypoints(self) -> Optional[np.ndarray]:
@@ -242,5 +276,10 @@ class XRHandRetargeter:
         self._last_mano = None
 
 
-__all__ = ["DEX_PREFIX", "DexHandConfig", "XRHandRetargeter", "hand_config_names",
-           "is_dex_config", "resolve_hand_config"]
+__all__ = [
+    "DexHandConfig",
+    "XRHandRetargeter",
+    "hand_config_names",
+    "is_dex_config",
+    "resolve_hand_config",
+]

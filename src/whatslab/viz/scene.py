@@ -10,7 +10,6 @@ import pinocchio as pin
 import trimesh
 import viser
 
-from whatslab.solvers.hand.human_fk import FINGERS, palm_frame
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
@@ -42,8 +41,8 @@ def _rebased_urdf(urdf: str, root: str) -> Optional[str]:
     return text
 
 
-def _wxyz(R: np.ndarray) -> Tuple[float, float, float, float]:
-    q = pin.Quaternion(np.asarray(R, dtype=float))
+def _wxyz(rot: np.ndarray) -> Tuple[float, float, float, float]:
+    q = pin.Quaternion(np.asarray(rot, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
 
 
@@ -107,9 +106,9 @@ class URDFScene:
                 f"{root_path}/bones", points=np.zeros((max(n_bones, 1), 2, 3)),
                 colors=(200, 160, 70), line_width=3.0)
 
-    def set_root(self, T: np.ndarray) -> None:
-        self.root.position = tuple(float(v) for v in T[:3, 3])
-        self.root.wxyz = _wxyz(T[:3, :3])
+    def set_root(self, tf: np.ndarray) -> None:
+        self.root.position = tuple(float(v) for v in tf[:3, 3])
+        self.root.wxyz = _wxyz(tf[:3, :3])
 
     def q_from_named(self, name_to_val: Dict[str, float]) -> np.ndarray:
         q = pin.neutral(self.model)
@@ -123,11 +122,11 @@ class URDFScene:
         if self.mesh_mode:
             pin.updateGeometryPlacements(self.model, self.data,
                                          self.gmodel, self.gdata)
-            for h, oMg in zip(self.handles, self.gdata.oMg):
+            for h, o_to_g in zip(self.handles, self.gdata.oMg):
                 if h is None:
                     continue
-                h.position = tuple(oMg.translation)
-                h.wxyz = _wxyz(oMg.rotation)
+                h.position = tuple(o_to_g.translation)
+                h.wxyz = _wxyz(o_to_g.rotation)
         else:
             segs = []
             for j in range(1, self.model.njoints):
@@ -163,8 +162,8 @@ class RobotArmViz:
         if self.model.has_hand:
             self._hand = URDFScene(srv, rig.hand.urdf_abspath(), mesh_dir,
                                    "/arm/hand")
-            self._aMb = (rig.arm.ee_origin.T @ rig.attach.T
-                         @ rig.hand.axis_align.T)
+            self._tf_ee_to_hand = (rig.arm.ee_origin.transform @ rig.attach.transform
+                                   @ rig.hand.axis_align.transform)
         self._target = srv.scene.add_frame("/target", show_axes=True,
                                            axes_length=self.axis_len,
                                            axes_radius=0.005)
@@ -180,42 +179,19 @@ class RobotArmViz:
         arm_named = dict(zip(self.model.arm_joint_names, np.asarray(q, dtype=float)))
         self._arm.fk(self._arm.q_from_named(arm_named))
         if self._hand is not None:
-            T_h = self._arm.frame_pose(self.model.rig.arm.ee_parent) @ self._aMb
-            self._hand.set_root(T_h)
+            tf_h = self._arm.frame_pose(self.model.rig.arm.ee_parent) @ self._tf_ee_to_hand
+            self._hand.set_root(tf_h)
             hand_named = dict(arm_named)
             if hand_q is not None and hand_names is not None:
                 hand_named.update(zip(hand_names, np.asarray(hand_q, dtype=float)))
             self._hand.fk(self._hand.q_from_named(hand_named))
         if target_pose is not None:
-            T = np.asarray(target_pose, dtype=float)
-            self._target.position = tuple(T[:3, 3])
-            self._target.wxyz = _wxyz(T[:3, :3])
-        T_ee = self.model.ee_pose(np.asarray(q, dtype=float))
-        self._ee.position = tuple(T_ee[:3, 3])
-        self._ee.wxyz = _wxyz(T_ee[:3, :3])
-
-
-_PALM_TO_WORLD = np.array([[1.0, 0.0, 0.0],
-                           [0.0, 0.0, -1.0],
-                           [0.0, 1.0, 0.0]])
-
-
-def upright_root(palm_origin, palm_frame_R) -> np.ndarray:
-    A = _PALM_TO_WORLD @ np.asarray(palm_frame_R, dtype=float).T
-    T = np.eye(4)
-    T[:3, :3] = A
-    T[:3, 3] = -A @ np.asarray(palm_origin, dtype=float)
-    return T
-
-
-def human_upright_root(fk, offset=None) -> np.ndarray:
-    hp = fk.neutral_points()
-    T = upright_root(*palm_frame({f: hp[f][0] for f in FINGERS}, hp["palm"]))
-    if offset is None:
-        return T
-    shift = np.eye(4)
-    shift[:3, 3] = np.asarray(offset, dtype=float)
-    return shift @ T
+            tf = np.asarray(target_pose, dtype=float)
+            self._target.position = tuple(tf[:3, 3])
+            self._target.wxyz = _wxyz(tf[:3, :3])
+        tf_ee = self.model.ee_pose(np.asarray(q, dtype=float))
+        self._ee.position = tuple(tf_ee[:3, 3])
+        self._ee.wxyz = _wxyz(tf_ee[:3, :3])
 
 
 class HandViz:

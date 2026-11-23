@@ -24,17 +24,18 @@ class RobotArmIK:
         self._warm = None
         self._cold_tries = 0
 
-    def solve(self, T_canonical: np.ndarray) -> np.ndarray:
+    def solve(self, tf_canonical: np.ndarray) -> np.ndarray:
+        """정준 프레임 EE 목표(4×4) → 팔 관절각. 도달 범위로 자르고 warm start 를 잇는다."""
         r = self._robot
-        T_b = clamp_reach(r.to_base(np.asarray(T_canonical, dtype=float)),
-                          r.rig.solver.reach_max)
+        tf_b = clamp_reach(r.to_base(np.asarray(tf_canonical, dtype=float)),
+                           r.rig.solver.reach_max)
         solver = r.solver
         if self._warm is not None and hasattr(solver, "sync_state"):
             solver.sync_state(self._warm)
         if not self._seeded and hasattr(solver, "solve_robust"):
-            q = self._cold_start(solver, T_b)
+            q = self._cold_start(solver, tf_b)
         else:
-            q = np.asarray(solver.solve(T_b), dtype=float)
+            q = np.asarray(solver.solve(tf_b), dtype=float)
         if q.shape[0] != len(self.joint_names):
             raise ValueError(
                 f"IK 해({q.shape[0]}) != arm_joint_names({len(self.joint_names)}) — "
@@ -42,21 +43,21 @@ class RobotArmIK:
         self._warm = q.copy()
         return q
 
-    def _cold_start(self, solver, T_b):
+    def _cold_start(self, solver, tf_b):
         q_ref = self._warm
         if q_ref is None and hasattr(solver, "q_neutral"):
             q_ref = solver.q_neutral
         q = np.asarray(solver.solve_robust(
-            T_b, restarts=self.cold_restarts, pos_tol=self.cold_pos_tol,
+            tf_b, restarts=self.cold_restarts, pos_tol=self.cold_pos_tol,
             ori_tol=self.cold_ori_tol, seed=self._cold_tries,
             q_ref=q_ref), dtype=float)
-        pe, oe = solver.pose_error(q, T_b)
+        pe, oe = solver.pose_error(q, tf_b)
         self._cold_tries += 1
         locked = (pe <= self.cold_pos_tol and oe <= self.cold_ori_tol)
         if locked or self._cold_tries >= self.cold_max_tries:
             self._seeded = True
             if not locked:
-                p = T_b[:3, 3]
+                p = tf_b[:3, 3]
                 logger.warning(
                     "cold start: 전역 탐색(%d회x%d)이 pos %.1fmm / ori %.1f° 까지만 "
                     "간다. base 좌표 [%+.3f %+.3f %+.3f] |p|=%.3f (reach_max %s)",

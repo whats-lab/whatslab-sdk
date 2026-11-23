@@ -36,12 +36,12 @@ import viser
 
 from whatslab.paths import models_root
 from whatslab.robot import load_rig, load_robot
-from whatslab.robot.config import origin_to_T
+from whatslab.robot.config import origin_to_transform
 from whatslab.viz.scene import URDFScene
 
 
-def _wxyz_from_mat(R: np.ndarray):
-    q = pin.Quaternion(np.asarray(R, dtype=float))
+def _wxyz_from_mat(rot: np.ndarray):
+    q = pin.Quaternion(np.asarray(rot, dtype=float))
     return (float(q.w), float(q.x), float(q.y), float(q.z))
 
 
@@ -118,7 +118,7 @@ def mode_robot(args):
 
     try:
         while True:
-            scene.set_root(origin_to_T(_v(s_ax), _v(s_ar, 1 / DEG)))
+            scene.set_root(origin_to_transform(_v(s_ax), _v(s_ar, 1 / DEG)))
             scene.fk(np.zeros(scene.model.nq))
             time.sleep(0.05)
     except KeyboardInterrupt:
@@ -130,8 +130,8 @@ def mode_attach(args):
     init_eeo_rpy = np.zeros(3)
     init_at_xyz = np.zeros(3)
     init_at_rpy = np.zeros(3)
-    T_arm_align = np.eye(4)
-    T_hand_align = np.eye(4)
+    tf_arm_align = np.eye(4)
+    tf_hand_align = np.eye(4)
     ee_parent = args.ee_parent
     if args.rig:
         rig = load_rig(args.rig)
@@ -140,8 +140,8 @@ def mode_attach(args):
         arm_urdf = rig.arm.urdf_abspath()
         hand_urdf = rig.hand.urdf_abspath()
         ee_parent = rig.arm.ee_parent
-        T_arm_align = rig.arm.axis_align.T
-        T_hand_align = rig.hand.axis_align.T
+        tf_arm_align = rig.arm.axis_align.transform
+        tf_hand_align = rig.hand.axis_align.transform
         init_eeo_xyz = np.array(rig.arm.ee_origin.xyz, dtype=float)
         init_eeo_rpy = np.array(rig.arm.ee_origin.rpy, dtype=float)
         init_at_xyz = np.array(rig.attach.xyz, dtype=float)
@@ -151,15 +151,17 @@ def mode_attach(args):
             arm_spec, hand_spec = load_robot(args.arm_robot), load_robot(args.hand_robot)
             arm_urdf, hand_urdf = arm_spec.urdf_abspath(), hand_spec.urdf_abspath()
             ee_parent = arm_spec.ee_parent
-            T_arm_align, T_hand_align = arm_spec.axis_align.T, hand_spec.axis_align.T
+            tf_arm_align = arm_spec.axis_align.transform
+            tf_hand_align = hand_spec.axis_align.transform
             init_eeo_xyz = np.array(arm_spec.ee_origin.xyz, dtype=float)
             init_eeo_rpy = np.array(arm_spec.ee_origin.rpy, dtype=float)
         elif args.urdf and args.hand_urdf:
             arm_urdf = _resolve(args.urdf)
             hand_urdf = _resolve(args.hand_urdf)
         else:
-            raise SystemExit("[attach] --rig / --arm-robot+--hand-robot / "
-                             "--urdf+--hand-urdf 중 하나 필요")
+            raise SystemExit(
+                "[attach] --rig / --arm-robot+--hand-robot / --urdf+--hand-urdf 중 하나 필요"
+            )
 
     mesh_dir = args.mesh_dir or models_root()
     server = _setup_server(args.port)
@@ -178,11 +180,13 @@ def mode_attach(args):
     btn = server.gui.add_button("print yaml")
 
     def _snippet():
-        return ("\n# ── arm yaml ──\n"
-                f"ee:\n  parent: {ee_parent}\n"
-                f"  origin: {{xyz: {_fmt(_v(s_eo_x))}, rpy: {_fmt(_v(s_eo_r, 1/DEG))}}}\n"
-                "# ── rig yaml ──\n"
-                f"attach: {{xyz: {_fmt(_v(s_at_x))}, rpy: {_fmt(_v(s_at_r, 1/DEG))}}}\n")
+        return (
+            "\n# ── arm yaml ──\n"
+            f"ee:\n  parent: {ee_parent}\n"
+            f"  origin: {{xyz: {_fmt(_v(s_eo_x))}, rpy: {_fmt(_v(s_eo_r, 1 / DEG))}}}\n"
+            "# ── rig yaml ──\n"
+            f"attach: {{xyz: {_fmt(_v(s_at_x))}, rpy: {_fmt(_v(s_at_r, 1 / DEG))}}}\n"
+        )
 
     @btn.on_click
     def _(_evt):
@@ -190,13 +194,15 @@ def mode_attach(args):
 
     try:
         while True:
-            arm.set_root(T_arm_align)
+            arm.set_root(tf_arm_align)
             arm.fk(np.zeros(arm.model.nq))
-            T_h = (arm.frame_pose(ee_parent)
-                   @ origin_to_T(_v(s_eo_x), _v(s_eo_r, 1 / DEG))
-                   @ origin_to_T(_v(s_at_x), _v(s_at_r, 1 / DEG))
-                   @ T_hand_align)
-            hand.set_root(T_h)
+            tf_h = (
+                arm.frame_pose(ee_parent)
+                @ origin_to_transform(_v(s_eo_x), _v(s_eo_r, 1 / DEG))
+                @ origin_to_transform(_v(s_at_x), _v(s_at_r, 1 / DEG))
+                @ tf_hand_align
+            )
+            hand.set_root(tf_h)
             hand.fk(np.zeros(hand.model.nq))
             time.sleep(0.05)
     except KeyboardInterrupt:
@@ -211,18 +217,19 @@ def mode_ee(args):
     hand_urdf = rig.hand.urdf_abspath()
     ee_parent = rig.arm.ee_parent
     target_ee = rig.resolve_target_ee()
-    T_arm_align = rig.arm.axis_align.T
-    T_hand_align = rig.hand.axis_align.T
-    T_eeo = rig.arm.ee_origin.T
-    T_at = rig.attach.T
+    tf_arm_align = rig.arm.axis_align.transform
+    tf_hand_align = rig.hand.axis_align.transform
+    tf_eeo = rig.arm.ee_origin.transform
+    tf_at = rig.attach.transform
     init_rpy = np.array(rig.hand.ee_align.rpy, dtype=float)
 
     mesh_dir = args.mesh_dir or models_root()
     server = _setup_server(args.port)
     arm = URDFScene(server, arm_urdf, mesh_dir, "/robot")
     hand = URDFScene(server, hand_urdf, mesh_dir, "/robot/hand")
-    ee_frame = server.scene.add_frame("/target_ee", show_axes=True,
-                                      axes_length=0.15, axes_radius=0.008)
+    ee_frame = server.scene.add_frame(
+        "/target_ee", show_axes=True, axes_length=0.15, axes_radius=0.008
+    )
     print(f"[ee] arm={arm_urdf}")
     print(f"[ee] hand={hand_urdf}  target_ee={target_ee}")
     print("[ee] 목표: target_ee 축을 정준 규약에 — 손끝→x(빨강,앞), 손바닥→-z(파랑 반대)")
@@ -233,8 +240,7 @@ def mode_ee(args):
     btn = server.gui.add_button("print yaml")
 
     def _snippet():
-        return ("\n# ── hand yaml ──\n"
-                f"ee_align: {{rpy: {_fmt(_v(s_rpy, 1 / DEG))}}}\n")
+        return f"\n# ── hand yaml ──\nee_align: {{rpy: {_fmt(_v(s_rpy, 1 / DEG))}}}\n"
 
     @btn.on_click
     def _(_evt):
@@ -242,28 +248,36 @@ def mode_ee(args):
 
     try:
         while True:
-            arm.set_root(T_arm_align)
+            arm.set_root(tf_arm_align)
             arm.fk(np.zeros(arm.model.nq))
-            T_h = arm.frame_pose(ee_parent) @ T_eeo @ T_at @ T_hand_align
-            hand.set_root(T_h)
+            tf_h = arm.frame_pose(ee_parent) @ tf_eeo @ tf_at @ tf_hand_align
+            hand.set_root(tf_h)
             hand.fk(np.zeros(hand.model.nq))
-            T_ee = (T_arm_align @ T_h @ hand.frame_pose(target_ee)
-                    @ origin_to_T(np.zeros(3), _v(s_rpy, 1 / DEG)))
-            ee_frame.position = tuple(T_ee[:3, 3])
-            ee_frame.wxyz = _wxyz_from_mat(T_ee[:3, :3])
+            tf_ee = (
+                tf_arm_align
+                @ tf_h
+                @ hand.frame_pose(target_ee)
+                @ origin_to_transform(np.zeros(3), _v(s_rpy, 1 / DEG))
+            )
+            ee_frame.position = tuple(tf_ee[:3, 3])
+            ee_frame.wxyz = _wxyz_from_mat(tf_ee[:3, :3])
             time.sleep(0.05)
     except KeyboardInterrupt:
         print(_snippet())
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="mode", required=True)
 
     p1 = sub.add_parser("robot", help="1단계: 로봇 하나를 정준 축에 정렬 (axis_align)")
-    p1.add_argument("--robot", default=None,
-                    help="robot config (configs/robots 상대) — URDF·현재 axis_align 로드")
+    p1.add_argument(
+        "--robot",
+        default=None,
+        help="robot config (configs/robots 상대) — URDF·현재 axis_align 로드",
+    )
     p1.add_argument("--urdf", default=None, help="raw URDF (config 없이)")
     p1.add_argument("--mesh-dir", default=None)
     p1.add_argument("--port", type=int, default=8080)

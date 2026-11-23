@@ -15,7 +15,7 @@
 | 파이썬 | 3.9 이상 |
 | 팔 | AgileX nero, CAN 으로 연결 (`can0`) |
 | 손 | ORCA hand, USB 시리얼 |
-| 입력 | Quest 컨트롤러 — OSC(APK) 또는 WebXR(브라우저) |
+| 입력 | Quest 컨트롤러·맨손 — 브라우저 WebXR |
 
 손·팔이 없어도 **시각화까지는 돈다**(3단계). 하드웨어는 5단계부터 필요하다.
 
@@ -33,11 +33,12 @@ PY=.venv/bin/python ./scripts/install_robot_deps.sh
 
 스크립트가 하는 일은 세 가지다.
 
-1. `whatslab-sdk[all,robot,dev]` — SDK + 리타게팅/IK/viz + `pyAgxArm`(CAN) + pytest.
+1. `whatslab-sdk[all,dev]` + `examples/requirements-robot.txt` — SDK + 리타게팅/IK/viz + pytest, 그리고
+   예제 전용 하드웨어 드라이버 `pyAgxArm`(CAN).
    URDF·메쉬는 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)
    이 git 에서 자동으로 딸려온다.
 2. `orca_core` 를 소스 클론해 editable 로 설치. **extra 에 못 넣는 이유가 두 가지**다 —
-   전 태그가 `numpy>=2.2.6` 을 선언하는데 이 저장소는 `numpy<2` 핀이라 pip 해석이
+   전 태그가 `numpy>=2.2.6` 을 선언해 numpy 1 환경(Isaac Sim 5.1 등)에서 pip 해석이
    실패하고(코드 자체는 numpy 1.26 에서 동작한다), wheel 에 손 설정
    `models/<버전>/<모델>/config.yaml` 이 들어가지 않는다.
 3. 설치 확인 — numpy 버전, 드라이버 import, 손 모델 경로 해석.
@@ -62,17 +63,11 @@ $PY -m pytest -q -rs
 
 ---
 
-## 2. 입력 경로 고르기
+## 2. 입력 경로
 
-팔 목표를 Quest 컨트롤러에서 받아오는 경로가 둘이고, **병행 설치된다**.
-
-| | `--arm-source quest` (기본) | `--arm-source webxr` |
-|---|---|---|
-| 전송 | OSC / UDP | WebSocket (stdlib 구현) |
-| 헤드셋 쪽 | APK 사이드로딩 필요 | 브라우저로 URL 접속 |
-| 준비 | `scripts/install_quest_app.sh` | `scripts/make_webxr_cert.sh` |
-
-처음이면 APK 설치가 없는 **WebXR 이 빠르다**. 3단계는 WebXR 기준으로 쓴다.
+Quest 입력은 **헤드셋 브라우저 WebXR** 하나다(전용 앱·APK 없음, 0.5.0). 준비는 인증서 한 번뿐이다
+(`scripts/make_webxr_cert.sh`). `--arm controller`(기본) 는 컨트롤러로 팔, AirGlove 로 손,
+`--arm wrist` 는 맨손 핸드트래킹으로 팔(손목)과 손(관절 26개)을 함께 움직인다.
 
 ---
 
@@ -83,7 +78,7 @@ $PY -m pytest -q -rs
 
 ```bash
 ./scripts/make_webxr_cert.sh                        # 최초 1회
-$PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --arm-source webxr
+$PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz
 ```
 
 시작하면 이렇게 뜬다.

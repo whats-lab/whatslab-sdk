@@ -41,7 +41,7 @@ viser 에서 결과를 보며 슬라이더로 맞추고, 확정값을 yaml 에 �
 `mount` 는 `robots/*.yaml` 의 `axis_align` **위에** 곱해진다:
 
 ```
-M = mount.T @ axis_align.T          # 베이스 → 정준
+M = mount.transform @ axis_align.transform          # 베이스 → 정준
 ```
 
 `nero.yaml` 의 `axis_align` 이 이미 `rpy: [0, 0, π]`(URDF 가 −x 를 봄)이므로

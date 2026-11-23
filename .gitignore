@@ -12,10 +12,9 @@ venv/
 .vscode/
 .idea/
 
-# Quest 앱 바이너리: zip 및 임의 apk 는 제외하되, 내장 배포용 apk 만 예외 허용
+# 바이너리 배포물(zip·apk)은 저장소에 넣지 않는다
 *.zip
 *.apk
-!assets/quest/*.apk
 .ruff_cache
 .superpowers
 

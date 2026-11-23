@@ -1,7 +1,7 @@
 """Vive Tracker pose reader via SteamVR / OpenVR, in ROS REP-103 frame.
 
 Moved here from a standalone ~/vive_pose checkout: it is hardware pose input,
-the same category as receiver/glove and receiver/quest, and consumers were
+the same category as receiver/glove and receiver/webxr, and consumers were
 reaching it through a hardcoded absolute path.
 
     from whatslab.receiver.vive import ViveTracker
@@ -19,16 +19,13 @@ from __future__ import annotations
 
 import numpy as np
 
-# OpenVR -> ROS REP-103
-M = np.array([[0., 0., -1.],
-              [-1., 0., 0.],
-              [0., 1., 0.]])
+from .base import Y_UP_RH_TO_CANONICAL, conjugate  # OpenVR -> ROS REP-103
 
 
 def _convert(p):
     m = p.mDeviceToAbsoluteTracking
-    A = np.array([[m[r][c] for c in range(4)] for r in range(3)])
-    return M @ A[:, 3], M @ A[:, :3] @ M.T
+    mat = np.array([[m[r][c] for c in range(4)] for r in range(3)])
+    return Y_UP_RH_TO_CANONICAL @ mat[:, 3], conjugate(Y_UP_RH_TO_CANONICAL, mat[:, :3])
 
 
 class ViveTracker:

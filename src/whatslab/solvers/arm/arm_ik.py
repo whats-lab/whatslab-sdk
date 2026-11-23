@@ -10,7 +10,9 @@ from scipy.spatial.transform import Rotation
 logger = logging.getLogger(__name__)
 
 
-def xyzrpy_to_mat(x: float, y: float, z: float, roll: float, pitch: float, yaw: float) -> np.ndarray:
+def xyzrpy_to_mat(
+    x: float, y: float, z: float, roll: float, pitch: float, yaw: float
+) -> np.ndarray:
     mat = np.eye(4)
     mat[:3, :3] = Rotation.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
     mat[:3, 3] = np.array([x, y, z])
@@ -18,17 +20,16 @@ def xyzrpy_to_mat(x: float, y: float, z: float, roll: float, pitch: float, yaw: 
 
 
 class _ArmSolverBase:
-
     proj_rcond = 1e-6
 
-    def _null_projector(self, WJ: np.ndarray, In: np.ndarray) -> np.ndarray:
+    def _null_projector(self, w_jac: np.ndarray, eye_n: np.ndarray) -> np.ndarray:
         wi = 1.0 / self._joint_w
-        _, S, Vt = np.linalg.svd(WJ * wi, full_matrices=False)
-        keep = S > (self.proj_rcond * S[0] if S.size and S[0] > 0.0 else 0.0)
+        _, sv, vt = np.linalg.svd(w_jac * wi, full_matrices=False)
+        keep = sv > (self.proj_rcond * sv[0] if sv.size and sv[0] > 0.0 else 0.0)
         if not np.any(keep):
-            return In
-        V = Vt[keep]
-        return wi[:, None] * (In - V.T @ V) * self._joint_w
+            return eye_n
+        v_rows = vt[keep]
+        return wi[:, None] * (eye_n - v_rows.T @ v_rows) * self._joint_w
 
     def __init__(
         self,
@@ -53,15 +54,26 @@ class _ArmSolverBase:
                 continue
             seen.add(jid)
             lock_ids.append(jid)
-        model = (pin.buildReducedModel(m_full, lock_ids, pin.neutral(m_full))
-                 if lock_ids else m_full)
+        model = (
+            pin.buildReducedModel(m_full, lock_ids, pin.neutral(m_full)) if lock_ids else m_full
+        )
 
-        first = xyzrpy_to_mat(0.0, 0.0, 0.0, tool_pre_rot_rpy[0], tool_pre_rot_rpy[1], tool_pre_rot_rpy[2])
-        second = xyzrpy_to_mat(tool_translation_xyz[0], tool_translation_xyz[1], tool_translation_xyz[2], 0.0, 0.0, 0.0)
+        first = xyzrpy_to_mat(
+            0.0, 0.0, 0.0, tool_pre_rot_rpy[0], tool_pre_rot_rpy[1], tool_pre_rot_rpy[2]
+        )
+        second = xyzrpy_to_mat(
+            tool_translation_xyz[0],
+            tool_translation_xyz[1],
+            tool_translation_xyz[2],
+            0.0,
+            0.0,
+            0.0,
+        )
         ee_mat = first @ second
         quat = Rotation.from_matrix(ee_mat[:3, :3]).as_quat()
-        local = pin.SE3(pin.Quaternion(quat[3], quat[0], quat[1], quat[2]),
-                        np.array(ee_mat[:3, 3]))
+        local = pin.SE3(
+            pin.Quaternion(quat[3], quat[0], quat[1], quat[2]), np.array(ee_mat[:3, 3])
+        )
         if model.existJointName(ee_parent_joint):
             jid = model.getJointId(ee_parent_joint)
             placement = local
@@ -72,8 +84,7 @@ class _ArmSolverBase:
             placement = pf.placement * local
         try:
             parent_frame = model.getFrameId(model.names[jid])
-            frame = pin.Frame(ee_frame_name, jid, parent_frame,
-                              placement, pin.FrameType.OP_FRAME)
+            frame = pin.Frame(ee_frame_name, jid, parent_frame, placement, pin.FrameType.OP_FRAME)
         except Exception:
             frame = pin.Frame(ee_frame_name, jid, placement, pin.FrameType.OP_FRAME)
         model.addFrame(frame)
@@ -91,10 +102,12 @@ class _ArmSolverBase:
         w = np.array([w_pos] * 3 + [w_ori] * 3, dtype=float)
         self._task_w = w / max(w.max(), 1e-9)
         self._damp = 1e-2
-        self._lo = np.where(np.isfinite(self.model.lowerPositionLimit),
-                            self.model.lowerPositionLimit, -np.pi)
-        self._hi = np.where(np.isfinite(self.model.upperPositionLimit),
-                            self.model.upperPositionLimit, np.pi)
+        self._lo = np.where(
+            np.isfinite(self.model.lowerPositionLimit), self.model.lowerPositionLimit, -np.pi
+        )
+        self._hi = np.where(
+            np.isfinite(self.model.upperPositionLimit), self.model.upperPositionLimit, np.pi
+        )
         self.limit_margin = 0.10
         self.k_limit = 0.30
         self._smooth = 0.2
@@ -120,11 +133,18 @@ class _ArmSolverBase:
 
     @classmethod
     def from_appended(
-        cls, arm_urdf: str, hand_urdf: str, attach_frame: str, ee_link: str,
-        mount_xyz: Sequence[float] = (0.0, 0.0, 0.0), mount_rpy: Sequence[float] = (0.0, 0.0, 0.0),
+        cls,
+        arm_urdf: str,
+        hand_urdf: str,
+        attach_frame: str,
+        ee_link: str,
+        mount_xyz: Sequence[float] = (0.0, 0.0, 0.0),
+        mount_rpy: Sequence[float] = (0.0, 0.0, 0.0),
         locked_joints: Optional[List[str]] = None,
-        w_pos: float = 20.0, w_ori: float = 10.0,
-        max_iter: int = 50, tol: float = 1e-4,
+        w_pos: float = 20.0,
+        w_ori: float = 10.0,
+        max_iter: int = 50,
+        tol: float = 1e-4,
         ee_local_rpy: Sequence[float] = (0.0, -np.pi / 2, np.pi / 2),
     ) -> "ArmIK":
         self = cls.__new__(cls)
@@ -135,24 +155,28 @@ class _ArmSolverBase:
             if f.name in arm_frame_names and f.name != ee_link:
                 f.name = f.name + "_hand"
         fid = m_arm.getFrameId(attach_frame)
-        aMb = pin.SE3(Rotation.from_euler("xyz", list(mount_rpy)).as_matrix(),
-                      np.array(mount_xyz, dtype=float))
-        combined = pin.appendModel(m_arm, m_hand, fid, aMb)
+        a_to_b = pin.SE3(
+            Rotation.from_euler("xyz", list(mount_rpy)).as_matrix(),
+            np.array(mount_xyz, dtype=float),
+        )
+        combined = pin.appendModel(m_arm, m_hand, fid, a_to_b)
         ee_frame = combined.frames[combined.getFrameId(ee_link)]
         j_ee = getattr(ee_frame, "parentJoint", None)
         if j_ee is None:
             j_ee = ee_frame.parent
         chain = {combined.names[i] for i in combined.supports[int(j_ee)]}
         keep = (chain - {"universe"}) - set(locked_joints or [])
-        lock_ids = [combined.getJointId(n) for n in combined.names
-                    if n != "universe" and n not in keep]
+        lock_ids = [
+            combined.getJointId(n) for n in combined.names if n != "universe" and n not in keep
+        ]
         reduced = pin.buildReducedModel(combined, lock_ids, pin.neutral(combined))
 
         orig_ee_id = reduced.getFrameId(ee_link)
 
         local_rot = Rotation.from_euler("xyz", list(ee_local_rpy)).as_matrix()
-        reduced.frames[orig_ee_id].placement = (
-            reduced.frames[orig_ee_id].placement * pin.SE3(local_rot, np.zeros(3)))
+        reduced.frames[orig_ee_id].placement = reduced.frames[orig_ee_id].placement * pin.SE3(
+            local_rot, np.zeros(3)
+        )
 
         self.model = reduced
         self.data = reduced.createData()
@@ -188,21 +212,21 @@ class _ArmSolverBase:
             w[j.idx_v:j.idx_v + j.nv] = c
         self._joint_w = w
 
-    def _damped_pinv(self, WJ: np.ndarray, damp2: float) -> np.ndarray:
+    def _damped_pinv(self, w_jac: np.ndarray, damp2: float) -> np.ndarray:
         wi = 1.0 / self._joint_w
-        I = np.eye(WJ.shape[0])
-        return (wi[:, None] * WJ.T) @ np.linalg.inv((WJ * wi) @ WJ.T + damp2 * I)
+        eye_m = np.eye(w_jac.shape[0])
+        return (wi[:, None] * w_jac.T) @ np.linalg.inv((w_jac * wi) @ w_jac.T + damp2 * eye_m)
 
-    def _error_and_jac(self, q: np.ndarray, T: np.ndarray):
+    def _error_and_jac(self, q: np.ndarray, tf: np.ndarray):
         q = np.asarray(q, dtype=float)
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
-        iMd = self.data.oMf[self.ee_id].actInv(pin.SE3(np.asarray(T, dtype=float)))
-        e = pin.log6(iMd).vector
-        Jf = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id, pin.LOCAL)
-        J = -pin.Jlog6(iMd.inverse()) @ Jf
+        i_to_d = self.data.oMf[self.ee_id].actInv(pin.SE3(np.asarray(tf, dtype=float)))
+        e = pin.log6(i_to_d).vector
+        jac_f = pin.computeFrameJacobian(self.model, self.data, q, self.ee_id, pin.LOCAL)
+        jac = -pin.Jlog6(i_to_d.inverse()) @ jac_f
 
-        return e, J
+        return e, jac
 
     def _limit_gradient(self, q: np.ndarray) -> np.ndarray:
         m = self.limit_margin
@@ -227,21 +251,21 @@ class _ArmSolverBase:
         return out
 
     def converge(self, target_pose: np.ndarray, q0: np.ndarray) -> np.ndarray:
-        T = np.asarray(target_pose, dtype=float)
+        tf = np.asarray(target_pose, dtype=float)
         q = np.array(q0, dtype=float)
         w = self._task_w
         damp2 = self._damp * self._damp
-        In = np.eye(self.model.nq)
+        eye_n = np.eye(self.model.nq)
         for _ in range(self.max_iter):
-            e, J = self._error_and_jac(q, T)
+            e, jac = self._error_and_jac(q, tf)
             if np.linalg.norm(e) < self.tol:
                 break
             we = w * e
-            WJ = w[:, None] * J
-            Jpinv = self._damped_pinv(WJ, damp2)
-            dq_task = -Jpinv @ we
-            N = self._null_projector(WJ, In)
-            dq = dq_task + N @ (self.k_limit * self._limit_gradient(q))
+            w_jac = w[:, None] * jac
+            jac_pinv = self._damped_pinv(w_jac, damp2)
+            dq_task = -jac_pinv @ we
+            null_proj = self._null_projector(w_jac, eye_n)
+            dq = dq_task + null_proj @ (self.k_limit * self._limit_gradient(q))
             dq = self._soft_limit_scale(q, dq)
             n = np.linalg.norm(dq)
             if n > 1.0:
@@ -271,10 +295,10 @@ class _ArmSolverBase:
         return self._fk_data.oMf[self.model.getFrameId(frame_name)].homogeneous.copy()
 
     def pose_error(self, q: np.ndarray, target_pose: np.ndarray) -> tuple:
-        T = self.fk(q)
-        pos_err = float(np.linalg.norm(T[:3, 3] - target_pose[:3, 3]))
-        R = T[:3, :3].T @ target_pose[:3, :3]
-        ori_err = float(np.arccos(np.clip((np.trace(R) - 1.0) / 2.0, -1.0, 1.0)))
+        tf = self.fk(q)
+        pos_err = float(np.linalg.norm(tf[:3, 3] - target_pose[:3, 3]))
+        rot = tf[:3, :3].T @ target_pose[:3, :3]
+        ori_err = float(np.arccos(np.clip((np.trace(rot) - 1.0) / 2.0, -1.0, 1.0)))
         return pos_err, ori_err
 
     def solve_robust(
@@ -316,8 +340,15 @@ class _ArmSolverBase:
         self.history_data = best_q
         return best_q
 
-    def _restart_seeds(self, q_ref: np.ndarray, restarts: int,
-                       lo: np.ndarray, hi: np.ndarray, rng, w_dist: float = 0.0):
+    def _restart_seeds(
+        self,
+        q_ref: np.ndarray,
+        restarts: int,
+        lo: np.ndarray,
+        hi: np.ndarray,
+        rng,
+        w_dist: float = 0.0,
+    ):
         n = max(1, int(restarts))
         yield q_ref.copy()
         span = hi - lo
@@ -328,8 +359,8 @@ class _ArmSolverBase:
         for _ in range(max(0, n - 1 - n_local)):
             yield lo + span * rng.random(self.nq)
 
-class ArmIK(_ArmSolverBase):
 
+class ArmIK(_ArmSolverBase):
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
         try:
             sol_q = self.converge(target_pose, self.history_data)
@@ -348,7 +379,6 @@ class ArmIK(_ArmSolverBase):
 
 
 class DiffArmIK(_ArmSolverBase):
-
     iters_per_call = 100
     dp_max = 1.0
     dtheta_max = 0.25
@@ -361,42 +391,43 @@ class DiffArmIK(_ArmSolverBase):
         self._smooth = 0.2
         self.q_posture = self._q_neutral.copy()
 
-    def _rate_limited_target(self, q: np.ndarray, T_goal: np.ndarray) -> np.ndarray:
-        T_cur = self.fk(q)
-        T = np.asarray(T_goal, dtype=float).copy()
-        dp = T[:3, 3] - T_cur[:3, 3]
+    def _rate_limited_target(self, q: np.ndarray, tf_goal: np.ndarray) -> np.ndarray:
+        tf_cur = self.fk(q)
+        tf = np.asarray(tf_goal, dtype=float).copy()
+        dp = tf[:3, 3] - tf_cur[:3, 3]
         n = np.linalg.norm(dp)
         if n > self.dp_max:
-            T[:3, 3] = T_cur[:3, 3] + dp * (self.dp_max / n)
-        R_rel = T_cur[:3, :3].T @ np.asarray(T_goal, dtype=float)[:3, :3]
-        rot = Rotation.from_matrix(R_rel)
+            tf[:3, 3] = tf_cur[:3, 3] + dp * (self.dp_max / n)
+        rot_rel = tf_cur[:3, :3].T @ np.asarray(tf_goal, dtype=float)[:3, :3]
+        rot = Rotation.from_matrix(rot_rel)
         ang = np.linalg.norm(rot.as_rotvec())
         if ang > self.dtheta_max:
-            R_step = Rotation.from_rotvec(rot.as_rotvec() * (self.dtheta_max / ang))
-            T[:3, :3] = T_cur[:3, :3] @ R_step.as_matrix()
-        return T
+            rot_step = Rotation.from_rotvec(rot.as_rotvec() * (self.dtheta_max / ang))
+            tf[:3, :3] = tf_cur[:3, :3] @ rot_step.as_matrix()
+        return tf
 
     def solve(self, target_pose: np.ndarray, safe: bool = True) -> np.ndarray:
-        T_goal = np.asarray(target_pose, dtype=float)
+        tf_goal = np.asarray(target_pose, dtype=float)
         q_start = np.array(self.history_data, dtype=float)
         q = q_start.copy()
         w = self._task_w
-        In = np.eye(self.model.nq)
+        eye_n = np.eye(self.model.nq)
         try:
-            T = self._rate_limited_target(q, T_goal)
+            tf = self._rate_limited_target(q, tf_goal)
             for _ in range(self.iters_per_call):
-                e, J = self._error_and_jac(q, T)
+                e, jac = self._error_and_jac(q, tf)
                 if np.linalg.norm(e) < self.tol:
                     break
                 we = w * e
-                WJ = w[:, None] * J
+                w_jac = w[:, None] * jac
                 damp2 = float(we @ we) + self.sugihara_bias
-                Jpinv = self._damped_pinv(WJ, damp2)
-                dq_task = -Jpinv @ we
-                N = self._null_projector(WJ, In)
-                dq_null = (self.k_posture * (self.q_posture - q)
-                           + self.k_limit * self._limit_gradient(q))
-                dq = self._soft_limit_scale(q, dq_task + N @ dq_null)
+                jac_pinv = self._damped_pinv(w_jac, damp2)
+                dq_task = -jac_pinv @ we
+                null_proj = self._null_projector(w_jac, eye_n)
+                dq_null = self.k_posture * (
+                    self.q_posture - q
+                ) + self.k_limit * self._limit_gradient(q)
+                dq = self._soft_limit_scale(q, dq_task + null_proj @ dq_null)
                 n = np.linalg.norm(dq)
                 if n > 0.5:
                     dq *= 0.5 / n

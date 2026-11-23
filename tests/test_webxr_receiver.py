@@ -1,18 +1,24 @@
 import base64
 import json
 import os
+import pathlib
 import socket
 import struct
 import time
 
 import numpy as np
-import pathlib
 import pytest
+from scipy.spatial.transform import Rotation
 
+from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL
 from whatslab.receiver.webxr import WebXRControllerReceiver
-from whatslab.receiver.webxr.base import _CANONICAL_M
-from whatslab.receiver.webxr.ws_server import (OP_CLOSE, OP_TEXT, WebXRServer,
-                                               accept_key, encode_frame)
+from whatslab.receiver.webxr.ws_server import (
+    OP_CLOSE,
+    OP_TEXT,
+    WebXRServer,
+    accept_key,
+    encode_frame,
+)
 
 
 def _mask(payload, opcode=OP_TEXT):
@@ -68,14 +74,14 @@ def test_encode_frame_lengths():
 
 
 def test_canonical_matrix_is_proper_rotation():
-    assert np.isclose(np.linalg.det(_CANONICAL_M), 1.0)
-    assert np.allclose(_CANONICAL_M @ _CANONICAL_M.T, np.eye(3))
+    assert np.isclose(np.linalg.det(Y_UP_RH_TO_CANONICAL), 1.0)
+    assert np.allclose(Y_UP_RH_TO_CANONICAL @ Y_UP_RH_TO_CANONICAL.T, np.eye(3))
 
 
 def test_webxr_axes_map_to_canonical():
-    forward = _CANONICAL_M @ np.array([0.0, 0.0, -1.0])
-    up = _CANONICAL_M @ np.array([0.0, 1.0, 0.0])
-    right = _CANONICAL_M @ np.array([1.0, 0.0, 0.0])
+    forward = Y_UP_RH_TO_CANONICAL @ np.array([0.0, 0.0, -1.0])
+    up = Y_UP_RH_TO_CANONICAL @ np.array([0.0, 1.0, 0.0])
+    right = Y_UP_RH_TO_CANONICAL @ np.array([1.0, 0.0, 0.0])
     assert np.allclose(forward, [1.0, 0.0, 0.0])
     assert np.allclose(up, [0.0, 0.0, 1.0])
     assert np.allclose(right, [0.0, -1.0, 0.0])
@@ -176,8 +182,9 @@ def test_page_renders_markers_and_passthrough():
 
 
 def test_tls_cert_covers_local_ips(tmp_path):
-    from whatslab.receiver.webxr.tls import ensure_cert, local_ips
     import subprocess
+
+    from whatslab.receiver.webxr.tls import ensure_cert, local_ips
     cert, key = ensure_cert(cache_dir=tmp_path)
     assert os.path.isfile(cert) and os.path.isfile(key)
     assert oct(os.stat(key).st_mode & 0o777) == "0o600"
@@ -244,7 +251,6 @@ def test_plain_http_client_is_rejected_by_tls_server(tmp_path):
 
 
 def test_preferred_ip_is_not_a_docker_bridge():
-    import ipaddress
     from whatslab.receiver.webxr.tls import local_ips, preferred_ip, route_ip
     ip = preferred_ip()
     assert ip in local_ips() or ip == "127.0.0.1"
@@ -414,4 +420,173 @@ def test_page_recovers_from_stalled_socket():
 def test_glove_model_rejects_unknown_arm_source():
     pytest.importorskip("pinocchio")
     from whatslab.teleop.models.glove import ARM_SOURCES
-    assert set(ARM_SOURCES) == {"quest", "webxr"}
+    assert set(ARM_SOURCES) == {"webxr"}
+
+
+@pytest.mark.parametrize("pos_frame, removes_yaw", [("hmd_yaw", True), ("room", False)])
+def test_controller_orientation_follows_pos_frame(pos_frame, removes_yaw):
+    """컨트롤러 방위도 위치와 같은 기준 — hmd_yaw 면 머리 yaw 를 뺀다."""
+    from scipy.spatial.transform import Rotation
+
+    rx = WebXRControllerReceiver(port=0, tls=False, pos_frame=pos_frame)
+    head = Rotation.from_euler("y", 0.7).as_quat().tolist()  # WebXR y-up 의 yaw
+    rx._on_message({"hmd": {"pos": [0.0, 1.6, 0.0], "quat": head},
+                    "right": {"pos": [0.0, 1.2, -0.3], "quat": [0.0, 0.0, 0.0, 1.0]}})
+    yaw = Rotation.from_quat(rx.get("right").controller.quat).as_euler("xyz")[2]
+    assert yaw == pytest.approx(-0.7 if removes_yaw else 0.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("item", [
+    {"pos": [0.0, 1.6], "quat": [0.0, 0.0, 0.0, 1.0]},
+    {"pos": [0.0, 1.6, 0.0], "quat": [0.0, 0.0, 1.0]},
+    {"pos": [0.0, float("nan"), 0.0], "quat": [0.0, 0.0, 0.0, 1.0]},
+    {"pos": "abc", "quat": [0.0, 0.0, 0.0, 1.0]},
+])
+def test_malformed_pose_is_ignored(item):
+    """잘못된 hmd·컨트롤러 항목은 버린다 — 저장했다가 get() 이 죽지 않게."""
+    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx._on_message({"hmd": item, "right": item})
+    s = rx.get("right")
+    assert s.controller is None and s.hmd is None
+
+
+def test_port_zero_servers_are_private():
+    """port=0 서버는 공유하지 않는다 — 실제 포트로도 레지스트리에서 찾지 않는다."""
+    a = WebXRControllerReceiver(port=0, tls=False)
+    b = WebXRControllerReceiver(port=0, tls=False)
+    assert a._srv is not b._srv
+    a.start()
+    try:
+        assert WebXRServer.get(a.port, tls=False) is not a._srv
+    finally:
+        a.stop()
+
+
+def test_unmask_matches_bytewise_xor():
+    from whatslab.receiver.webxr.ws_server import unmask
+
+    rng = np.random.default_rng(0)
+    for n in (0, 1, 3, 4, 5, 125, 4096 + 3):
+        payload = rng.integers(0, 256, n, dtype=np.uint8).tobytes()
+        mask = rng.integers(0, 256, 4, dtype=np.uint8).tobytes()
+        want = bytes(b ^ mask[i & 3] for i, b in enumerate(payload))
+        assert unmask(payload, mask) == want
+
+
+def test_restart_keeps_ephemeral_port():
+    """port=0 은 처음 bind 한 포트를 다시 시작해도 쓴다(페이지가 그 포트에 붙어 있다)."""
+    rx = WebXRControllerReceiver(port=0, tls=False)
+    rx.start()
+    port = rx.port
+    rx.stop()
+    rx.start()
+    try:
+        assert rx.port == port and rx._srv.is_running
+    finally:
+        rx.stop()
+
+
+def test_shared_fixed_port_survives_any_restart_order(free_port):
+    a = WebXRControllerReceiver(port=free_port, tls=False)
+    b = WebXRControllerReceiver(port=free_port, tls=False)
+    assert a._srv is b._srv
+    a.start()
+    b.start()
+    a.stop()
+    assert b._srv.is_running
+    b.stop()
+    assert not b._srv.is_running
+    b.start()
+    a.start()
+    try:
+        assert a._srv.is_running
+    finally:
+        a.stop()
+        b.stop()
+    assert not a._srv.is_running
+
+
+def test_frame_reader_keeps_partial_frame_on_timeout():
+    """헤더만 오고 payload 가 늦으면(timeout) 다음 호출이 프레임을 처음부터 다시 읽는다."""
+    from whatslab.receiver.webxr.ws_server import _FrameReader
+
+    frame = _mask(b'{"t": 1}')
+    chunks = [frame[:3], socket.timeout(), frame[3:]]
+
+    class _Sock:
+        def recv(self, n):
+            item = chunks.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+    reader = _FrameReader(_Sock())
+    with pytest.raises(socket.timeout):
+        reader.read_frame()
+    assert reader.read_frame() == (OP_TEXT, b'{"t": 1}')
+
+
+def test_handler_errors_counted_apart_and_released():
+    """핸들러 예외는 handler_errors 로 세고(버린 프레임 아님), 뗀 핸들러는 붙잡지 않는다."""
+    srv = WebXRServer(0, tls=False)
+
+    def bad(msg):
+        raise KeyError("x")
+
+    srv.add_handler(bad)
+    for _ in range(3):
+        srv._dispatch(b'{"t": 1}')
+    assert srv.stats[1:] == (3, 0) and srv.handler_errors == 3
+    srv.remove_handler(bad)
+    assert bad not in srv._failed_handlers
+
+
+def _yaw(head_quat) -> float:
+    from whatslab.receiver.webxr.base import yaw_rz
+
+    rz = yaw_rz(head_quat)
+    return -float(np.arctan2(rz[1, 0], rz[0, 0]))
+
+
+@pytest.mark.parametrize("pitch_deg", [0.0, 45.0, -45.0, 89.0, -89.0])
+@pytest.mark.parametrize("roll_deg", [0.0, 30.0])
+def test_head_yaw_is_forward_heading(pitch_deg, roll_deg):
+    """yaw 는 앞 축의 수평 방향 — 피치 ±89° 에서도, 고개를 기울여도 몸 yaw 그대로다."""
+    head = Rotation.from_euler("ZYX", [0.5, np.radians(pitch_deg), np.radians(roll_deg)])
+    assert _yaw(head.as_quat()) == pytest.approx(0.5, abs=1e-9)
+
+
+@pytest.mark.parametrize("pitch_deg", [90.0, -90.0])
+def test_head_yaw_falls_back_to_up_axis_when_looking_straight_down_or_up(pitch_deg):
+    """앞 축이 수직이면 위 축의 수평 방향으로 정한다(아래를 보면 위 축이 몸 앞을 향한다)."""
+    head = Rotation.from_euler("ZYX", [0.5, np.radians(pitch_deg), 0.0])
+    assert _yaw(head.as_quat()) == pytest.approx(0.5, abs=1e-9)
+
+
+def test_connection_from_before_restart_is_not_dispatched():
+    """멈췄다 곧바로 다시 시작해도 포트가 비고, 멈추기 전 연결의 프레임은 새 실행에 안 간다."""
+    srv = WebXRServer.get(0, tls=False)
+    got = []
+    srv.add_handler(got.append)
+    srv.start()
+    old = _handshake(srv.port)
+    srv.stop()
+    srv.start()
+    try:
+        old.sendall(_mask(b'{"stale": 1}'))
+        new = _handshake(srv.port)
+        new.sendall(_mask(b'{"fresh": 1}'))
+        assert _wait(lambda: {"fresh": 1} in got)
+        time.sleep(0.1)
+        assert {"stale": 1} not in got
+        old.close()
+        new.close()
+    finally:
+        srv.stop()
+
+
+def test_same_port_with_other_settings_is_rejected(free_port):
+    """같은 포트를 다른 tls 로 달라고 하면 앞 서버 설정을 조용히 쓰지 않고 거부한다."""
+    WebXRControllerReceiver(port=free_port, tls=False)
+    with pytest.raises(ValueError):
+        WebXRControllerReceiver(port=free_port, tls=True)

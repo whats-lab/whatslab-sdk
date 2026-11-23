@@ -28,6 +28,7 @@ class SideModel:
     raw_target: Optional[Pose] = None
     target: Optional[np.ndarray] = None
     q: Dict[str, float] = field(default_factory=dict)
+    fingers_tracked: bool = False
 
     @classmethod
     def build(cls, side: str, robot: Optional[RobotModel] = None) -> "SideModel":
@@ -79,13 +80,23 @@ class SideModel:
         if data.get("q") is not None:
             return dict(data["q"])
         q: Dict[str, float] = {}
-        T = data.get("arm_target")
-        if self.ik is not None and T is not None:
-            q_arm = np.asarray(self.ik.solve(T), dtype=float)
+        tf = data.get("arm_target")
+        if self.ik is not None and tf is not None:
+            q_arm = np.asarray(self.ik.solve(tf), dtype=float)
             q.update(zip(self.ik.joint_names, (float(v) for v in q_arm)))
-        if self.retarget is not None and _has_fingers(data.get("fingers")):
-            cmd = self.retarget.compute(data["fingers"])
-            q.update(zip(cmd.joint_names, (float(v) for v in cmd.joint_angles)))
+        if self.retarget is not None:
+            if _has_fingers(data.get("fingers")):
+                cmd = self.retarget.compute(data["fingers"])
+                q.update(zip(cmd.joint_names, (float(v) for v in cmd.joint_angles)))
+                self.fingers_tracked = True
+            elif self.fingers_tracked:
+                # 추적이 끊긴 프레임에는 compute 를 부르지 않으므로 엔진 상태
+                # (low-pass·warm start)를 여기서 비운다 — 다시 잡혔을 때 몇 초 전 자세와
+                # 섞이지 않게.
+                self.fingers_tracked = False
+                reset = getattr(self.retarget, "reset", None)
+                if reset is not None:
+                    reset()
         return q
 
     def sync_ik(self, q: Dict[str, float]) -> None:
@@ -100,5 +111,4 @@ class SideModel:
 
 
 def _has_fingers(fingers) -> bool:
-    return (fingers is not None and fingers.hand is not None
-            and fingers.hand.tracked)
+    return fingers is not None and fingers.hand is not None and fingers.hand.tracked

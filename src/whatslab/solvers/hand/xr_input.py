@@ -5,17 +5,23 @@ from typing import Tuple
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-XR_JOINT_COUNT = 26
-XR_WRIST = 1
-OPENXR_TO_MANO: Tuple[int, ...] = (1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15,
-                                   17, 18, 19, 20, 22, 23, 24, 25)
-XR_TO_MANO = np.array([[0.0, -1.0, 0.0],
-                       [-1.0, 0.0, 0.0],
-                       [0.0, 0.0, -1.0]])
-MANO_WRIST = 0
-MANO_TIPS: Tuple[int, ...] = (4, 8, 12, 16, 20)
-MANO_PALM: Tuple[int, ...] = (0, 5, 9, 17)
+from whatslab.core.constants import (
+    HAND21_INDEX_MCP,
+    HAND21_LITTLE_MCP,
+    HAND21_MIDDLE_MCP,
+    HAND21_WRIST,
+    OPENXR26_TO_HAND21,
+    OPENXR_TO_HAND21_AXES,
+    XR_JOINT_COUNT,
+    XR_WRIST,
+)
+
+MANO_PALM: Tuple[int, ...] = (HAND21_WRIST, HAND21_INDEX_MCP, HAND21_MIDDLE_MCP, HAND21_LITTLE_MCP)
 _MIRROR = np.diag([-1.0, 1.0, 1.0])
+
+
+class HandInputError(ValueError):
+    """이번 프레임의 손 입력으로는 풀 수 없다(퇴화·비유한) — 호출자는 직전 값을 유지하면 된다."""
 
 
 def _as_xr(xr_joints) -> np.ndarray:
@@ -35,27 +41,30 @@ def _wrist_rotation(a: np.ndarray) -> np.ndarray:
 
 
 def xr_wrist_positions(xr_joints) -> np.ndarray:
+    """OpenXR 26관절 위치를 손목 원점·손목 축 기준으로 (26, 3)."""
     a = _as_xr(xr_joints)
-    Rw = _wrist_rotation(a)
-    return (a[:, 4:7] - a[XR_WRIST, 4:7]) @ Rw
+    rot_w = _wrist_rotation(a)
+    return (a[:, 4:7] - a[XR_WRIST, 4:7]) @ rot_w
 
 
 def xr_to_mano(xr_joints) -> np.ndarray:
-    return xr_wrist_positions(xr_joints)[list(OPENXR_TO_MANO)] @ XR_TO_MANO.T
+    """OpenXR 26관절 → MANO 21점(손목 기준, MANO 축)."""
+    return xr_wrist_positions(xr_joints)[list(OPENXR26_TO_HAND21)] @ OPENXR_TO_HAND21_AXES.T
 
 
 def palm_frame(wrist, index, middle, pinky, side: str) -> np.ndarray:
+    """손목·검지·중지·소지 MCP 로 손바닥 프레임(열 = x, y, z). 퇴화·비유한이면 HandInputError."""
     w, i, m, p = (np.asarray(v, dtype=float) for v in (wrist, index, middle, pinky))
     z = m - w
     nz = float(np.linalg.norm(z))
-    if nz < 1e-6:
-        raise ValueError("손바닥 프레임: 손목과 중지 MCP 가 겹친다")
+    if not nz >= 1e-6:  # NaN 도 여기서 거른다
+        raise HandInputError("손바닥 프레임: 손목과 중지 MCP 가 겹치거나 유한하지 않다")
     z = z / nz
     y = i - p if side == "right" else p - i
     y = y - z * float(y @ z)
     ny = float(np.linalg.norm(y))
-    if ny < 1e-6:
-        raise ValueError("손바닥 프레임: 검지·소지 MCP 가 손가락 방향과 나란하다")
+    if not ny >= 1e-6:
+        raise HandInputError("손바닥 프레임: 검지·소지 MCP 가 손가락 방향과 나란하다")
     y = y / ny
     return np.column_stack([np.cross(y, z), y, z])
 
@@ -66,11 +75,17 @@ def mano_palm_frame(mano: np.ndarray, side: str) -> np.ndarray:
 
 
 def mirror_xr_joints(xr_joints) -> np.ndarray:
+    """OpenXR 26관절을 좌우 반전(x 거울상)한 반대 손 관절로. 무효 관절의 0 쿼터니언은 항등으로."""
     a = _as_xr(xr_joints)
-    Rw = _wrist_rotation(a)
+    rot_w = _wrist_rotation(a)
     out = a.copy()
-    rot = Rotation.from_quat(a[:, :4] / np.linalg.norm(a[:, :4], axis=1, keepdims=True))
-    local = Rw.T @ rot.as_matrix()
+    quat = a[:, :4].copy()
+    norm = np.linalg.norm(quat, axis=1)
+    # 무효 관절은 0·NaN 쿼터니언일 수 있다 — 항등으로 두고 위치(NaN)로 거른다.
+    bad = ~(norm > 1e-9)
+    quat[bad], norm[bad] = (0.0, 0.0, 0.0, 1.0), 1.0
+    rot = Rotation.from_quat(quat / norm[:, None])
+    local = rot_w.T @ rot.as_matrix()
     out[:, :4] = Rotation.from_matrix(_MIRROR @ local @ _MIRROR).as_quat()
-    out[:, 4:7] = ((a[:, 4:7] - a[XR_WRIST, 4:7]) @ Rw) @ _MIRROR
+    out[:, 4:7] = ((a[:, 4:7] - a[XR_WRIST, 4:7]) @ rot_w) @ _MIRROR
     return out

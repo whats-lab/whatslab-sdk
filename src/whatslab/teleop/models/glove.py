@@ -3,12 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 
-import numpy as np
-from scipy.spatial.transform import Rotation
-
+from whatslab.core.constants import SIDES
 from whatslab.core.types import Pose
-from whatslab.receiver.glove.openxr import GloveOpenXRReceiver
-from whatslab.receiver.quest.controller import QuestControllerReceiver
+from whatslab.receiver.glove.airglove import AirGloveReceiver
 from whatslab.receiver.webxr.controller import WebXRControllerReceiver
 
 from ..base import TeleopModel
@@ -18,19 +15,18 @@ logger = logging.getLogger(__name__)
 _OPPOSITE = {"left": "right", "right": "left"}
 
 HAND_SOURCES = {
-    "openxr": GloveOpenXRReceiver,
+    "airglove": AirGloveReceiver,
 }
 
 ARM_SOURCES = {
-    "quest": QuestControllerReceiver,
     "webxr": WebXRControllerReceiver,
 }
 
 
 class GloveModel(TeleopModel):
 
-    def __init__(self, robot, hand_source: str = "openxr",
-                 arm_source: str = "quest", arm_kwargs: Optional[dict] = None,
+    def __init__(self, robot, hand_source: str = "airglove",
+                 arm_source: str = "webxr", arm_kwargs: Optional[dict] = None,
                  hand_kwargs: Optional[dict] = None):
         if hand_source not in HAND_SOURCES:
             raise ValueError(
@@ -44,19 +40,22 @@ class GloveModel(TeleopModel):
 
     def _get_raw_target(self) -> Dict[str, Optional[Pose]]:
         out: Dict[str, Optional[Pose]] = {}
-        for s in self.SIDES:
-            hand = self.hand_source.get(s).hand
-            arm_s = self.arm_source.get(_OPPOSITE[s])
+        samples = self.samples()
+        for s in SIDES:
+            hand = samples[s][1].hand
+            arm_s = samples[_OPPOSITE[s]][0]
             ctrl = arm_s.controller
-            if ctrl is None:
+            if ctrl is None or not arm_s.tracked:
                 out[s] = None
                 continue
-            hmd = arm_s.hmd.quat if arm_s.hmd is not None else None
             if hand is not None and hand.wrist is not None:
-                quat = self._head_relative(hand.wrist.quat, hmd)
+                # 세션(방) 기준 손목 방위를 컨트롤러 자세와 같은 pos_frame 으로 옮긴다.
+                quat = hand.wrist.quat
+                if arm_s.hmd is not None:
+                    quat = self.arm_source.relative_quat(quat, arm_s.hmd.quat, True)
             else:
                 self._warn_no_glove_wrist(s)
-                quat = self._head_relative(ctrl.quat, hmd)
+                quat = ctrl.quat
             out[s] = Pose(ctrl.pos, quat)
         return out
 
@@ -66,18 +65,11 @@ class GloveModel(TeleopModel):
             seen = self._no_wrist_warned = set()
         if side not in seen:
             seen.add(side)
-            logger.warning("[%s] 글러브 손목 자세 없음 — 팔 회전을 컨트롤러 회전으로 대체(openxr 소스는 손목을 내지 않는다)", side)
-
-    @staticmethod
-    def _head_relative(quat, hmd_quat):
-        if hmd_quat is None:
-            return quat
-        G = Rotation.from_quat(np.asarray(quat, dtype=float)).as_matrix()
-        H = Rotation.from_quat(np.asarray(hmd_quat, dtype=float)).as_matrix()
-        h = float(np.arctan2(H[1, 0], H[0, 0]))
-        c, s = np.cos(-h), np.sin(-h)
-        Rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
-        return Rotation.from_matrix(Rz @ G).as_quat()
+            logger.warning(
+                "[%s] 글러브 손목 자세 없음 — 팔 회전을 컨트롤러 회전으로 대체"
+                "(airglove 소스는 손목 자세를 내지 않는다 — 원시값은 raw_wrist)",
+                side,
+            )
 
     def send_feedback(self, data) -> None:
         if data is None:

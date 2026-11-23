@@ -7,7 +7,14 @@ CODEBASE_VERSION = "v2.1"
 CHUNKS_SIZE = 1000
 
 DATA_PATH_TEMPLATE = "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet"
-VIDEO_PATH_TEMPLATE = "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4"
+VIDEO_PATH_TEMPLATE = (
+    "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4"
+)
+
+
+def _nest(values) -> list:
+    """채널별 값 → LeRobot 이미지 통계 형식 [[[v]], …]."""
+    return [[[float(x)]] for x in values]
 
 
 def build_info(
@@ -81,13 +88,12 @@ def _reduce_image_stats(frames: np.ndarray) -> dict:
     mx = flat.max(axis=0)
     mean = flat.mean(axis=0)
     std = flat.std(axis=0)
-    nest = lambda v: [[[float(x)]] for x in v]
     n = frames.shape[0]
     return {
-        "min": nest(mn),
-        "max": nest(mx),
-        "mean": nest(mean),
-        "std": nest(std),
+        "min": _nest(mn),
+        "max": _nest(mx),
+        "mean": _nest(mean),
+        "std": _nest(std),
         "count": [n],
     }
 
@@ -154,11 +160,10 @@ class ImageStats:
             raise ValueError("ImageStats.result() before any update()")
         mean = self._sum / self.pixels
         var = np.maximum(self._sumsq / self.pixels - np.square(mean), 0.0)
-        nest = lambda v: [[[float(x)]] for x in v]
         return {
-            "min": nest(self._min),
-            "max": nest(self._max),
-            "mean": nest(mean),
-            "std": nest(np.sqrt(var)),
+            "min": _nest(self._min),
+            "max": _nest(self._max),
+            "mean": _nest(mean),
+            "std": _nest(np.sqrt(var)),
             "count": [self.frames],
         }

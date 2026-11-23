@@ -116,12 +116,20 @@ def export_v30(input_dir, out_dir=None) -> Path:
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--input", required=True, help="v2.1 LeRobot 데이터셋 디렉토리")
     parser.add_argument("--groot", action="store_true", help="GR00T용 meta/modality.json 생성")
-    parser.add_argument("--modality-config", default=None, help="state/action/video/annotation 레이아웃 오버라이드 JSON 경로")
+    parser.add_argument(
+        "--modality-config",
+        default=None,
+        help="state/action/video/annotation 레이아웃 오버라이드 JSON 경로",
+    )
     parser.add_argument("--v30", action="store_true", help="lerobot v3.0 사본 생성")
-    parser.add_argument("--out-v30", default=None, help="v3.0 사본 출력 디렉토리 (기본: <input>_v30)")
+    parser.add_argument(
+        "--out-v30", default=None, help="v3.0 사본 출력 디렉토리 (기본: <input>_v30)"
+    )
     args = parser.parse_args(argv)
 
     if not args.groot and not args.v30:

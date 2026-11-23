@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from typing import Dict, List, Optional
@@ -16,9 +17,11 @@ def _finger_links(side: str) -> Dict[str, List[str]]:
     import pinocchio as pin
 
     from whatslab.paths import models_root
-    from whatslab.solvers.hand.uni_retargeter import UniRetargeter
 
-    urdf = UniRetargeter(side, "orca_hand").urdf_path
+    # models 트리마다 urdf/ 하위 폴더가 있기도 없기도 하다.
+    candidates = [os.path.join(models_root(), "orca_hand", sub, f"{side}.urdf")
+                  for sub in ("urdf", "")]
+    urdf = next((c for c in candidates if os.path.isfile(c)), None)
     if urdf is None:
         raise FileNotFoundError(f"orca_hand/{side} URDF 를 못 찾았다 (models_root"
                                 f"={models_root()})")
@@ -164,6 +167,7 @@ class AgxArmSender:
 
     def connect(self) -> str:
         import time
+
         from pyAgxArm import AgxArmFactory, ArmModel, NeroFW, create_agx_arm_config
         cfg = create_agx_arm_config(robot=ArmModel.NERO, firmeware_version=NeroFW.DEFAULT,
                                     interface="socketcan", channel=self.channel)
@@ -420,6 +424,7 @@ class Diag:
 
     def tick(self, raw_pose, q_arm, now):
         import numpy as np
+
         from whatslab.robot.model import clamp_reach
         if self.t0 is None:
             self.t0 = now
@@ -427,17 +432,17 @@ class Diag:
         if raw_pose is not None:
             self.n_in += 1
             self.in_p = max(self.in_p, float(np.linalg.norm(np.asarray(raw_pose.pos))))
-        T = self.model.sides[self.side].target
+        tf = self.model.sides[self.side].target
         rm = self.robot.rig.solver.reach_max
-        if T is not None:
-            self.tgt_p = max(self.tgt_p, float(np.linalg.norm(T[:3, 3])))
-            T_b = self.robot.to_base(T)
-            n_b = float(np.linalg.norm(T_b[:3, 3]))
+        if tf is not None:
+            self.tgt_p = max(self.tgt_p, float(np.linalg.norm(tf[:3, 3])))
+            tf_b = self.robot.to_base(tf)
+            n_b = float(np.linalg.norm(tf_b[:3, 3]))
             self.base_p = max(self.base_p, n_b)
             if rm and n_b > rm:
                 self.n_clamp += 1
             if q_arm is not None:
-                pe, oe = self.robot.solver.pose_error(q_arm, clamp_reach(T_b, rm))
+                pe, oe = self.robot.solver.pose_error(q_arm, clamp_reach(tf_b, rm))
                 self.pe, self.oe = max(self.pe, pe), max(self.oe, oe)
         if q_arm is not None:
             if self.q_prev is not None:

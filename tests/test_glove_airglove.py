@@ -5,20 +5,23 @@ import socket
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from airglove_client import AirGloveError, Client, DeviceStatus, HandFrame, Side, WristFrame
-from pythonosc.osc_message_builder import OscMessageBuilder
 from scipy.spatial.transform import Rotation
 
-import whatslab.receiver as receiver_pkg
-import whatslab.receiver.glove as glove_pkg
+import whatslab.receiver
+import whatslab.receiver.glove
+from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES, XR_WRIST
 from whatslab.core.interfaces import Receiver
-from whatslab.receiver.glove import openxr as oxr
-from whatslab.receiver.glove.openxr import (XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES,
-                                            XR_WRIST_INDEX, GloveOpenXRReceiver, haptic_levels,
-                                            openxr_quat_to_canonical)
+from whatslab.receiver.glove import airglove
+from whatslab.receiver.glove.airglove import (
+    AirGloveReceiver,
+    haptic_levels,
+    openxr_quat_to_canonical,
+)
 from whatslab.receiver.webxr import WebXRControllerReceiver
 from whatslab.teleop.models.glove import HAND_SOURCES, GloveModel
 
@@ -32,9 +35,9 @@ TEST_PORTS = range(47500, 47598)
 def _frame(age=0.01, valid=True, seed=0):
     rng = np.random.default_rng(seed)
     ori = Rotation.random(XR_JOINT_COUNT, random_state=seed).as_quat().astype(np.float32)
-    ori[XR_WRIST_INDEX] = [0.0, 0.0, 0.0, 1.0]
+    ori[XR_WRIST] = [0.0, 0.0, 0.0, 1.0]
     pos = rng.normal(scale=0.05, size=(XR_JOINT_COUNT, 3)).astype(np.float32)
-    pos[XR_WRIST_INDEX] = 0.0
+    pos[XR_WRIST] = 0.0
     radii = np.full(XR_JOINT_COUNT, 0.01, dtype=np.float32)
     ok = np.full(XR_JOINT_COUNT, bool(valid))
     return HandFrame(ori, pos, radii, ok, 7, 123456, age)
@@ -98,21 +101,21 @@ class _FakeClient:
 @pytest.fixture
 def fake_client(monkeypatch):
     _FakeClient.instances = []
-    monkeypatch.setattr(oxr, "Client", _FakeClient)
+    monkeypatch.setattr(airglove, "Client", _FakeClient)
     return _FakeClient
 
 
 def _started(**kw):
-    rx = GloveOpenXRReceiver(**kw)
+    rx = AirGloveReceiver(**kw)
     rx.start()
     return rx, _FakeClient.instances[-1]
 
 
 def test_exports_and_protocol():
-    assert receiver_pkg.GloveOpenXRReceiver is GloveOpenXRReceiver
-    assert glove_pkg.GloveOpenXRReceiver is GloveOpenXRReceiver
-    assert isinstance(GloveOpenXRReceiver(), Receiver)
-    assert XR_JOINT_NAMES[0] == "palm" and XR_JOINT_NAMES[XR_WRIST_INDEX] == "wrist"
+    assert whatslab.receiver.AirGloveReceiver is AirGloveReceiver
+    assert whatslab.receiver.glove.AirGloveReceiver is AirGloveReceiver
+    assert isinstance(AirGloveReceiver(), Receiver)
+    assert XR_JOINT_NAMES[0] == "palm" and XR_JOINT_NAMES[XR_WRIST] == "wrist"
     assert len(XR_JOINT_NAMES) == XR_JOINT_COUNT == 26
 
 
@@ -131,12 +134,12 @@ def test_pair_is_forwarded_and_validated(fake_client):
     rx, c = _started(pair=2)
     assert c.pair == 2
     with pytest.raises(ValueError):
-        GloveOpenXRReceiver(pair=0)
+        AirGloveReceiver(pair=0)
 
 
 def test_pair_without_library_support_fails_and_closes(fake_client, monkeypatch):
     monkeypatch.delattr(_FakeClient, "set_pair")
-    rx = GloveOpenXRReceiver(pair=2)
+    rx = AirGloveReceiver(pair=2)
     with pytest.raises(AirGloveError):
         rx.start()
     assert fake_client.instances[-1].closed and not rx.running
@@ -144,7 +147,7 @@ def test_pair_without_library_support_fails_and_closes(fake_client, monkeypatch)
 
 def test_old_library_warns(fake_client, monkeypatch, caplog):
     monkeypatch.setattr(_FakeClient, "version", staticmethod(lambda: "0.3.0"))
-    with caplog.at_level("WARNING", logger=oxr.__name__):
+    with caplog.at_level("WARNING", logger=airglove.__name__):
         _started()
     assert "0.4.0" in caplog.text
 
@@ -154,16 +157,16 @@ def test_protocol_mismatch_warns_once(fake_client, caplog):
     c.hands[Side.RIGHT] = _frame()
     assert rx.spine_protocol() is None
     c.protocol = (2, 0.1)
-    with caplog.at_level("WARNING", logger=oxr.__name__):
+    with caplog.at_level("WARNING", logger=airglove.__name__):
         rx.get("right")
         rx.get("right")
     assert caplog.text.count("Spine 프로토콜 2") == 1
     assert rx.spine_protocol() == 2
-    assert oxr.SPINE_PROTOCOL == glove_pkg.SPINE_PROTOCOL == 3
+    assert airglove.SPINE_PROTOCOL == whatslab.receiver.glove.SPINE_PROTOCOL == 3
 
 
 def test_get_before_start_is_untracked_without_binding(fake_client):
-    rx = GloveOpenXRReceiver()
+    rx = AirGloveReceiver()
     s = rx.get("right")
     assert s.tracked is False and s.hand is None
     assert fake_client.instances == []
@@ -182,7 +185,7 @@ def test_get_packs_xr_joints_as_received(fake_client):
     assert np.allclose(xj[:, 0:4], f.orientations)
     assert np.allclose(xj[:, 4:7], f.positions)
     assert np.allclose(xj[:, 7], f.radii)
-    assert s.hand.joint_angles == {}
+    assert s.hand.xr_valid is not None and s.hand.xr_valid.all()
     assert rx.get("left").hand is None
     assert s.timestamp == pytest.approx(time.monotonic() - f.age_s, abs=0.05)
 
@@ -217,7 +220,7 @@ def test_glove_wrist_matches_webxr_conversion():
     webxr = WebXRControllerReceiver(port=0, tls=False)
     for seed in range(20):
         q = Rotation.random(random_state=seed).as_quat()
-        webxr._set_side("right", {"pos": [0.0, 0.0, 0.0], "quat": q.tolist()})
+        webxr._on_message({"right": {"pos": [0.0, 0.0, 0.0], "quat": q.tolist()}})
         w = webxr.get("right").controller.quat
         g = openxr_quat_to_canonical(q)
         assert (Rotation.from_quat(w).inv() * Rotation.from_quat(g)).magnitude() < 1e-9
@@ -227,8 +230,8 @@ def test_openxr_axes_land_on_canonical_axes():
     up = openxr_quat_to_canonical(Rotation.identity().as_quat())
     assert np.allclose(Rotation.from_quat(up).as_matrix(), np.eye(3))
     yaw = Rotation.from_rotvec([0.0, 0.4, 0.0]).as_quat()
-    R = Rotation.from_quat(openxr_quat_to_canonical(yaw))
-    assert np.allclose(R.as_rotvec(), [0.0, 0.0, 0.4])
+    rot = Rotation.from_quat(openxr_quat_to_canonical(yaw))
+    assert np.allclose(rot.as_rotvec(), [0.0, 0.0, 0.4])
 
 
 def test_haptic_levels_mapping():
@@ -260,7 +263,7 @@ def test_connected_uses_device_status_then_fresh_frame(fake_client):
 
 
 def test_frame_exposes_receive_metadata_without_stale_filtering(fake_client):
-    rx = GloveOpenXRReceiver()
+    rx = AirGloveReceiver()
     assert rx.frame("right") is None and rx.wrist_frame("right") is None
     assert rx.alarms() == [] and rx.stats() == {} and rx.device_status() is None
     rx.start()
@@ -305,14 +308,9 @@ def test_connected_ignores_old_device_status(fake_client):
 
 
 class _FakeRig:
-    class solver:
-        reach_max = None
-
+    solver = SimpleNamespace(reach_max=None)
     hand = None
-
-    class calibration:
-        input_reach = None
-        enabled = True
+    calibration = SimpleNamespace(input_reach=None, enabled=True)
 
 
 class _FakeRobot:
@@ -323,27 +321,17 @@ class _FakeRobot:
     def __init__(self):
         self.rig = _FakeRig()
 
-    class solver:
-        @staticmethod
-        def solve(T):
-            return np.array([T[0, 3], T[1, 3]])
+    solver = SimpleNamespace(solve=lambda tf: np.array([tf[0, 3], tf[1, 3]]))
 
-    def to_base(self, T):
-        return np.asarray(T, dtype=float)
+    def to_base(self, tf):
+        return np.asarray(tf, dtype=float)
 
 
-def _send(disp, address, *args):
-    b = OscMessageBuilder(address=address)
-    for a in args:
-        b.add_arg(a)
-    disp.call_handlers_for_packet(b.build().dgram, ("127.0.0.1", 0))
-
-
-def test_glove_model_defaults_to_openxr_with_receiver_kwargs(fake_client):
-    assert "openxr" in HAND_SOURCES
+def test_glove_model_defaults_to_airglove_with_receiver_kwargs(fake_client):
+    assert "airglove" in HAND_SOURCES
     m = GloveModel(_FakeRobot(), hand_kwargs={"glove_port": 47140, "client_port": 47142},
-                   arm_kwargs={"quest_port": 47160})
-    assert isinstance(m.hand_source, GloveOpenXRReceiver)
+                   arm_kwargs={"port": 47160, "tls": False})
+    assert isinstance(m.hand_source, AirGloveReceiver)
     m.hand_source.start()
     c = fake_client.instances[-1]
     assert c.args[1] == 47140 and c.args[3] == 47142
@@ -351,8 +339,7 @@ def test_glove_model_defaults_to_openxr_with_receiver_kwargs(fake_client):
     q = Rotation.from_euler("zyx", [0.4, 0.2, -0.3]).as_quat()
     c.wrists[Side.RIGHT] = WristFrame(q.astype(np.float32), 1, 1, 0.01)
     c.hands[Side.RIGHT] = _frame()
-    _send(m.arm_source._srv.dispatcher, "/controller/left/pos", 1.0, 2.0, 3.0)
-    _send(m.arm_source._srv.dispatcher, "/controller/left/rot", 0.0, 0.0, 0.0, 1.0)
+    m.arm_source._on_message({"left": {"pos": [1.0, 2.0, 3.0], "quat": [0.0, 0.0, 0.0, 1.0]}})
 
     data = m.get_data()["right"]
     assert data["fingers"].hand.xr_joints.shape == (26, 8)
@@ -366,7 +353,7 @@ def test_glove_model_defaults_to_openxr_with_receiver_kwargs(fake_client):
 
 
 def test_glove_model_rejects_unknown_hand_source():
-    assert set(HAND_SOURCES) == {"openxr"}
+    assert set(HAND_SOURCES) == {"airglove"}
     for legacy in ("angles", "robot", "nope"):
         with pytest.raises(ValueError):
             GloveModel(_FakeRobot(), hand_source=legacy)
@@ -426,7 +413,7 @@ def test_library_version_parse():
 def test_end_to_end_against_spine_replayer():
     replayer, capture = _core_files()
     port = _free_port_pair()
-    rx = GloveOpenXRReceiver(glove_port=port, client_port=port + 2)
+    rx = AirGloveReceiver(glove_port=port, client_port=port + 2)
     rx.start()
     proc = subprocess.Popen([sys.executable, replayer, capture, "--port", str(port + 2),
                              "--client-port", str(port)],
@@ -438,8 +425,8 @@ def test_end_to_end_against_spine_replayer():
             assert s is not None, f"{side}: 리플레이어 프레임 수신 실패"
             xj = s.hand.xr_joints
             assert xj.shape == (26, 8) and np.all(np.isfinite(xj))
-            assert np.allclose(xj[XR_WRIST_INDEX, 0:4], [0, 0, 0, 1], atol=1e-5)
-            assert np.allclose(xj[XR_WRIST_INDEX, 4:7], 0.0, atol=1e-6)
+            assert np.allclose(xj[XR_WRIST, 0:4], [0, 0, 0, 1], atol=1e-5)
+            assert np.allclose(xj[XR_WRIST, 4:7], 0.0, atol=1e-6)
             assert np.allclose(np.linalg.norm(xj[:, 0:4], axis=1), 1.0, atol=1e-4)
             tip = XR_JOINT_NAMES.index("middle_tip")
             assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
@@ -465,3 +452,22 @@ def test_end_to_end_against_spine_replayer():
             out, _ = proc.communicate()
     assert "haptics right: [0, 2, 3, 0, 0]" in out
     assert "haptics right: [0, 0, 0, 0, 0]" in out
+
+
+def test_unused_invalid_joint_keeps_frame_tracked(fake_client):
+    """palm 하나만 무효면 추적 중 — 관절별 유효성은 xr_valid 로 넘긴다."""
+    rx, c = _started(stale_timeout=0.2)
+    frame = _frame(age=0.01)
+    frame.valid[0] = False
+    c.hands[Side.RIGHT] = frame
+    s = rx.get("right")
+    assert s.tracked and not s.hand.xr_valid[0] and s.hand.xr_valid[1:].all()
+
+
+def test_invalid_used_joint_is_untracked(fake_client):
+    """리타게팅이 쓰는 21점 중 하나라도 무효면 추적 아님(손목 등)."""
+    rx, c = _started(stale_timeout=0.2)
+    frame = _frame(age=0.01)
+    frame.valid[1] = False  # 손목
+    c.hands[Side.RIGHT] = frame
+    assert rx.get("right").tracked is False

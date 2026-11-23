@@ -1,0 +1,6 @@
+# GeoRT 소프트 프롬프트 — orca 오른손 (robotPlatform plugins/robots/orca/retarget/geort_prompt.yaml 과 같은 모델)
+# model 을 빼면 $WHATSLAB_GEORT_MODEL, 그것도 없으면 패키지에 동봉한 모델(solvers/hand/geort/assets)을 쓴다.
+# 모델은 오른손용이다. 왼손 글러브 입력은 좌우 반전해서 푼다.
+name: orca_right            # 모델 안의 embodiment 이름
+side: right
+low_pass_alpha: 0.5

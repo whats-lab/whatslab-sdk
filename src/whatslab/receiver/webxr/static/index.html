@@ -25,7 +25,8 @@ let gl = null, glLayer = null, prog = null, uMVP = null, aPos = null, aColor = n
 let cubeBuf = null, axisBuf = null, gridBuf = null, gridCount = 0;
 let sent = 0, dropped = 0, lastReport = 0, passthrough = false;
 let stalledSince = 0, reconnects = 0, reconnectAt = 0;
-const STALL_MS = 1000, BUFFER_MAX = 8192, RETRY_MS = 500;
+// BUFFER_MAX: 양손 메시지 ≈4 KB — 짧은 Wi-Fi 지연(수십 ms)에 프레임을 버리지 않을 만큼(≈16 프레임)
+const STALL_MS = 1000, BUFFER_MAX = 65536, RETRY_MS = 500;
 
 function log(text, bad) { logEl.textContent = text; logEl.className = bad ? "bad" : ""; }
 
@@ -158,6 +159,21 @@ function draw(buf, mode, count, mvp) {
   gl.drawArrays(mode, 0, count);
 }
 
+/* ── 손 관절 ──────────────────────────────────────────────────────────── */
+/* WebXR XRHand 는 25관절을 표준 순서(wrist, thumb-metacarpal … pinky-finger-tip)로 돈다.
+   관절마다 [qx qy qz qw px py pz radius] (refSpace = local-floor). 하나라도 없으면 그 손은 보내지 않는다. */
+const R5 = (v) => Math.round(v * 1e5) / 1e5;
+function readHand(frame, hand) {
+  const out = [];
+  for (const space of hand.values()) {
+    const jp = frame.getJointPose(space, refSpace);
+    if (!jp) return null;
+    const p = jp.transform.position, o = jp.transform.orientation;
+    out.push(R5(o.x), R5(o.y), R5(o.z), R5(o.w), R5(p.x), R5(p.y), R5(p.z), R5(jp.radius));
+  }
+  return out.length === 25 * 8 ? out : null;
+}
+
 /* ── 프레임 루프 ─────────────────────────────────────────────────────── */
 function onFrame(t, frame) {
   session.requestAnimationFrame(onFrame);
@@ -168,9 +184,15 @@ function onFrame(t, frame) {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   const grips = [];
+  const hands = {};
   for (const src of session.inputSources) {
-    if (!src.gripSpace) continue;
     if (src.handedness !== "left" && src.handedness !== "right") continue;
+    if (src.hand) {
+      const joints = readHand(frame, src.hand);
+      if (joints) hands[src.handedness] = joints;
+      continue;                      // 손 추적 중인 입력은 컨트롤러로 보내지 않는다
+    }
+    if (!src.gripSpace) continue;
     const pose = frame.getPose(src.gripSpace, refSpace);
     if (pose) grips.push({ side: src.handedness, pose: pose });
   }
@@ -200,13 +222,14 @@ function onFrame(t, frame) {
     const p = g.pose.transform.position, o = g.pose.transform.orientation;
     msg[g.side] = { pos: [p.x, p.y, p.z], quat: [o.x, o.y, o.z, o.w] };
   }
+  if (Object.keys(hands).length) msg.hands = hands;
   ws.send(JSON.stringify(msg));
   sent++;
 
   if (t - lastReport > 500) {
     lastReport = t;
     log(`전송 ${sent}  드롭 ${dropped}  재연결 ${reconnects}  ` +
-        `컨트롤러 ${grips.length}` + (passthrough ? "  [패스스루]" : "  [VR]"));
+        `컨트롤러 ${grips.length}  손 ${Object.keys(hands).length}` + (passthrough ? "  [패스스루]" : "  [VR]"));
   }
 }
 
@@ -215,14 +238,14 @@ async function requestSession() {
   if (await navigator.xr.isSessionSupported("immersive-ar")) {
     try {
       const s = await navigator.xr.requestSession("immersive-ar",
-                                                  { requiredFeatures: ["local-floor"] });
+                                                  { requiredFeatures: ["local-floor"], optionalFeatures: ["hand-tracking"] });
       passthrough = true;
       return s;
     } catch (err) { /* AR 실패 시 VR 로 떨어진다 */ }
   }
   passthrough = false;
   return navigator.xr.requestSession("immersive-vr",
-                                     { requiredFeatures: ["local-floor"] });
+                                     { requiredFeatures: ["local-floor"], optionalFeatures: ["hand-tracking"] });
 }
 
 async function start() {
@@ -252,7 +275,7 @@ async function start() {
   refSpace = await session.requestReferenceSpace("local-floor");
   viewerSpace = await session.requestReferenceSpace("viewer");
   connect();
-  log(passthrough ? "패스스루 세션 — 컨트롤러에 초록 큐브가 보이면 정상"
+  log(passthrough ? "패스스루 세션 — 컨트롤러에 초록 큐브가 보이면 정상(손은 컨트롤러를 내려놓으면 추적된다)"
                   : "VR 세션(패스스루 불가) — 바닥 그리드 + 컨트롤러 큐브");
   session.requestAnimationFrame(onFrame);
 }

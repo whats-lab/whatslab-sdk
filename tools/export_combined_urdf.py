@@ -122,9 +122,9 @@ def export_combined_urdf(rig_path: str, out_path: str,
     parent_link = _resolve_parent_link(arm_root, rig.arm.ee_parent)
     hand_root_link = _find_root_link(hand_root)
 
-    T = rig.arm.ee_origin.T @ rig.attach.T @ rig.hand.axis_align.T
-    xyz = T[:3, 3]
-    rpy = Rotation.from_matrix(T[:3, :3]).as_euler("xyz")
+    tf = rig.arm.ee_origin.transform @ rig.attach.transform @ rig.hand.axis_align.transform
+    xyz = tf[:3, 3]
+    rpy = Rotation.from_matrix(tf[:3, :3]).as_euler("xyz")
 
     arm_names = {e.get("name") for e in arm_root if e.tag in ("link", "joint")}
     merged = 0

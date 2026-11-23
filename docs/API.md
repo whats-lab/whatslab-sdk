@@ -20,9 +20,9 @@ from whatslab.teleop import QuestModel, GloveModel
 | `TeleopModel(robot)` | 베이스 클래스. 소스 리시버 + IK + 리타게팅 + 캘리브를 조립해 `get_q()` 를 낸다. `robot` = rig yaml 경로(또는 `[left, right]`, `{side: rig}`). 유저는 서브클래싱해 자기 하드웨어 조합을 정의. |
 | `TeleopModel.sides` | `{side: SideModel}` — **side별 상태의 유일한 소유자.** 항상 `SIDES` 전부를 담는다(로봇 없는 side 는 `robot=None`). |
 | `SideModel` | 한 side 의 전부: `side`·`robot`·`ik`·`retarget`·`calib`·`safety` + 이 틱의 `raw_target`·`target`·`q`. 유상태 컴포넌트가 이 안에만 있으므로 side 간 공유가 구조적으로 불가능하다. `solve`, `apply_calib`, `filter`, `sync_ik`, `reseed`. |
-| `QuestModel(robot)` | 프리셋: Quest 핸드트래킹(손목→팔, 손가락→손). |
-| `GloveModel(robot, hand_source="openxr", arm_source="quest", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 컨트롤러, 회전=글러브 손목 — 손목이 없으면 컨트롤러 회전, `"openxr"` 소스는 손목을 내지 않으므로 항상 컨트롤러 회전), 손=글러브. 햅틱 지원. `hand_source` = `HAND_SOURCES` 키 — `"openxr"`(기본, `GloveOpenXRReceiver`) / `"angles"`·`"robot"`(레거시, Spine ≤ 2.3.1). `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`). |
-| `HandModel(hand_config="dex:orca", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_config` 가 `dex:<이름>` 이면 OpenXR `xr_joints` → `XRHandRetargeter`, 그 밖이면 레거시 관절각 → ONNX. `hand_source` 를 안 주면 `GloveOpenXRReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. |
+| `QuestModel(robot, hand_kwargs=None)` | 프리셋: Quest **맨손**(헤드셋 브라우저 WebXR 핸드트래킹) — 손목 → 팔 IK 목표, 손 26관절 → 손 리타게팅(rig `retarget:`). `hand_kwargs` 는 `WebXRHandReceiver` 인자. |
+| `GloveModel(robot, hand_source="airglove", arm_source="webxr", arm_kwargs=None, hand_kwargs=None)` | 프리셋: 팔=컨트롤러 IK(위치=반대손 WebXR 컨트롤러, 회전=글러브 손목 — `AirGloveReceiver` 는 손목 자세를 내지 않으므로 컨트롤러 회전), 손=AirGlove. 햅틱 지원. `HAND_SOURCES` = `{"airglove"}`, `ARM_SOURCES` = `{"webxr"}`. `hand_kwargs`/`arm_kwargs` 는 리시버 생성자 인자(예: `{"glove_port": 4040}`, `{"port": 8443, "tls": True}`). |
+| `HandModel(hand_config="dex:orca", side="right", urdf_root=None, hand_source=None, hand_kwargs=None, **kwargs)` | 프리셋: 손 리타게팅 단독(팔 IK 없음). `hand_config` = `dex:<손>`(DexPilot) 또는 `geort:<설정>`(GeoRT). `urdf_root` 는 dex 만 쓴다(geort 에서는 무시). `hand_source` 를 안 주면 `AirGloveReceiver(**hand_kwargs)`. 인스턴스와 `hand_kwargs` 를 같이 주면 `ValueError`. 남은 `kwargs` 는 `HandRetargetController` 로 간다. rig 가 없으므로 geort 출력은 학습 모델 범위로만 자른다 — 실제 손 URDF 범위로도 자르려면 `robot_limits={관절: (lo, hi)}` 를 넘긴다(rig 경로는 `RobotModel` 이 자동으로 넘긴다). |
 | `RobotArmIK(...)` | 팔 IK 컴포넌트. 정준 목표 4x4 → 팔 관절각. 프레임 추종은 rig 백엔드의 `solve()`, 전역 재탐색(`solve_robust`)은 **첫 타깃(`_cold_start`)과 `reseed()`** 에서만(후보 하나가 수 ms라 매 프레임 불가). 튜닝은 `cold_*` 속성. |
 | `ArmCalibration(reach_max, input_reach, enabled=True)` | yaw 정렬 + 캘리브 원점(`p0`) + reach 스케일 소유. `enabled=False` 면 리시버 좌표를 그대로 통과시킨다(rig `calibration.enabled`). |
 
@@ -30,39 +30,41 @@ from whatslab.teleop import QuestModel, GloveModel
 
 | 메서드 | 반환 | 설명 |
 |---|---|---|
-| `start()` / `stop()` | — | 소스 리시버 수신 시작/정지(대상은 arm/hand source 에서 자동 도출). |
+| `start()` / `stop()` | — | 소스 리시버 수신 시작/정지(대상은 arm/hand source 에서 자동 도출). 하나가 시작에 실패하면 그 앞에서 시작한 리시버를 멈추고 예외를 올린다. 리시버 인스턴스를 두 모델이 함께 쓰는 것은 지원하지 않는다. |
 | `_get_raw_target()` | `Dict[str, Optional[Pose]]` | **유일한 추상 훅.** 어느 소스를 팔 EE 목표로 쓸지와 그 프레임을 정한다. 서브클래스가 구현할 것은 이것뿐이다. |
 | `get_data()` | `Dict[str, dict]` | `_get_raw_target()` 결과 + 리시버 값을 역할별로 모은다(arm_pose/fingers/q/tracked). 보통 오버라이드하지 않는다. |
+| `samples()` | `Dict[str, (arm, hand)]` | 이번 틱에 side 마다 한 번 읽은 `InputSample` 쌍. `_get_raw_target()` 은 수신기를 직접 `get()` 하지 말고 이것을 쓴다(팔·손 판정 시각을 맞춘다). |
 | `solve(data)` | `Dict[str, Dict[str, float]]` | data → IK/리타게팅 → side별 `{joint: rad}`. |
 | `get_q()` | `Dict[str, Dict[str, float]]` | 매 호출 get_data→calib→solve→safety 를 엮어 `{side: {joint: rad}}` 반환. `sides[s].q` 에도 남는다. |
 | `calibrate_yaw()` | `Dict[str, bool]` | 손목 yaw 정렬 스냅샷(즉시). side별 성공 여부. |
-| `calibrate_reach(duration=8.0, rate_hz=60.0)` | `Dict[str, bool]` | duration 초 폴링해 최대 도달반경 측정→calib 등록(블로킹). |
+| `calibrate_reach(duration=8.0, rate_hz=60.0, persist=False)` | `Dict[str, float]` | duration 초 폴링해 side 별 최대 도달반경(m, 측정 못 하면 0.0) 측정→calib 등록(블로킹). `persist` 면 rig 캘리브 파일에도 저장. |
 | `set_reach(input_reach)` | `Dict[str, bool]` | reach 스케일 스칼라를 직접 주입. |
 | `send_feedback(data)` | — | 역방향 피드백(기본 no-op; `GloveModel` 이 햅틱으로 오버라이드). |
 
 ## whatslab.receiver — 입력 소스 (텔레옵 무관, 단독 사용 가능)
 
 ```python
-from whatslab.receiver.quest.controller import QuestControllerReceiver
+from whatslab.receiver import AirGloveReceiver, WebXRControllerReceiver, WebXRHandReceiver
 ```
 
 `side` = 물리적 기기의 좌/우(채널 재해석 금지). 출력은 항상 정준 프레임
-(x=앞, z=위, 오른손계). `python-osc` 는 `start()` 에서 lazy import.
+(x=앞, z=위, 오른손계). Quest 는 전용 앱 없이 **헤드셋 브라우저 WebXR** 로만 받는다(0.5.0 에서
+PoseDataTracker 앱·OSC 수신기 제거).
 
 | 클래스 | `get(side)` → | 설명 |
 |---|---|---|
-| `QuestControllerReceiver` | `InputSample(controller=Pose)` | Quest 컨트롤러 6D 위치/자세(OSC/UDP, 포트 9000). `connected(side)`. |
-| `WebXRControllerReceiver` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러 6D(WebSocket, 포트 8443). OSC 경로와 **병행** 가능. HMD 는 회전뿐 아니라 **위치도** 온다. `connected(side)`, `url`. |
-| `QuestHandReceiver` | `InputSample(hand=HandPose)` | Quest 핸드트래킹(손목 6D + 손가락). `connected(side)`. |
-| `GloveOpenXRReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2, pair=1)` | `InputSample(hand=HandPose(wrist=None, xr_joints=(26,8)))` | **현재 Spine**(프로토콜 3) 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `raw_wrist(side)`, `spine_protocol()`, `running`, `frame(side) -> GloveFrame`(seq·수신 시각·age, 신선도 필터 없음), `wrist_frame(side) -> GloveWrist`, `device_status()`, `alarms()`, `stats()`. |
+| `WebXRControllerReceiver(port=8443, pos_frame="hmd_yaw", pos_offset=(0,0,0), stale_timeout=0.2, tls=True)` | `InputSample(controller=Pose, hmd=Pose)` | 브라우저 WebXR 컨트롤러(grip) 6D, WebSocket. HMD 는 위치·회전 모두 온다. `stale_timeout` 초 동안 grip 이 안 오면 `tracked=False`(0 이면 끄기). 위치·방위 모두 `pos_frame` 기준. `pos_frame`: `hmd_yaw`(머리 위치 원점 + 머리 yaw 기준, 기본) / `hmd` / `room`. `connected(side)`, `url`. |
+| `WebXRHandReceiver(port=8443, pos_frame="hmd_yaw", stale_timeout=0.2, tls=True)` | `InputSample(hand=HandPose(wrist=Pose, xr_joints=(26,8)), hmd=Pose)` | 브라우저 WebXR **핸드트래킹**. WebXR 25관절(OpenXR 26 에서 palm 만 빠진 같은 순서·축)을 받아 palm 을 합성(중지 중수골·근위 중점, 방향 = 중수골 — Spine 과 같은 규칙)하고 손목 기준으로 바꾼다. 손목 자세는 정준 프레임·`pos_frame` 기준. 컨트롤러 수신기와 **같은 포트를 함께 쓴다**(서버가 메시지를 모든 수신기에 준다). `webxr_hand_to_openxr26(joints25)` 로 변환만 쓸 수도 있다. |
+| `AirGloveReceiver(glove_port=4040, listen_ip="127.0.0.1", target_ip="127.0.0.1", client_port=4042, stale_timeout=0.2, pair=1)` | `InputSample(hand=HandPose(wrist=None, xr_joints=(26,8)))` | **현재 Spine**(프로토콜 3) 글러브 수신(아래 「OpenXR 글러브」). `airglove_client.Client` 를 감싼다. `connected(side)`, `send_haptic(side, values)`, `raw_wrist(side)`, `spine_protocol()`, `running`, `frame(side) -> GloveFrame`(seq·수신 시각·age, 신선도 필터 없음), `wrist_frame(side) -> GloveWrist`, `device_status()`, `alarms()`, `stats()`. |
 
 공통: `start()`, `stop()`, `get(side) -> InputSample`.
 
-### OpenXR 글러브 (`GloveOpenXRReceiver`)
+### OpenXR 글러브 (`AirGloveReceiver`)
 
 ```python
-from whatslab.receiver.glove import GloveOpenXRReceiver, XR_JOINT_NAMES
-rx = GloveOpenXRReceiver()      # Spine → 127.0.0.1:4040 수신, 요청·햅틱 → 127.0.0.1:4042
+from whatslab.core.constants import XR_JOINT_NAMES
+from whatslab.receiver.glove import AirGloveReceiver
+rx = AirGloveReceiver()      # Spine → 127.0.0.1:4040 수신, 요청·햅틱 → 127.0.0.1:4042
 rx.start()                      # 여기서 airglove_client.Client 를 만든다(포트 독점 바인드)
 s = rx.get("right")
 s.hand.xr_joints                # (26, 8) [qx qy qz qw px py pz radius], 손목 공간
@@ -84,7 +86,7 @@ Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보낸다)이고 �
   두 번째 바인드는 `airglove_client.AirGloveError`.
 - `xr_joints` — 26 OpenXR `XrHandJointEXT` 관절(`XR_JOINT_NAMES`: palm, wrist, thumb
   metacarpal..tip, index..little metacarpal..tip)을 받은 그대로: 손목 공간(손목 = 단위,
-  `XR_WRIST_INDEX` = 1), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, X = Y×Z, 양손 같은
+  `XR_WRIST` = 1), OpenXR 관절 축(−Z = 뼈 따라 손끝, +Y = 손등, X = Y×Z, 양손 같은
   규칙), 미터. palm 은 Spine 이 합성한다. OpenXR[i+1] == WebXR[i]. **정준 변환하지 않는다.**
 - `wrist` — **항상 `None`.** 프로토콜 3 의 손목(18/19)은 SDK 의 world 손목 자세가 아니라
   손등 IMU 의 raw 쿼터니언을 Spine 이 `[y, x, z, -w]` 로 재배열한 값이다. 캘리브·heading
@@ -94,7 +96,8 @@ Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보낸다)이고 �
   그대로, 정규화·재배열 없음) 또는 `None`(없음·`stale_timeout` 넘음)으로만 낸다.
   `openxr_quat_to_canonical` 은 OpenXR 쿼터니언용 변환으로 남아 있다.
 - `tracked` = 프레임이 있고 `age_s < stale_timeout`(0 이하면 나이 검사 없음)이고
-  26관절이 전부 `valid`. 오래된 프레임도 `xr_joints` 는 그대로 싣고 `tracked=False` 만 낸다.
+  리타게팅이 쓰는 21점(`OPENXR26_TO_HAND21`)이 모두 `valid`(palm·검지~소지 중수골은 안 본다). 관절별 유효성은
+  `HandPose.xr_valid` 로 온다. 오래된 프레임도 `xr_joints` 는 그대로 싣고 `tracked=False` 만 낸다.
   `age_s` 는 클라이언트가 받은 뒤 지난 시간이다 — 프로토콜 3 에는 Spine 시각·순번이 없고
   `seq`·`sender_time_us` 는 클라이언트가 센 값·받은 시각이라 신선도 판단에 쓰지 않는다.
   `timestamp` = `time.monotonic() - age_s`.
@@ -116,7 +119,9 @@ print(rx.url)                            # https://192.168.1.88:8443/
 ```
 
 헤드셋 브라우저로 `rx.url` 을 열고 **VR 시작**을 누르면 매 XR 프레임마다
-`gripSpace` 포즈(+ `getViewerPose`)가 JSON 으로 올라온다.
+`gripSpace` 포즈(+ `getViewerPose`)가 JSON 으로 올라온다. 세션은 `hand-tracking` 을 선택 기능으로
+요청하므로, 컨트롤러를 내려놓으면 손 관절 25개(`getJointPose`, 자세 + 반지름)가 `hands` 로 같이 온다
+(`{"hmd": …, "left": {pos, quat}, "hands": {"right": [25×8]}}`).
 
 - **패스스루 + 컨트롤러 마커.** 세션은 `immersive-ar` 를 먼저 시도하고(Quest 패스스루,
   `alpha-blend`) 안 되면 `immersive-vr` 로 떨어진다. 컨트롤러 그립마다 초록 큐브와
@@ -140,22 +145,22 @@ print(rx.url)                            # https://192.168.1.88:8443/
 
   | `pos_frame` | 계산 | 용도 |
   |---|---|---|
-  | `hmd_yaw` (기본) | `Rz(−yaw_hmd)·(p_ctrl − p_hmd)` | 회전의 `_head_relative` 와 같은 규약 |
+  | `hmd_yaw` (기본) | `Rz(−yaw_hmd)·(p_ctrl − p_hmd)` | 방위의 `head_yaw_relative_quat` 와 같은 규약. `yaw_hmd` = 머리 앞 축의 수평 방향(정확히 위·아래를 보면 위 축) |
   | `hmd` | `p_ctrl − p_hmd` | 머리 위치만 빼고 방 축은 유지 |
   | `room` | 변환 없음 | 원시 `local-floor` — 진단용 |
 
   HMD 신호가 없으면 자동으로 원시값으로 떨어진다. 실측 비교(머리 `[1,1.6,2]`,
   컨트롤러 `[1.3,1.2,1.5]`): `room` 이면 `|p| = 2.319` 로 `reach_max 0.9204` 에
   걸려 클램프되고, `hmd`/`hmd_yaw` 는 `0.707` 로 도달 가능하다.
-- 프레임은 **WebXR 프레임**(오른손계, +Y 위, −Z 앞)으로 오고 `WebXRReceiverBase._M`
-  이 정준으로 보낸다. 이 행렬은 `receiver/vive.py` 의 OpenVR 변환과 같다 —
+- 프레임은 **WebXR 프레임**(오른손계, +Y 위, −Z 앞)으로 오고 `receiver.base.Y_UP_RH_TO_CANONICAL`
+  (`to_canonical_pose`)이 정준으로 보낸다. 이 행렬은 `receiver/vive.py` 의 OpenVR 변환과 같다 —
   두 API 의 축 관례가 같기 때문이다.
 - 전송은 WebSocket(TCP)이라 UDP 처럼 늦은 프레임을 버리지 않는다. 브라우저 쪽에서
   `bufferedAmount` 가 밀리면 그 프레임을 **보내지 않고 버린다**(지연 누적 방지).
 - 의존성이 없다. WebSocket 핸드셰이크·프레임 디코딩은 표준 라이브러리로 구현했다
   (`receiver/webxr/ws_server.py`) — 새 extra 가 필요 없다.
-- **핸드트래킹은 제공하지 않는다.** 손 리타게팅 입력은 사람 손 URDF 관절각이고
-  WebXR `XRHand` 는 키포인트라, 역산 경로가 없다(`spherical_fk.py` 와 함께 제거됨).
+- 핸드트래킹은 `WebXRHandReceiver` 가 받는다(위 표) — WebXR 25관절을 OpenXR 26관절로 바꿔 글러브와 같은
+  dex·geort 리타게팅 입력(`HandPose.xr_joints`)으로 준다.
 
 ## whatslab.robot — 팔 기구학 모델 + config 로더
 
@@ -164,7 +169,7 @@ print(rx.url)                            # https://192.168.1.88:8443/
 | `RobotModel(rig)` | `rig` 는 `RigConfig` 또는 rig yaml 경로(str/PathLike). 경로면 `load_rig` 로 읽는다. |
 | `RobotModel.ee_pose(q_arm)` | FK: 관절각 → EE 4x4. |
 | `RobotModel.to_base(T)` / `to_canonical(T)` | 정준↔베이스 프레임 변환. |
-| `RobotModel.clamp_reach(T_base)` | 베이스 목표를 `reach_max` 구로 클램프(안전망). 구현은 `robot.model.clamp_reach(T_base, reach_max)` 모듈 함수 한 곳. |
+| `RobotModel.clamp_reach(tf_base)` | 베이스 목표를 `reach_max` 구로 클램프(안전망). 구현은 `robot.model.clamp_reach(tf_base, reach_max)` 모듈 함수 한 곳. |
 | `RobotModel.sync_state(q_arm)` | IK 웜스타트용 현재 상태 갱신. |
 | `RobotModel.make_hand_controller(config_name, side)` | 손 리타게팅 컨트롤러 생성. |
 | `load_robot(path)` / `load_rig(path)` | yaml → `RobotSpec` / `RigConfig`. |
@@ -194,26 +199,25 @@ print(rx.url)                            # https://192.168.1.88:8443/
 from whatslab.solvers.hand import HandRetargetController, XRHandRetargeter
 ```
 
-엔진은 입력에 따라 둘이다. `config_name`(rig `retarget:`)이 `dex:` 로 시작하면 고른다.
+엔진은 둘이고 입력은 같다 — `HandPose.xr_joints` `(26, 8)`(OpenXR 26관절). `config_name`(rig `retarget:`)의
+접두사로 고른다. 그 밖의 이름은 `ValueError`(관절각 ONNX 엔진 `UniRetargeter` 는 0.5.0 에서 제거).
 
-- **`dex:<이름>` — 현재 글러브(OpenXR).** 입력은 `HandPose.xr_joints` `(26, 8)`.
-  dex-retargeting 0.4.6 의 DexPilot(손끝·손가락 사이 벡터 + 핀치 투영)을 쓴다.
-- **그 밖 — 레거시 관절각.** 입력은 **사람 손 URDF 관절각** — `HandPose.joint_angles`
-  (이름→rad, 옛 Spine 의 `/{side}/joint_angles/get`). 엔진은 학습된 통합 ONNX 모델 하나
-  (`assets/uni_all.onnx`)로, 사람 FK·인코더·헤드·관절범위 역정규화가 전부 그래프
-  안에 있다. 로봇 의존부(관절 기술자·범위·사이드 부호)는 `assets/uni_tables.npz`
-  표에서 입력으로 들어간다 — 로봇이 늘어도 모델은 안 바뀐다.
+- **`dex:<이름>`** — dex-retargeting 0.4.6 의 DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). URDF 만 있으면
+  되고 `hand` extra(pinocchio·dex-retargeting·torch)가 필요하다.
+- **`geort:<이름>`** — GeoRT 소프트 프롬프트 신경망(numpy 만). `configs/geort/<이름>.yaml` 또는 yaml 경로.
+  학습된 모델 npz 가 필요하다(아래 `whatslab.solvers.hand.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
+  오른손 모델(동봉 전부)은 왼손 사람 입력을 반전해 풀 수 있지만 왼손 로봇 손은 구동하지 못한다
+  (rig 에서 `GEORT_LIMITS_UNMATCHED`).
 
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargetController(hand_type, config_name="base_hand", urdf_root=None, **kwargs)` | 손 리타게팅 컨트롤러. `compute(InputSample) -> HandCommand`. `xr_input`(bool) = dex 엔진인가. 엔진 입력(`xr_joints` / `joint_angles`)이 없거나 `tracked=False` 면 직전 명령 유지(dex 는 처음에 0 을 관절범위로 자른 값). `kwargs` 는 엔진 생성자로 간다 — dex 는 `max_evals` 와 dex-retargeting `RetargetingConfig` 필드만 받고 그 밖은 `TypeError`(rig `hand_solver:` 는 ONNX 전용이라 dex 와 같이 쓰면 `RobotModel` 이 `ValueError`). |
+| `HandRetargetController(hand_type, config_name="dex:orca", urdf_root=None, robot_limits=None, **kwargs)` | 손 리타게팅 컨트롤러(`HandController`). 엔진(`XRHandRetargeter` / `GeortHandSolver`)은 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 못 풀면(dex `xr_input.HandInputError`·geort `GeortInputError` — 다른 예외는 그대로 올라온다) 직전 명령 유지(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `robot_side` = 엔진이 내는 관절각의 로봇 손 side(dex 는 설정 side, geort 는 모델 side — 오른손 모델은 왼손 사람 입력에도 `"right"`). `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_error` 는 지금 프레임 기준(추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시, `robot_limits` 는 geort 만 쓴다(rig 경로에서는 `RobotModel` 이 손 URDF 범위를 넘긴다). 나머지 `kwargs` 는 엔진으로 간다. |
+| `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
 | `XRHandRetargeter(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `compute(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `last_keypoints`, `scaling_factor`, `reset()`. 손당 프레임 p50 1.0~2.0ms, p99 약 4ms(아래 측정). |
 | `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 dex-retargeting 이 모르는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
 | `xr_to_mano(xr_joints)` | OpenXR 26 → MANO 21 손목 상대 위치. 인덱스 `[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`, 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`(양손 같음 — 손목 공간 위치를 손목 회전으로 한 번 더 풀어 손목 자세와 무관하다). |
 | `mirror_xr_joints(xr_joints)` | 손목 공간 x 축 거울상(왼손 ↔ 오른손). 두 번 하면 원래대로. |
-| `HumanHandFK(side, urdf_path=None)` | 사람 손 URDF FK — 지금은 **viz 전용**이다(추론 경로에 FK 가 없다). `points(angles)` = 손가락별 키포인트 4개 + `palm`, `neutral_points()`, `q_from_named(이름→rad)`. `joint_names` = URDF revolute 관절(base 프로파일 21개). 링크명으로 참조하고 손끝은 `{side}_sensor_{finger}_distal` → `{side}_{finger}_tip` 순으로 찾는다. |
-| `UniRetargeter(hand_type, config_name, threads=1)` | 레거시 관절각용 통합 ONNX 엔진. `compute(dict 이름→rad) -> q_robot(rad)`. CPU 1스레드 프레임당 약 1.1ms(900Hz+). 담당 로봇: orca / allegro / tesollo / robotis / human(base_hand), 좌우 모두 한 그래프. 표에 없는 손이면 가능한 목록과 함께 에러. |
 
 ### 손 리타게팅 config (configs/hands)
 
@@ -223,7 +227,7 @@ from whatslab.solvers.hand import HandRetargetController, XRHandRetargeter
 |---|---|---|---|
 | `orca` | `orca_hand/urdf/{side}.urdf` | Carpals → `{side}_sensor_*_distal` ×5 | 손목 관절 0 고정 |
 | `dg5f` | `tesollo_dg5f/dg5f_{side}.urdf` | `?l_dg_palm` → `?l_dg_[1-5]_tip` | PIP·DIP −5..90° |
-| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` | `hx5_d20_{side}_base` → `{side}_sensor_*_distal` ×5 | |
+| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` | `hx5_d20_{side}_base` → `finger_end_{r,l}_link[1-5]` ×5 | URDF 에 센서 링크가 없어 손가락 끝 링크를 쓴다 |
 | `allegro` | `allegro_hand/allegro_hand_{side}.urdf` | `wrist` → `link_{15,11,7,3}.0_tip`(왼손) / `link_{15,3,7,11}.0_tip`(오른손) | 손가락 4개, 16축 |
 | `leap` | `leap_hand/leap_hand_{side}.urdf` | `base` → `{thumb,index,middle,ring}_tip_head` | 손가락 4개, 16축 |
 | `ability` | `ability_hand/ability_hand_{side}.urdf` | `base_link` → `{thumb,index,middle,ring,pinky}_tip` | 구동 6축, 손가락 q2 는 mimic |
@@ -293,30 +297,46 @@ glove 에서 allegro(12.1~12.4mm)·schunk(12.0~12.7mm)가 기준을 넘는다 �
 leap 의 뼈 방향각 30~35° 는 링크 원점이 손가락 축에서 벗어나 있는 탓이 크다(도구가 관절 원점으로
 뼈를 잡는다). ability·schunk 의 bone/limit 은 구동 관절 + mimic 관절 기준이다.
 
-지원하는 손(레거시 ONNX) — `config_name` 에 넣는 값(괄호는 별칭)과 `dexhand-description` 안의 URDF:
+## whatslab.solvers.hand.geort — GeoRT 소프트 프롬프트
 
-| 손 | `config_name` | URDF |
-|---|---|---|
-| 사람 기준 손 | `human` (`base_hand`) | `base_hand/urdf/{side}.urdf` |
-| ORCA Hand | `orca` (`orca_hand`) | `orca_hand/urdf/{side}.urdf` |
-| Allegro Hand | `allegro` (`allegro_hand`) | `allegro_hand/allegro_hand_{side}.urdf` |
-| Tesollo DG-5F | `tesollo` (`tesollo_dg5f`) | `tesollo_dg5f/dg5f_{side}.urdf` |
-| ROBOTIS HX5-D20 | `robotis` (`robotis_hx5_d20`) | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` |
+```python
+from whatslab.solvers.hand import HandRetargetController
+ctrl = HandRetargetController("right", "geort:orca_right")     # 텔레옵용 (직전 값 유지·초기화 포함)
 
-별칭은 `uni_retargeter._ALIAS`, URDF 경로 규칙은 `_URDF_STEM` 이 정본이다.
-`urdf_path` 는 `<root>/<sub>/urdf/<stem>.urdf` → `<root>/<sub>/<stem>.urdf` 순으로 찾고
-없으면 `None` 을 낸다(pinocchio 없이 경로만 계산).
+from whatslab.solvers.hand.geort import GeortHandSolver, masked_keypoints
+solver = GeortHandSolver.from_config("geort/orca_right.yaml", human_side="right")
+q = solver.solve(masked_keypoints(xr_joints, xr_valid))       # 계산만
+```
 
-새 로봇 손 온보딩: retarget_net 의 `tools/onboard_urdf.py` 가 URDF 하나에서 표를
-뽑는다(센서 프레임 계약 필요). 학습에 없던 손은 표만으로는 성능이 안 나온다 —
-몇백 스텝 미세조정 후 그래프를 재수출한다.
+robotPlatform 에서 학습한 GeoRT 소프트 프롬프트 모델(여러 손이 공유하는 신경망 + 손별 프롬프트·출력층)의
+numpy 추론이다. robotPlatform 은 0.5.0 부터 이 모듈을 정본으로 쓴다(학습 `tools/bake_geort_prompt.py` 는
+robotPlatform 에 있다). 실제 Spine 캡처 794프레임에서 robotPlatform 원본과 출력 차이 최대 1.2e-14 rad.
+
+| 심볼 | 설명 |
+|---|---|
+| `GeortHandSolver.from_config(path, human_side="right", robot_limits=None, low_pass_alpha=None)` | 설정 YAML 로 솔버를 만든다. `robot_limits`({관절: (lo, hi)})를 주면 출력 범위를 그만큼 더 좁힌다(겹치지 않으면 `GEORT_LIMITS_DISJOINT`). |
+| `GeortHandSolver(embodiment, human_side, robot_limits, low_pass_alpha)` | 26×8 → q (`solve`). 계산만 한다 — 직전 값 유지·추적 끊김 처리는 `HandRetargetController`. 모델 손과 반대쪽 입력은 좌우 반전해 푼다. 실제로 쓰는 21점의 위치가 유한하지 않으면 `GeortInputError`(`masked_keypoints` 가 무효 관절을 NaN 으로 바꾼다 — palm·중수골은 안 쓴다). `reset()`, `joint_names`, `joint_limits`. |
+| `read_config(path)` | 설정 YAML: `name`(모델 안 손 이름), `side`, `model`(생략 시 `$WHATSLAB_GEORT_MODEL` → 패키지 동봉 `solvers/hand/geort/assets/geort_prompt.npz`), `low_pass_alpha`. 설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준. |
+| `load_prompt_model(path)` | npz(`geort-prompt-v1` / `v2`) → `PromptModel`(`embodiments`). |
+| `keypoints` 모듈 | OpenXR 26 → MediaPipe 21 → `openxr-wrist-kabsch-v2` 입력 좌표계(`InputFrame`, `canonical_points`, `to_geort` …). |
+| `GeortConfigError` / `GeortInputError` | `code`·`cause`·`remedy` 를 가진 `ValueError`. |
+
+동봉 설정(`configs/geort/`): `orca_right`(ORCA 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
+dexhand-description URDF 와 같다(테스트로 확인). 모델에는 Allegro·DG-5F-S 프롬프트도 있지만 관절 이름이 아직
+dexhand-description 에 없는 URDF 기준이다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
+
+공유 상수는 `whatslab.core.constants` 가 단일 출처다 — `SIDES`, `FINGER_COUNT`, OpenXR 26관절
+(`XR_JOINT_NAMES`·`XR_JOINT_COUNT`·`XR_JOINT_FIELDS`·`XR_WRIST`), 사람 손 21점(`OPENXR26_TO_HAND21`,
+`HAND21_WRIST`·`HAND21_*_MCP`·`HAND21_TIPS`), `OPENXR_TO_HAND21_AXES`. 한 모듈만 쓰는 상수는 그 모듈에 두고,
+두 곳 이상이 쓰면 여기로 옮긴다. 기기 좌표계 행렬은 `whatslab.receiver.base`
+(`Y_UP_RH_TO_CANONICAL`, `UNITY_TO_CANONICAL`).
 
 | 심볼 | 설명 |
 |---|---|
 | `types.Pose` | 위치 + quaternion(xyzw). |
-| `types.HandPose` | 손목 6D + `joint_angles`(관절명→rad, 손 리타게팅 입력) + `joint_rot`(관절명→회전, quat 전송용) + `xr_joints`(`Optional[np.ndarray]` `(26,8)`, OpenXR 글러브 관절, 손목 공간 — `XRHandRetargeter` 입력). |
+| `types.HandPose` | `wrist`(Pose, 없을 수 있음) + `xr_joints`(`(26,8)` OpenXR 26관절, 손목 공간 — 손 리타게팅 입력) + `xr_valid`(`(26,)` bool) + `tracked`·`timestamp`. 0.5.0 에서 `joint_angles`·`joint_rot`·`to/from_sensor_array` 와 `HUMAN_HAND`·`SENSED_JOINTS`·`JointSpec` 을 지웠다. |
 | `types.InputSample` | 리시버 출력 컨테이너(controller/hand/q/hmd). |
 | `types.HandCommand` | 리타게팅 출력(로봇 손 관절각). |
 | `types.JointSpec` | 관절 이름/한계 스펙. |
@@ -347,8 +367,7 @@ from whatslab.data import LeRobotRecorder
 |---|---|
 | `URDFScene` | URDF 하나를 메쉬(STL)/스켈레톤 자동 판별 렌더 + 관절 구동. `set_root`, `q_from_named`, `fk`, `frame_pose`. |
 | `RobotArmViz` | 팔+손 URDF 메쉬를 solver q 로 구동 + 목표 EE 프레임. `start`, `update`. |
-| `HandViz(urdf, joint_names, root_pose=None)` | 손 URDF 하나를 q 로 구동. 사람 손이든 로봇 손이든 같은 클래스다(상속 없음) — 손을 세우려면 `root_pose` 에 `upright_root`/`human_upright_root` 결과를 넘긴다. |
-| `upright_root(palm_origin, palm_R)` / `human_upright_root(fk, offset=None)` | 팜 프레임을 화면 기준으로 세우는 루트 4x4. `offset` 으로 옆에 띄운다. |
+| `HandViz(urdf, joint_names, root_pose=None)` | 로봇 손 URDF 하나를 q 로 구동한다(리타게팅 결과 확인). 사람 손 시각화는 Spine 이 맡는다. |
 
 ## whatslab.safety — 운동학 안전 유틸 (dep-light)
 
@@ -363,10 +382,10 @@ from whatslab.data import LeRobotRecorder
 
 ## 알려진 결합·제약
 
-- **`receiver.quest.CONTROLLER_POS_OFFSET`** (`[0.02, -0.04, 0.1]`) 는 컨트롤러 마운트
-  편차 보정으로 리시버가 `controller.pos` 에 가산한다(외부 설정 불가). **Quest 앱
-  (PoseDataTracker)의 같은 이름 상수와 값이 일치해야 한다** — 저장소가 달라 자동
-  검증이 안 되므로 앱을 올릴 때 함께 확인한다.
+- **WebXR 손목 → 팔 EE 방위(`QuestModel`)는 실기 재확인이 필요하다.** 예전 Quest 앱은 Unity OVR 손목 뼈 축을
+  보냈고, WebXR 손목 관절은 OpenXR 축(−Z 손끝, +Y 손등)이다. rig 의 `ee_align` 은 앱 시절 값이므로 맨손 팔
+  텔레옵을 쓸 때 방위를 다시 맞춰야 할 수 있다. 앱 시절의 컨트롤러 마운트 보정(`CONTROLLER_POS_OFFSET`)은
+  WebXR grip 자세에 해당하지 않아 없앴다 — 필요하면 `WebXRControllerReceiver(pos_offset=…)`.
 - **reach 스케일은 정준 원점 기준, `reach_max` 는 로봇 베이스 기준**이다. 둘의 중심이
   `mount.xyz` 만큼 떨어져 있으면 최대로 뻗은 목표가 `clamp_reach` 에 잘린다
   (`mount.xyz = [0, -0.15, -0.3]`, 오프셋 0.335m 에서 최악 방향 초과 335mm — 실기

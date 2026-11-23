@@ -26,12 +26,13 @@ def test_backend_cls_selection():
 
 def test_arm_ik_requires_pinocchio():
     if importlib.util.find_spec("pinocchio") is None:
+        import whatslab.solvers  # 지연 import — 팔 심볼을 쓸 때 pinocchio 를 요구한다
         with pytest.raises(ModuleNotFoundError):
-            import whatslab.solvers  # noqa: F401
+            whatslab.solvers.ArmIK
         pytest.skip("pinocchio 미설치 — solve 검증 생략")
-    import whatslab.solvers as solvers
-    assert solvers.ArmIK is not None
-    assert solvers.backend_cls("dls") is solvers.ArmIK
+    import whatslab.solvers
+    assert whatslab.solvers.ArmIK is not None
+    assert whatslab.solvers.backend_cls("dls") is whatslab.solvers.ArmIK
 
 
 def test_dls_end_to_end_bundled_urdf():
@@ -44,18 +45,18 @@ def test_dls_end_to_end_bundled_urdf():
     worst = 0.0
     for _ in range(15):
         q_true = lo + (hi - lo) * (0.15 + 0.70 * rng.random(s.nq))
-        T = s.fk(q_true)
+        tf = s.fk(q_true)
         s.sync_state(q_true + 0.1 * rng.standard_normal(s.nq))
         for _ in range(12):
-            q = s.solve(T)
-        worst = max(worst, s.pose_error(q, T)[0])
+            q = s.solve(tf)
+        worst = max(worst, s.pose_error(q, tf)[0])
     assert worst < 5e-3, f"pos 오차 과다: {worst*1e3:.2f} mm"
 
 
 def test_arm_ik_no_casadi_dependency():
     pytest.importorskip("pinocchio")
-    import whatslab.solvers.arm.arm_ik as m
-    src = open(m.__file__, encoding="utf-8").read()
+    from whatslab.solvers.arm import arm_ik
+    src = open(arm_ik.__file__, encoding="utf-8").read()
     assert "import casadi" not in src
     assert "from pinocchio import casadi" not in src
 
@@ -69,33 +70,33 @@ def test_diff_backend_tracks_and_is_continuous():
     worst = 0.0
     for _ in range(10):
         q_true = lo + (hi - lo) * (0.2 + 0.6 * rng.random(s.nq))
-        T = s.fk(q_true)
+        tf = s.fk(q_true)
         s.sync_state(q_true + 0.3 * rng.standard_normal(s.nq))
         prev = s.history_data.copy()
         for _ in range(120):
-            q = s.solve(T)
+            q = s.solve(tf)
             assert np.linalg.norm(q - prev) < 0.6, "틱당 관절 점프 과다"
             prev = q
-        worst = max(worst, s.pose_error(q, T)[0])
+        worst = max(worst, s.pose_error(q, tf)[0])
     assert worst < 5e-3, f"diff 추종 수렴 실패: {worst*1e3:.2f}mm"
 
 
 def test_robot_arm_ik_no_teleport_on_teleop_targets():
     pytest.importorskip("pinocchio")
     from scipy.spatial.transform import Rotation
-    from whatslab.robot import RobotArmIK
-    from whatslab.robot import RobotModel, load_rig
+
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
 
     ik = RobotArmIK(RobotModel(load_rig("rigs/nero_orca_right.yaml")))
     prev, worst = None, 0.0
     for i in range(300):
         t = i / 300
-        T = np.eye(4)
-        T[:3, 3] = [0.55 + 0.15 * np.sin(2 * np.pi * t), 0.25 * np.sin(4 * np.pi * t), 0.15]
-        T[:3, :3] = Rotation.from_euler(
+        tf = np.eye(4)
+        tf[:3, 3] = [0.55 + 0.15 * np.sin(2 * np.pi * t), 0.25 * np.sin(4 * np.pi * t), 0.15]
+        tf[:3, :3] = Rotation.from_euler(
             "xyz", [1.2 * np.sin(2 * np.pi * t), 0.8 * np.sin(3 * np.pi * t),
                     1.5 * np.sin(1.5 * np.pi * t)]).as_matrix()
-        q = np.asarray(ik.solve(T), dtype=float)
+        q = np.asarray(ik.solve(tf), dtype=float)
         assert np.all(np.isfinite(q))
         if prev is not None:
             worst = max(worst, float(np.linalg.norm(q - prev)))
@@ -104,8 +105,7 @@ def test_robot_arm_ik_no_teleport_on_teleop_targets():
 
 
 def _orca_rig_ik():
-    from whatslab.robot import RobotArmIK
-    from whatslab.robot import RobotModel, load_rig
+    from whatslab.robot import RobotArmIK, RobotModel, load_rig
     robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
     return robot, RobotArmIK(robot)
 
@@ -124,12 +124,12 @@ def _wave_targets(n=200):
     out = []
     for i in range(n):
         t = i / n
-        T = np.eye(4)
-        T[:3, 3] = [0.55 + 0.15 * np.sin(2 * np.pi * t), 0.25 * np.sin(4 * np.pi * t), 0.15]
-        T[:3, :3] = Rotation.from_euler(
+        tf = np.eye(4)
+        tf[:3, 3] = [0.55 + 0.15 * np.sin(2 * np.pi * t), 0.25 * np.sin(4 * np.pi * t), 0.15]
+        tf[:3, :3] = Rotation.from_euler(
             "xyz", [1.2 * np.sin(2 * np.pi * t), 0.8 * np.sin(3 * np.pi * t),
                     1.5 * np.sin(1.5 * np.pi * t)]).as_matrix()
-        out.append(T)
+        out.append(tf)
     return out
 
 
@@ -140,7 +140,8 @@ def test_robot_arm_ik_accurate_on_reachable_targets():
             for T in _fk_targets(robot)]
     errs = np.array(errs[5:])
     assert errs.mean() < 0.010, f"평균 pos 오차 과다: {errs.mean()*1000:.1f} mm"
-    assert np.percentile(errs, 95) < 0.020, f"p95 pos 오차 과다: {np.percentile(errs,95)*1000:.1f} mm"
+    p95 = np.percentile(errs, 95)
+    assert p95 < 0.020, f"p95 pos 오차 과다: {p95 * 1000:.1f} mm"
 
 
 def test_robot_arm_ik_no_teleport_on_unreachable_targets():
@@ -165,13 +166,14 @@ def test_solve_robust_is_accurate_from_cold_state():
         worst = 0.0
         for _ in range(8):
             q_true = lo + (hi - lo) * (0.2 + 0.6 * rng.random(s.nq))
-            T = s.fk(q_true)
+            tf = s.fk(q_true)
             s.sync_state(np.zeros(s.nq))
-            worst = max(worst, s.pose_error(s.solve_robust(T), T)[0])
+            worst = max(worst, s.pose_error(s.solve_robust(tf), tf)[0])
         per_smooth[smooth] = worst
-        assert worst < 1e-3, f"solve_robust 오차 과다(_smooth={smooth}): {worst*1000:.2f} mm"
-    assert per_smooth[0.0] == pytest.approx(per_smooth[0.9], abs=1e-12), \
+        assert worst < 1e-3, f"solve_robust 오차 과다(_smooth={smooth}): {worst * 1000:.2f} mm"
+    assert per_smooth[0.0] == pytest.approx(per_smooth[0.9], abs=1e-12), (
         f"solve_robust 가 _smooth 에 의존: {per_smooth}"
+    )
 
 
 def test_global_search_is_event_driven_not_per_frame():
@@ -183,69 +185,72 @@ def test_global_search_is_event_driven_not_per_frame():
     def spy(*a, **k):
         calls["n"] += 1
         return orig(*a, **k)
+
     robot.solver.solve_robust = spy
     n = 200
-    for T in _wave_targets(n):
-        ik.solve(T)
-    assert calls["n"] <= 1 + n // 20, \
-        f"전역 탐색이 너무 자주 발동: {calls['n']}회 / {n} 프레임"
+    for tf in _wave_targets(n):
+        ik.solve(tf)
+    assert calls["n"] <= 1 + n // 20, f"전역 탐색이 너무 자주 발동: {calls['n']}회 / {n} 프레임"
 
 
 def test_diff_backend_no_divergence_on_unreachable():
     pytest.importorskip("pinocchio")
     s = _nero_solver("diff")
-    T = np.eye(4); T[:3, 3] = [2.0, 0.0, 0.5]
+    tf = np.eye(4)
+    tf[:3, 3] = [2.0, 0.0, 0.5]
     s.sync_state(np.zeros(s.nq))
     prev = s.history_data.copy()
     for _ in range(150):
-        q = s.solve(T)
+        q = s.solve(tf)
         assert np.all(np.isfinite(q))
         assert np.linalg.norm(q - prev) < 0.6
         prev = q
-    q2 = s.solve(T)
+    q2 = s.solve(tf)
     assert np.linalg.norm(q2 - q) < 0.05
 
 
 def test_null_projector_is_idempotent_and_leak_free():
     pytest.importorskip("pinocchio")
     import pinocchio as pin
+
     s = _nero_solver("diff")
     rng = np.random.default_rng(0)
     worst_idem = worst_leak = 0.0
     for _ in range(50):
         q = pin.integrate(s.model, s.q_neutral, rng.uniform(-1.5, 1.5, s.model.nv))
-        T = s.fk(pin.integrate(s.model, q, rng.uniform(-0.4, 0.4, s.model.nv)))
-        e, J = s._error_and_jac(q, T)
+        tf = s.fk(pin.integrate(s.model, q, rng.uniform(-0.4, 0.4, s.model.nv)))
+        e, jac = s._error_and_jac(q, tf)
         w = s._task_w
-        WJ = w[:, None] * J
-        N = s._null_projector(WJ, np.eye(s.model.nv))
-        worst_idem = max(worst_idem, float(np.linalg.norm(N @ N - N)))
-        v = N @ rng.standard_normal(s.model.nv)
-        leak = np.linalg.norm(WJ @ v) / max(np.linalg.norm(WJ) * np.linalg.norm(v), 1e-12)
+        w_jac = w[:, None] * jac
+        null_proj = s._null_projector(w_jac, np.eye(s.model.nv))
+        worst_idem = max(worst_idem, float(np.linalg.norm(null_proj @ null_proj - null_proj)))
+        v = null_proj @ rng.standard_normal(s.model.nv)
+        leak = np.linalg.norm(w_jac @ v) / max(np.linalg.norm(w_jac) * np.linalg.norm(v), 1e-12)
         worst_leak = max(worst_leak, float(leak))
     assert worst_idem < 1e-9, f"N 이 멱등이 아니다: ‖N²−N‖={worst_idem:.2e}"
-    assert worst_leak < 1e-9, f"주태스크 누설 {worst_leak*100:.6f}%"
+    assert worst_leak < 1e-9, f"주태스크 누설 {worst_leak * 100:.6f}%"
 
 
 def test_dtheta_max_caps_orientation_demand_not_target_delta():
     pytest.importorskip("pinocchio")
     from scipy.spatial.transform import Rotation
+
     s = _nero_solver("diff")
     s.dtheta_max = 0.1
     q = s.q_neutral
-    T_cur = s.fk(q)
-    T_goal = T_cur.copy()
-    T_goal[:3, :3] = T_cur[:3, :3] @ Rotation.from_rotvec([0.0, 0.0, 2.0]).as_matrix()
+    tf_cur = s.fk(q)
+    tf_goal = tf_cur.copy()
+    tf_goal[:3, :3] = tf_cur[:3, :3] @ Rotation.from_rotvec([0.0, 0.0, 2.0]).as_matrix()
 
-    T_lim = s._rate_limited_target(q, T_goal)
-    ang = np.linalg.norm(Rotation.from_matrix(
-        T_cur[:3, :3].T @ T_lim[:3, :3]).as_rotvec())
+    tf_lim = s._rate_limited_target(q, tf_goal)
+    ang = np.linalg.norm(Rotation.from_matrix(tf_cur[:3, :3].T @ tf_lim[:3, :3]).as_rotvec())
     assert ang == pytest.approx(0.1, abs=1e-6)
 
 
 def test_rig_exposes_diff_step_and_projector_tuning():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotModel, load_rig
+
     rig = load_rig("rigs/nero_orca_right.yaml")
     assert rig.solver.dtheta_max == pytest.approx(0.25)
     assert rig.solver.proj_rcond == pytest.approx(1e-6)
@@ -262,6 +267,7 @@ def test_rig_exposes_diff_step_and_projector_tuning():
 
 def _cal_pose(pos, quat=(0.0, 0.0, 0.0, 1.0)):
     from whatslab.core.types import Pose
+
     return Pose(pos=np.array(pos, dtype=float), quat=np.array(quat, dtype=float))
 
 
@@ -273,9 +279,9 @@ def test_calib_disabled_passes_receiver_pose_through():
     cal = ArmCalibration(reach_max=1.0, input_reach=0.5, enabled=False)
     q = Rotation.from_euler("z", 0.9).as_quat()
     cal.capture({"arm_pose": _cal_pose([0.4, 0.1, 0.2], q)})
-    T = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
-    assert T[:3, 3] == pytest.approx([0.3, -0.1, 0.2])
-    assert T[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())
+    tf = cal.apply({"arm_pose": _cal_pose([0.3, -0.1, 0.2], q)})["arm_target"]
+    assert tf[:3, 3] == pytest.approx([0.3, -0.1, 0.2])
+    assert tf[:3, :3] == pytest.approx(Rotation.from_quat(q).as_matrix())
 
 
 def test_calib_captures_origin_for_diagnostics_only():
@@ -285,10 +291,10 @@ def test_calib_captures_origin_for_diagnostics_only():
     p0 = [0.40, -0.12, 0.18]
     assert cal.capture({"arm_pose": _cal_pose(p0)}) is True
     assert cal.anchor == pytest.approx(p0)
-    T = cal.apply({"arm_pose": _cal_pose(p0)})["arm_target"]
-    assert T[:3, 3] == pytest.approx(p0)
-    T = cal.apply({"arm_pose": _cal_pose(np.array(p0) + [0.1, 0.0, 0.0])})["arm_target"]
-    assert T[:3, 3] == pytest.approx(np.array(p0) + [0.1, 0.0, 0.0])
+    tf = cal.apply({"arm_pose": _cal_pose(p0)})["arm_target"]
+    assert tf[:3, 3] == pytest.approx(p0)
+    tf = cal.apply({"arm_pose": _cal_pose(np.array(p0) + [0.1, 0.0, 0.0])})["arm_target"]
+    assert tf[:3, 3] == pytest.approx(np.array(p0) + [0.1, 0.0, 0.0])
 
 
 def test_calib_does_not_rotate_the_position():
@@ -302,17 +308,17 @@ def test_calib_does_not_rotate_the_position():
     p0 = np.array([0.4, 0.1, 0.2])
     cal.capture({"arm_pose": _cal_pose(p0, q)})
     d = np.array([0.10, 0.05, 0.0])
-    T = cal.apply({"arm_pose": _cal_pose(p0 + d, q)})["arm_target"]
-    assert T[:3, 3] == pytest.approx(p0 + d)
-    assert T[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
+    tf = cal.apply({"arm_pose": _cal_pose(p0 + d, q)})["arm_target"]
+    assert tf[:3, 3] == pytest.approx(p0 + d)
+    assert tf[:3, :3] == pytest.approx(np.eye(3), abs=1e-9)
 
 
 def test_calib_before_capture_is_scale_only():
     from whatslab.teleop.calibration import ArmCalibration
 
     cal = ArmCalibration(reach_max=1.0, input_reach=0.5)
-    T = cal.apply({"arm_pose": _cal_pose([0.25, 0.0, 0.1])})["arm_target"]
-    assert T[:3, 3] == pytest.approx([0.5, 0.0, 0.2])
+    tf = cal.apply({"arm_pose": _cal_pose([0.25, 0.0, 0.1])})["arm_target"]
+    assert tf[:3, 3] == pytest.approx([0.5, 0.0, 0.2])
 
 
 def test_calib_enabled_flag_reaches_teleop_path():
@@ -344,11 +350,11 @@ def test_static_target_settles_without_oscillation():
     worst = 0.0
     for _ in range(6):
         q_true = lo + (hi - lo) * (0.2 + 0.6 * rng.random(s.nq))
-        T = s.fk(q_true)
+        tf = s.fk(q_true)
         s.sync_state(s.q_neutral)
-        errs = [s.pose_error(s.solve(T), T)[0] for _ in range(60)]
+        errs = [s.pose_error(s.solve(tf), tf)[0] for _ in range(60)]
         worst = max(worst, float(np.mean(errs[-10:])))
-    assert worst < 5e-3, f"정지 목표 정착 실패: {worst*1e3:.1f} mm"
+    assert worst < 5e-3, f"정지 목표 정착 실패: {worst * 1e3:.1f} mm"
 
 
 def test_reseed_clears_warm_start():
@@ -376,21 +382,21 @@ def test_cold_start_is_uncapped():
 
     lo, hi = s._lo, s._hi
     q_far = lo + (hi - lo) * 0.8
-    T_far = robot.to_canonical(s.fk(q_far))
-    T_near = robot.to_canonical(s.fk(s.q_neutral + 0.1))
+    tf_far = robot.to_canonical(s.fk(q_far))
+    tf_near = robot.to_canonical(s.fk(s.q_neutral + 0.1))
 
-    q0 = np.asarray(ik.solve(T_near), dtype=float)
+    q0 = np.asarray(ik.solve(tf_near), dtype=float)
     ik.reseed()
-    q1 = np.asarray(ik.solve(T_far), dtype=float)
+    q1 = np.asarray(ik.solve(tf_far), dtype=float)
     assert float(np.linalg.norm(q1 - q0)) > 0.5
-    assert s.pose_error(q1, robot.to_base(T_far))[0] < 5e-3
+    assert s.pose_error(q1, robot.to_base(tf_far))[0] < 5e-3
 
     ik.reseed()
     ik.cold_pos_tol = 0.0
     ik.cold_max_tries = 3
-    prev = np.asarray(ik.solve(T_near), dtype=float)
+    prev = np.asarray(ik.solve(tf_near), dtype=float)
     assert ik._seeded is False
-    q2 = np.asarray(ik.solve(T_far), dtype=float)
+    q2 = np.asarray(ik.solve(tf_far), dtype=float)
     assert float(np.linalg.norm(q2 - prev)) > 0.5
 
 
@@ -422,7 +428,6 @@ def test_two_arm_iks_on_one_robot_do_not_interfere():
     s = robot.solver
     assert robot.solver is robot.solver
 
-    rng = np.random.default_rng(0)
     lo, hi = s._lo, s._hi
     qa = lo + (hi - lo) * 0.40
     qb = lo + (hi - lo) * 0.55
@@ -436,25 +441,27 @@ def test_two_arm_iks_on_one_robot_do_not_interfere():
 
     ik_a, ik_b = RobotArmIK(robot), RobotArmIK(robot)
     both = []
-    for Ta, Tb in zip(targets, other):
-        ik_b.solve(Tb)
-        both.append(np.asarray(ik_a.solve(Ta), dtype=float))
+    for tf_a, tf_b in zip(targets, other):
+        ik_b.solve(tf_b)
+        both.append(np.asarray(ik_a.solve(tf_a), dtype=float))
 
     e_solo = np.array([s.pose_error(q, robot.to_base(T))[0] for q, T in zip(solo, targets)])
     e_both = np.array([s.pose_error(q, robot.to_base(T))[0] for q, T in zip(both, targets)])
     assert e_both.mean() < e_solo.mean() + 5e-3, (
-        f"다른 side 가 solver 상태를 오염시킨다: 단독 {e_solo.mean()*1e3:.1f}mm "
-        f"vs 양쪽 {e_both.mean()*1e3:.1f}mm")
+        f"다른 side 가 solver 상태를 오염시킨다: 단독 {e_solo.mean() * 1e3:.1f}mm "
+        f"vs 양쪽 {e_both.mean() * 1e3:.1f}mm"
+    )
 
 
 def _orientation_step(robot, dtheta=0.4):
     from scipy.spatial.transform import Rotation
+
     s = robot.solver
     q0 = 0.5 * (s._lo + s._hi)
     s.sync_state(q0)
-    T = s.fk(q0).copy()
-    T[:3, :3] = T[:3, :3] @ Rotation.from_euler("y", dtheta).as_matrix()
-    q1 = np.asarray(s.solve(robot.to_canonical(T)), dtype=float)
+    tf = s.fk(q0).copy()
+    tf[:3, :3] = tf[:3, :3] @ Rotation.from_euler("y", dtheta).as_matrix()
+    q1 = np.asarray(s.solve(robot.to_canonical(tf)), dtype=float)
     return np.abs(q1 - q0)
 
 
@@ -477,24 +484,36 @@ def test_joint_weights_shift_effort_to_cheap_joints():
     share_flat = d_flat[i_arm].sum() / max(d_flat.sum(), 1e-12)
     share_heavy = d_heavy[i_arm].sum() / max(d_heavy.sum(), 1e-12)
     assert share_heavy < share_flat, (
-        f"팔을 무겁게 해도 팔 사용 비중이 안 줄었다: {share_flat:.2f} → {share_heavy:.2f}")
+        f"팔을 무겁게 해도 팔 사용 비중이 안 줄었다: {share_flat:.2f} → {share_heavy:.2f}"
+    )
 
 
 def test_neutral_is_mid_range_and_posture_pull_is_on():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotModel, load_rig
+
     s = RobotModel(load_rig("rigs/nero_orca_right.yaml")).solver
     mid = 0.5 * (s._lo + s._hi)
     assert np.allclose(s.q_neutral, mid), "중립 자세가 관절범위 중앙이 아니다"
-    assert not np.allclose(s.q_neutral, 0.0), (
-        "비대칭 범위 관절이 있는데 중립이 전부 0 이다")
+    assert not np.allclose(s.q_neutral, 0.0), "비대칭 범위 관절이 있는데 중립이 전부 0 이다"
     assert s.k_posture > 0.0, "중앙으로 밀어넣는 힘이 꺼져 있으면 코너에 갇힌다"
-    assert np.allclose(s.q_posture, s.q_neutral)
+
+
+def test_rig_posture_overrides_neutral_as_posture_target():
+    pytest.importorskip("pinocchio")
+    from whatslab.robot import RobotModel, load_rig
+
+    rig = load_rig("rigs/nero_orca_right.yaml")
+    robot = RobotModel(rig)
+    s = robot.solver
+    want = [rig.solver.posture.get(n, 0.0) for n in robot.arm_joint_names]
+    assert np.allclose(s.q_posture, np.clip(want, s._lo, s._hi))
 
 
 def test_joint_weights_reject_bad_input():
     pytest.importorskip("pinocchio")
     from whatslab.robot import RobotModel, load_rig
+
     robot = RobotModel(load_rig("rigs/nero_orca_right.yaml"))
     with pytest.raises(ValueError):
         robot.solver.set_joint_weights({"nope": 2.0})

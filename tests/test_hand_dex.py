@@ -7,15 +7,20 @@ from scipy.spatial.transform import Rotation
 pytest.importorskip("dex_retargeting")
 pin = pytest.importorskip("pinocchio")
 
+from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  # noqa: E402
 from whatslab.core.types import HandPose, InputSample  # noqa: E402
 from whatslab.paths import models_root  # noqa: E402
 from whatslab.robot import RobotModel, load_rig  # noqa: E402
-from whatslab.solvers.hand import (DexHandConfig, HandRetargetController,  # noqa: E402
-                                   XRHandRetargeter, hand_config_names, mirror_xr_joints,
-                                   xr_to_mano)
+from whatslab.solvers.hand import (  # noqa: E402
+    DexHandConfig,
+    HandRetargetController,
+    XRHandRetargeter,
+    hand_config_names,
+    mirror_xr_joints,
+    xr_to_mano,
+)
 from whatslab.solvers.hand.dex_retargeter import resolve_hand_config  # noqa: E402
-from whatslab.solvers.hand.xr_input import (OPENXR_TO_MANO, XR_TO_MANO,  # noqa: E402
-                                            mano_palm_frame, xr_wrist_positions)
+from whatslab.solvers.hand.xr_input import mano_palm_frame, xr_wrist_positions  # noqa: E402
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
@@ -27,9 +32,9 @@ FLEX = np.radians((80.0, 95.0, 60.0))
 
 def _finger(mcp, curl):
     pts, p, phi = [np.asarray(mcp, float)], np.asarray(mcp, float), 0.0
-    for L, a in zip(SEG, FLEX):
+    for l_mat, a in zip(SEG, FLEX):
         phi += curl * a
-        p = p + L * np.array([0.0, -np.sin(phi), -np.cos(phi)])
+        p = p + l_mat * np.array([0.0, -np.sin(phi), -np.cos(phi)])
         pts.append(p)
     return pts
 
@@ -42,8 +47,8 @@ def synthetic_right_hand(curl: float) -> np.ndarray:
     d = (1.0 - curl) * np.array([-0.6, -0.25, -0.75]) + curl * np.array([0.45, -0.6, -0.55])
     d /= np.linalg.norm(d)
     xr[2, 4:7] = cmc
-    for k, L in enumerate((0.04, 0.032, 0.026)):
-        xr[3 + k, 4:7] = xr[2 + k, 4:7] + L * d
+    for k, l_mat in enumerate((0.04, 0.032, 0.026)):
+        xr[3 + k, 4:7] = xr[2 + k, 4:7] + l_mat * d
     for base, f in zip((6, 11, 16, 21), ("index", "middle", "ring", "pinky")):
         x = RIGHT_MCP_X[f]
         xr[base, 4:7] = (0.5 * x, 0.0, -0.035)
@@ -58,10 +63,10 @@ def hand_for(side: str, curl: float) -> np.ndarray:
     return xr if side == "right" else mirror_xr_joints(xr)
 
 
-def _rigid(xr, R, t):
+def _rigid(xr, rot, t):
     out = xr.copy()
-    out[:, 4:7] = xr[:, 4:7] @ R.T + t
-    out[:, :4] = (Rotation.from_matrix(R) * Rotation.from_quat(xr[:, :4])).as_quat()
+    out[:, 4:7] = xr[:, 4:7] @ rot.T + t
+    out[:, :4] = (Rotation.from_matrix(rot) * Rotation.from_quat(xr[:, :4])).as_quat()
     return out
 
 
@@ -76,9 +81,9 @@ def _require_urdf(name):
 
 
 def test_openxr_to_mano_index_list():
-    assert OPENXR_TO_MANO == (1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15,
+    assert OPENXR26_TO_HAND21 == (1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15,
                               17, 18, 19, 20, 22, 23, 24, 25)
-    assert np.isclose(np.linalg.det(XR_TO_MANO), 1.0)
+    assert np.isclose(np.linalg.det(OPENXR_TO_HAND21_AXES), 1.0)
 
 
 def test_xr_to_mano_axes_on_hand_made_pose():
@@ -88,7 +93,7 @@ def test_xr_to_mano_axes_on_hand_made_pose():
     assert np.allclose(mano[0], 0.0)
     assert np.allclose(mano[5], [0.0, 0.025, 0.09])
     assert np.allclose(mano[17], [0.0, -0.033, 0.09])
-    assert np.allclose(mano[8], XR_TO_MANO @ xr[10, 4:7])
+    assert np.allclose(mano[8], OPENXR_TO_HAND21_AXES @ xr[10, 4:7])
     tips = mano[[8, 12, 16, 20]]
     assert np.all(tips[:, 2] > 0.15)
     curled = xr_to_mano(synthetic_right_hand(1.0))
@@ -98,22 +103,22 @@ def test_xr_to_mano_axes_on_hand_made_pose():
 def test_xr_to_mano_ignores_wrist_pose():
     xr = synthetic_right_hand(0.4)
     a = np.radians(37.0)
-    R = np.array([[np.cos(a), 0.0, np.sin(a)], [0.0, 1.0, 0.0], [-np.sin(a), 0.0, np.cos(a)]])
-    moved = _rigid(xr, R, np.array([0.3, -0.1, 1.2]))
+    rot = np.array([[np.cos(a), 0.0, np.sin(a)], [0.0, 1.0, 0.0], [-np.sin(a), 0.0, np.cos(a)]])
+    moved = _rigid(xr, rot, np.array([0.3, -0.1, 1.2]))
     assert np.allclose(xr_to_mano(moved), xr_to_mano(xr), atol=1e-9)
     assert np.allclose(xr_wrist_positions(moved), xr[:, 4:7], atol=1e-9)
 
 
 def test_palm_frame_and_mirror():
     mano_r = xr_to_mano(synthetic_right_hand(0.0))
-    R = mano_palm_frame(mano_r, "right")
-    assert np.isclose(np.linalg.det(R), 1.0)
-    assert R[1, 1] > 0.99 and R[2, 2] > 0.99, "오른손 손바닥 프레임이 MANO 축과 다르다"
+    rot = mano_palm_frame(mano_r, "right")
+    assert np.isclose(np.linalg.det(rot), 1.0)
+    assert rot[1, 1] > 0.99 and rot[2, 2] > 0.99, "오른손 손바닥 프레임이 MANO 축과 다르다"
     xr_l = mirror_xr_joints(synthetic_right_hand(0.0))
     mano_l = xr_to_mano(xr_l)
     assert np.allclose(mano_l, mano_r * [1.0, -1.0, 1.0])
-    S = np.diag([1.0, -1.0, 1.0])
-    assert np.allclose(mano_palm_frame(mano_l, "left"), S @ R @ S, atol=1e-9)
+    sv = np.diag([1.0, -1.0, 1.0])
+    assert np.allclose(mano_palm_frame(mano_l, "left"), sv @ rot @ sv, atol=1e-9)
     back = mirror_xr_joints(xr_l)
     assert np.allclose(back[:, 4:7], synthetic_right_hand(0.0)[:, 4:7])
 
@@ -197,11 +202,12 @@ def test_retargeter_mirrors_opposite_side_input():
 def test_controller_uses_xr_joints():
     _require_urdf("orca_right")
     ctrl = HandRetargetController("right", "dex:orca")
-    assert ctrl.xr_input
+    assert ctrl.engine_name == "dex:"
     assert ctrl.engine.config.name == "orca_right"
     assert not any("Carpals" in n and "TopTower" in n for n in ctrl.joint_names)
     held = ctrl.compute(InputSample(hand=HandPose(tracked=True), tracked=True))
-    assert np.allclose(held.joint_angles, ctrl._last)
+    lim = ctrl.engine.joint_limits                 # 아직 입력이 없으면 0 을 관절범위로 자른 값
+    assert np.allclose(held.joint_angles, np.clip(0.0, lim[:, 0], lim[:, 1]))
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=hand_for("right", 1.0),
                                                  tracked=True), tracked=True))
     assert cmd.joint_names == ctrl.joint_names
@@ -223,5 +229,60 @@ def test_rig_selects_dex_and_keeps_wrist_for_arm():
     robot = RobotModel(rig)
     for side in ("left", "right"):
         ctrl = robot.make_hand_controller(rig.hand.retarget, side)
-        assert ctrl.xr_input and ctrl.engine.config.side == side
+        assert ctrl.engine_name == "dex:" and ctrl.engine.config.side == side
         assert not set(ctrl.joint_names) & set(robot.arm_joint_names)
+
+
+def test_degenerate_input_holds_last_command():
+    """퇴화·비유한 손 입력은 이번 프레임만 거른다 — 루프를 죽이거나 NaN 을 내지 않는다."""
+    _require_urdf("orca_right")
+    from whatslab.solvers.hand.xr_input import HandInputError
+
+    ctrl = HandRetargetController("right", "dex:orca")
+    good = synthetic_right_hand(0.3)
+    first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True)))
+    for bad in (np.zeros((26, 8)), np.full((26, 8), np.nan)):
+        bad[:, 3] = 1.0
+        cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=bad, tracked=True)))
+        assert np.array_equal(cmd.joint_angles, first.joint_angles)
+        assert isinstance(ctrl.last_error, HandInputError)
+
+
+def test_dex_respects_xr_valid():
+    """dex 도 무효 관절을 쓰지 않는다 — 쓰는 관절이 무효면 직전 명령 유지, 안 쓰는 palm 은 무시."""
+    _require_urdf("orca_right")
+    from whatslab.solvers.hand.xr_input import HandInputError
+
+    ctrl = HandRetargetController("right", "dex:orca")
+    good = synthetic_right_hand(0.3)
+    first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True))).joint_angles
+    valid = np.ones(26, dtype=bool)
+    valid[0] = False  # palm — 21점에 안 들어간다
+    ctrl.reset()
+    q = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, xr_valid=valid, tracked=True)))
+    assert ctrl.last_error is None and np.allclose(q.joint_angles, first, atol=1e-6)
+    valid[0], valid[12] = True, False  # middle proximal → 쓰는 관절
+    held = ctrl.compute(
+        InputSample(hand=HandPose(xr_joints=synthetic_right_hand(0.8), xr_valid=valid,
+                                  tracked=True))).joint_angles
+    assert np.array_equal(held, q.joint_angles)
+    assert isinstance(ctrl.last_error, HandInputError)
+    ctrl.compute(InputSample(hand=None))
+    assert ctrl.last_error is None  # 지금 프레임 기준
+
+
+def test_robot_side_is_config_side_for_dex():
+    _require_urdf("orca_right")
+    assert HandRetargetController("left", "dex:orca_right").robot_side == "right"
+
+
+def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
+    """반대 손 입력의 무효 관절이 0 쿼터니언이어도 루프를 죽이지 않는다."""
+    _require_urdf("orca_right")
+    j = synthetic_right_hand(0.3).copy()
+    j[0, :4] = 0.0
+    valid = np.ones(26, dtype=bool)
+    valid[0] = False
+    ctrl = HandRetargetController("left", "dex:orca_right")
+    cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=j, xr_valid=valid, tracked=True)))
+    assert np.all(np.isfinite(cmd.joint_angles))

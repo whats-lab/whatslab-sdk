@@ -52,7 +52,9 @@ def test_layout_matches_reference(tmp_path):
     assert info["total_episodes"] == 2 and info["total_frames"] == 6 and info["fps"] == 30
     assert set(FEATURES).issubset(info["features"].keys())
 
-    episodes = [json.loads(line) for line in (root / "meta/episodes.jsonl").read_text().splitlines()]
+    episodes = [
+        json.loads(line) for line in (root / "meta/episodes.jsonl").read_text().splitlines()
+    ]
     assert len(episodes) == 2
     assert episodes[0] == {"episode_index": 0, "tasks": ["pick the red block"], "length": 3}
 
@@ -64,8 +66,17 @@ def test_layout_matches_reference(tmp_path):
     ]
     assert len(ep_stats) == 2
     for line in ep_stats:
-        for feat in ("observation.state", "action", "replay.obj0", "observation.images.cam0",
-                     "timestamp", "frame_index", "episode_index", "index", "task_index"):
+        for feat in (
+            "observation.state",
+            "action",
+            "replay.obj0",
+            "observation.images.cam0",
+            "timestamp",
+            "frame_index",
+            "episode_index",
+            "index",
+            "task_index",
+        ):
             assert feat in line["stats"]
             for k in ("min", "max", "mean", "std", "count"):
                 assert k in line["stats"][feat]
@@ -91,27 +102,29 @@ def test_loads_with_real_lerobot(tmp_path):
 
 
 def test_add_frame_rejects_second_chunk(tmp_path):
-    from whatslab.data import lerobot_schema as S
+    from whatslab.data import lerobot_schema
 
     rec = LeRobotRecorder(str(tmp_path / "ds"), FEATURES, fps=30)
-    rec._ep = S.CHUNKS_SIZE
+    rec._ep = lerobot_schema.CHUNKS_SIZE
     with pytest.raises(NotImplementedError):
         rec.add_frame(
-            np.zeros(7, np.float32), np.zeros(7, np.float32),
+            np.zeros(7, np.float32),
+            np.zeros(7, np.float32),
             {"cam0": np.zeros((64, 64, 3), np.uint8)},
-            {"obj0": np.zeros(7, np.float32)}, task="t",
+            {"obj0": np.zeros(7, np.float32)},
+            task="t",
         )
 
 
 def test_online_image_stats_match_batch_reduction():
-    from whatslab.data import lerobot_schema as S
+    from whatslab.data import lerobot_schema
 
     rng = np.random.default_rng(7)
     frames = rng.integers(0, 255, (11, 8, 6, 3)).astype(np.uint8)
-    online = S.ImageStats()
+    online = lerobot_schema.ImageStats()
     for f in frames:
         online.update(f)
-    got, want = online.result(), S._reduce_image_stats(frames)
+    got, want = online.result(), lerobot_schema._reduce_image_stats(frames)
     assert got["count"] == want["count"]
     for k in ("min", "max", "mean", "std"):
         np.testing.assert_allclose(np.array(got[k]), np.array(want[k]), atol=1e-12)
@@ -129,9 +142,13 @@ def test_streaming_video_frame_count(tmp_path):
 def test_discard_episode_reuses_index(tmp_path):
     rec = LeRobotRecorder(str(tmp_path / "ds_discard"), FEATURES, fps=30)
     for f in range(3):
-        rec.add_frame(np.full(7, f, np.float32), np.full(7, f, np.float32),
-                      {"cam0": np.zeros((64, 64, 3), np.uint8)},
-                      {"obj0": np.zeros(7, np.float32)}, task="t")
+        rec.add_frame(
+            np.full(7, f, np.float32),
+            np.full(7, f, np.float32),
+            {"cam0": np.zeros((64, 64, 3), np.uint8)},
+            {"obj0": np.zeros(7, np.float32)},
+            task="t",
+        )
     rec.discard_episode()
     root = tmp_path / "ds_discard"
     assert not (root / "videos/chunk-000/observation.images.cam0/episode_000000.mp4").exists()
@@ -139,9 +156,13 @@ def test_discard_episode_reuses_index(tmp_path):
     assert rec._ep == 0
 
     for f in range(2):
-        rec.add_frame(np.full(7, f, np.float32), np.full(7, f, np.float32),
-                      {"cam0": np.zeros((64, 64, 3), np.uint8)},
-                      {"obj0": np.zeros(7, np.float32)}, task="t")
+        rec.add_frame(
+            np.full(7, f, np.float32),
+            np.full(7, f, np.float32),
+            {"cam0": np.zeros((64, 64, 3), np.uint8)},
+            {"obj0": np.zeros(7, np.float32)},
+            task="t",
+        )
     rec.save_episode()
     rec.finalize()
     assert (root / "data/chunk-000/episode_000000.parquet").exists()

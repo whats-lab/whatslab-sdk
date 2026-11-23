@@ -6,11 +6,11 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 
-def _yaw(R: np.ndarray) -> float:
-    return float(np.arctan2(R[1, 0], R[0, 0]))
+def _yaw(rot: np.ndarray) -> float:
+    return float(np.arctan2(rot[1, 0], rot[0, 0]))
 
 
-def _Rz(a: float) -> np.ndarray:
+def _rot_z(a: float) -> np.ndarray:
     c, s = np.cos(a), np.sin(a)
     return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
 
@@ -44,25 +44,25 @@ class ArmCalibration:
             data["arm_target"] = None
             return data
         p = np.asarray(pose.pos, dtype=float)
-        G = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
-        T = np.eye(4)
+        g_rot = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
+        tf = np.eye(4)
         if not self.enabled:
-            T[:3, 3] = p
-            T[:3, :3] = G
-            data["arm_target"] = T
+            tf[:3, 3] = p
+            tf[:3, :3] = g_rot
+            data["arm_target"] = tf
             return data
-        W = self._W
-        T[:3, 3] = self.scale * p
-        T[:3, :3] = (W @ G) if W is not None else G
-        data["arm_target"] = T
+        w_rot = self._W
+        tf[:3, 3] = self.scale * p
+        tf[:3, :3] = (w_rot @ g_rot) if w_rot is not None else g_rot
+        data["arm_target"] = tf
         return data
 
     def capture(self, data: dict) -> bool:
         pose = data.get("arm_pose")
         if pose is None:
             return False
-        G = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
-        self._W = _Rz(-_yaw(G))
+        g_rot = Rotation.from_quat(np.asarray(pose.quat, dtype=float)).as_matrix()
+        self._W = _rot_z(-_yaw(g_rot))
         self._p0 = np.asarray(pose.pos, dtype=float).copy()
         return True
 

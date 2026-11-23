@@ -23,9 +23,11 @@ def load_limits_from_urdf(urdf_xml: str) -> Dict[str, JointLimit]:
         lim = j.find("limit")
         if name is None or lim is None:
             continue
+        # URDF 사양: lower·upper 를 빼면 0 — 범위가 없는 것은 continuous 관절뿐이다.
+        default = ("-inf", "inf") if j.get("type") == "continuous" else ("0", "0")
         out[name] = JointLimit(
-            lower=float(lim.get("lower", "-inf")),
-            upper=float(lim.get("upper", "inf")),
+            lower=float(lim.get("lower", default[0])),
+            upper=float(lim.get("upper", default[1])),
             velocity=float(lim.get("velocity", "inf")),
         )
     return out

@@ -18,6 +18,7 @@ USD 변환은 Isaac Sim 앱이 필요하므로 **dex_vla(Isaac) 환경에서 실
 (orca_nero.py 의 usd_path)가 가리키면 된다.
 """
 import argparse
+import importlib
 import os
 import tempfile
 
@@ -87,8 +88,16 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 
+def _optional_physx_schema():
+    """pxr.PhysxSchema(Isaac 의 PhysX 확장)가 있으면 그 모듈, 없으면 None."""
+    try:
+        return importlib.import_module("pxr.PhysxSchema")
+    except ImportError:
+        return None
+
+
 def sanitize_inertia(usd_path: str, max_r: float, fix_r: float):
-    from pxr import Usd, UsdPhysics, Gf
+    from pxr import Gf, Usd, UsdPhysics
     stage = Usd.Stage.Open(usd_path)
     fixed = []
     for prim in stage.Traverse():
@@ -100,9 +109,9 @@ def sanitize_inertia(usd_path: str, max_r: float, fix_r: float):
         if not m or diag is None:
             continue
         if max(diag[0], diag[1], diag[2]) > float(m) * max_r ** 2:
-            Iv = float(m) * fix_r ** 2
-            mapi.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(Iv, Iv, Iv))
-            fixed.append((prim.GetName(), tuple(round(x, 4) for x in diag), Iv))
+            inertia = float(m) * fix_r ** 2
+            mapi.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(inertia, inertia, inertia))
+            fixed.append((prim.GetName(), tuple(round(x, 4) for x in diag), inertia))
     stage.GetRootLayer().Save()
     print(f"[export-usd] 관성 타당성 보정: {len(fixed)}개 링크 "
           f"(I > m*{max_r}^2 → m*{fix_r}^2)")
@@ -111,7 +120,7 @@ def sanitize_inertia(usd_path: str, max_r: float, fix_r: float):
 
 
 def cap_link_mass(usd_path: str, mass_max: float, mass_cap: float):
-    from pxr import Usd, UsdPhysics, Gf
+    from pxr import Gf, Usd, UsdPhysics
     stage = Usd.Stage.Open(usd_path)
     capped = []
     for prim in stage.Traverse():
@@ -134,10 +143,7 @@ def cap_link_mass(usd_path: str, mass_max: float, mass_cap: float):
 
 def apply_sdf_colliders(usd_path: str, resolution: int):
     from pxr import Usd, UsdGeom, UsdPhysics
-    try:
-        from pxr import PhysxSchema
-    except ImportError:
-        PhysxSchema = None
+    physx_schema = _optional_physx_schema()
     stage = Usd.Stage.Open(usd_path)
     n = 0
     for prim in stage.Traverse():
@@ -146,8 +152,8 @@ def apply_sdf_colliders(usd_path: str, resolution: int):
         if not prim.IsA(UsdGeom.Mesh):
             continue
         UsdPhysics.MeshCollisionAPI.Apply(prim).CreateApproximationAttr().Set("sdf")
-        if PhysxSchema:
-            sdf = PhysxSchema.PhysxSDFMeshCollisionAPI.Apply(prim)
+        if physx_schema:
+            sdf = physx_schema.PhysxSDFMeshCollisionAPI.Apply(prim)
             sdf.CreateSdfResolutionAttr().Set(int(resolution))
         n += 1
     stage.GetRootLayer().Save()
@@ -156,10 +162,7 @@ def apply_sdf_colliders(usd_path: str, resolution: int):
 
 def bind_grip_material(usd_path: str, hand_link_keys, static: float, dynamic: float):
     from pxr import Usd, UsdPhysics, UsdShade
-    try:
-        from pxr import PhysxSchema
-    except ImportError:
-        PhysxSchema = None
+    physx_schema = _optional_physx_schema()
     stage = Usd.Stage.Open(usd_path)
     root = stage.GetDefaultPrim().GetPath().pathString
     grip = UsdShade.Material.Define(stage, root + "/Looks/GripMaterial")
@@ -167,8 +170,8 @@ def bind_grip_material(usd_path: str, hand_link_keys, static: float, dynamic: fl
     pm.CreateStaticFrictionAttr().Set(static)
     pm.CreateDynamicFrictionAttr().Set(dynamic)
     pm.CreateRestitutionAttr().Set(0.0)
-    if PhysxSchema:
-        PhysxSchema.PhysxMaterialAPI.Apply(grip.GetPrim()) \
+    if physx_schema:
+        physx_schema.PhysxMaterialAPI.Apply(grip.GetPrim()) \
             .CreateFrictionCombineModeAttr().Set("max")
     n = 0
     for prim in stage.Traverse():
@@ -184,9 +187,8 @@ def bind_grip_material(usd_path: str, hand_link_keys, static: float, dynamic: fl
 
 
 def main():
-    from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
-
     from export_combined_urdf import export_combined_urdf
+    from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
     out = os.path.abspath(os.path.expanduser(args_cli.out))
     os.makedirs(os.path.dirname(out), exist_ok=True)

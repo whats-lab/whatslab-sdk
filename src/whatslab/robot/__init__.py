@@ -1,5 +1,6 @@
 from whatslab.paths import configs_root
 
+from .arm import RobotArmIK
 from .config import (
     CalibrationCfg,
     Origin,
@@ -11,7 +12,6 @@ from .config import (
     save_calibration,
     save_reach_max,
 )
-from .arm_ik import RobotArmIK
 from .model import RobotModel
 
 __all__ = [

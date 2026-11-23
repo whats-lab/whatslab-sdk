@@ -11,12 +11,13 @@ from scipy.spatial.transform import Rotation
 from whatslab.paths import configs_root, models_root
 
 
-def origin_to_T(xyz, rpy) -> np.ndarray:
-    T = np.eye(4)
-    T[:3, :3] = Rotation.from_euler(
+def origin_to_transform(xyz, rpy) -> np.ndarray:
+    """URDF origin(xyz, rpy)을 4×4 변환으로. None 은 0 으로 본다."""
+    tf = np.eye(4)
+    tf[:3, :3] = Rotation.from_euler(
         "xyz", list(rpy) if rpy is not None else [0, 0, 0]).as_matrix()
-    T[:3, 3] = np.asarray(xyz if xyz is not None else [0, 0, 0], dtype=float)
-    return T
+    tf[:3, 3] = np.asarray(xyz if xyz is not None else [0, 0, 0], dtype=float)
+    return tf
 
 
 @dataclass
@@ -25,8 +26,9 @@ class Origin:
     rpy: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     @property
-    def T(self) -> np.ndarray:
-        return origin_to_T(self.xyz, self.rpy)
+    def transform(self) -> np.ndarray:
+        """4×4 동차 변환."""
+        return origin_to_transform(self.xyz, self.rpy)
 
     @staticmethod
     def from_dict(d) -> "Origin":
@@ -92,7 +94,8 @@ class SolverCfg:
     k_limit: Optional[float] = None
     limit_margin: Optional[float] = None
     joint_weights: Optional[Dict[str, float]] = None
-    posture: Optional[Dict[str, float]] = None     # 남는 자유도를 끌어당길 기준 자세 (적지 않은 관절은 0)
+    # 남는 자유도를 끌어당길 기준 자세 (적지 않은 관절은 0)
+    posture: Optional[Dict[str, float]] = None
 
     @staticmethod
     def from_dict(d) -> "SolverCfg":
@@ -119,17 +122,19 @@ class SolverCfg:
             proj_rcond=_opt("proj_rcond", float),
             k_limit=_opt("k_limit", float),
             limit_margin=_opt("limit_margin", float),
-            joint_weights=({str(k): float(v)
-                            for k, v in d["joint_weights"].items()}
-                           if d.get("joint_weights") else None),
-            posture=({str(k): float(v) for k, v in d["posture"].items()}
-                     if d.get("posture") else None),
+            joint_weights=(
+                {str(k): float(v) for k, v in d["joint_weights"].items()}
+                if d.get("joint_weights")
+                else None
+            ),
+            posture=(
+                {str(k): float(v) for k, v in d["posture"].items()} if d.get("posture") else None
+            ),
         )
 
 
 @dataclass
 class CalibrationCfg:
-
     enabled: bool = True
     input_reach: Optional[float] = None
 
@@ -140,35 +145,9 @@ class CalibrationCfg:
     @staticmethod
     def from_dict(d) -> "CalibrationCfg":
         d = d or {}
-        return CalibrationCfg(enabled=bool(d.get("enabled", True)),
-                              input_reach=d.get("input_reach"))
-
-
-@dataclass
-class HandSolverCfg:
-
-    onnx_path: Optional[str] = None
-    tables_path: Optional[str] = None
-    threads: Optional[int] = None
-
-    @staticmethod
-    def from_dict(d) -> "HandSolverCfg":
-        d = d or {}
-        if "backend" in d:
-            raise ValueError("hand_solver.backend 는 제거됐다 — 엔진은 robot yaml 의"
-                             " retarget 로 고른다(dex:<이름> = DexPilot, 그 밖 = ONNX)")
-        thr = d.get("threads")
-        return HandSolverCfg(
-            onnx_path=(None if d.get("onnx_path") is None
-                       else str(d["onnx_path"])),
-            tables_path=(None if d.get("tables_path") is None
-                         else str(d["tables_path"])),
-            threads=None if thr is None else int(thr))
-
-    def kwargs(self) -> dict:
-        return {k: v for k, v in (("onnx_path", self.onnx_path),
-                                  ("tables_path", self.tables_path),
-                                  ("threads", self.threads)) if v is not None}
+        return CalibrationCfg(
+            enabled=bool(d.get("enabled", True)), input_reach=d.get("input_reach")
+        )
 
 
 @dataclass
@@ -182,7 +161,6 @@ class RigConfig:
     target_ee: Optional[str]
     solver: SolverCfg
     calibration: CalibrationCfg
-    hand_solver: "HandSolverCfg" = field(default_factory=lambda: HandSolverCfg())
     path: Optional[str] = None
 
     def resolve_target_ee(self) -> str:
@@ -203,8 +181,7 @@ def _resolve_config(path: str, subdir: str) -> str:
     if os.path.isabs(p) or os.path.exists(p):
         return os.path.abspath(p)
     root = configs_root()
-    for cand in ((os.path.join(root, path),
-                  os.path.join(root, subdir, path)) if root else ()):
+    for cand in (os.path.join(root, path), os.path.join(root, subdir, path)) if root else ():
         if os.path.exists(cand):
             return os.path.abspath(cand)
     return os.path.abspath(p)
@@ -227,6 +204,11 @@ def load_rig(path: str) -> RigConfig:
     if not os.path.exists(p):
         raise FileNotFoundError(f"rig config 없음: {path}")
     d = _load_yaml(p)
+    if "hand_solver" in d:
+        raise ValueError(
+            f"{p}: rig hand_solver 는 제거됐다(ONNX 엔진 전용) — 손 엔진은 robot yaml 의"
+            " retarget: dex:<손> | geort:<설정> 으로 고른다"
+        )
     cfg_root = os.path.dirname(os.path.dirname(p))
 
     def _load_robot(ref) -> RobotSpec:
@@ -250,14 +232,14 @@ def load_rig(path: str) -> RigConfig:
 
     rig = RigConfig(
         name=d.get("name", os.path.splitext(os.path.basename(p))[0]),
-        arm=arm, hand=hand,
+        arm=arm,
+        hand=hand,
         mount=Origin.from_dict(d.get("mount")),
         attach=Origin.from_dict(d.get("attach")),
         lock_joints=list(d.get("lock_joints") or []),
         target_ee=d.get("target_ee"),
         solver=SolverCfg.from_dict(d.get("solver")),
         calibration=CalibrationCfg.from_dict(d.get("calibration")),
-        hand_solver=HandSolverCfg.from_dict(d.get("hand_solver")),
         path=p,
     )
     if arm is None and rig.calibration.complete:

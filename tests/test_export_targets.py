@@ -11,9 +11,9 @@ _TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from whatslab.data.lerobot_recorder import LeRobotRecorder  # noqa: E402
-
 import export_targets  # noqa: E402
+
+from whatslab.data.lerobot_recorder import LeRobotRecorder  # noqa: E402
 
 FEATURES = {
     "observation.state": {"dtype": "float32", "shape": (7,), "names": None},

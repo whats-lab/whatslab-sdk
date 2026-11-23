@@ -1,14 +1,13 @@
 import numpy as np
 
+from whatslab.core.constants import XR_JOINT_COUNT
+from whatslab.core.interfaces import ArmSolver, HandController, Receiver
 from whatslab.core.types import (
-    HUMAN_HAND,
-    SENSED_JOINTS,
     HandCommand,
     HandPose,
     InputSample,
     Pose,
 )
-from whatslab.core.interfaces import ArmSolver, HandController, Receiver
 
 
 def test_pose_defaults():
@@ -22,13 +21,13 @@ def test_pose_matrix_roundtrip():
 
     quat = Rotation.from_euler("xyz", [0.3, -0.5, 1.2]).as_quat()
     p = Pose(pos=np.array([0.1, 0.2, 0.3]), quat=quat)
-    T = p.to_matrix()
-    assert T.shape == (4, 4)
-    assert np.allclose(T[:3, 3], p.pos)
+    tf = p.to_matrix()
+    assert tf.shape == (4, 4)
+    assert np.allclose(tf[:3, 3], p.pos)
 
-    back = Pose.from_matrix(T)
+    back = Pose.from_matrix(tf)
     assert np.allclose(back.pos, p.pos)
-    assert np.allclose(back.to_matrix()[:3, :3], T[:3, :3], atol=1e-8)
+    assert np.allclose(back.to_matrix()[:3, :3], tf[:3, :3], atol=1e-8)
 
 
 def test_input_sample_defaults():
@@ -37,31 +36,10 @@ def test_input_sample_defaults():
     assert s.controller is None and s.hand is None
 
 
-def test_skeleton_consistency():
-    assert len(HUMAN_HAND) == 23
-    assert len(SENSED_JOINTS) == 16
-    roots = [j for j in HUMAN_HAND if j.parent is None]
-    assert len(roots) == 1 and roots[0].name == "wrist"
-    names = {j.name for j in HUMAN_HAND}
-    for j in HUMAN_HAND:
-        assert j.parent is None or j.parent in names
-
-
-def test_handpose_sensor_array_roundtrip():
-    import numpy as np
-
-    a = np.random.RandomState(1).randn(17, 4)
-    hp = HandPose.from_sensor_array(a, wrist_pos=np.array([1.0, 2.0, 3.0]))
-    assert hp.wrist is not None and np.allclose(hp.wrist.pos, [1, 2, 3])
-    assert len(hp.joint_rot) == 16
-    assert np.allclose(hp.to_sensor_array(), a)
-
-
-def test_handpose_empty_defaults_identity():
+def test_handpose_defaults():
     hp = HandPose()
-    arr = hp.to_sensor_array()
-    assert arr.shape == (17, 4)
-    assert np.allclose(arr[:, 3], 1.0)
+    assert hp.xr_joints is None and hp.xr_valid is None and hp.wrist is None
+    assert hp.tracked is False and XR_JOINT_COUNT == 26
 
 
 def test_hand_command_defaults():

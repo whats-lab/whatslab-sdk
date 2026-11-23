@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "whatslab-sdk"
-version = "0.4.1"
+version = "0.5.0"
 description = "WHATs LAB teleoperation core — receiver / hand & arm retargeting (ROS-independent)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,27 +27,25 @@ dependencies = [
 [project.optional-dependencies]
 # 전 extra 가 순수 pip 설치 가능 — 손/팔 모두 pip pinocchio(double `pin`) 하나를 공유한다.
 # (팔 IK 는 casadi/IPOPT 대신 pinocchio 해석 야코비안 + DLS 라 conda-forge 불필요)
-# airglove-client = 새 Spine(OpenXR 26관절) 수신 — GloveOpenXRReceiver 가 감싼다.
+# airglove-client = Spine 3.0.0(OpenXR 26관절) 수신 — AirGloveReceiver 가 감싼다.
 # v0.4.0 = Spine 프로토콜 3(메시지 번호 헤더, /pair/N).
-receiver = ["python-osc",
-            "airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
-# 글러브 OpenXR 26관절 → 로봇 손 = dex-retargeting(DexPilot, XRHandRetargeter).
-# 0.4.6 은 numpy<2 전용, 0.5.0 부터 numpy>=2 — 소비자의 numpy 에 맞는 쪽이 설치된다.
-# torch 를 최상단 import 하고 nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
-# onnxruntime 은 레거시 관절각 입력(UniRetargeter 통합 ONNX)용.
-# pin·dexhand-description 은 human_fk(viz)와 실물 관절 매핑(examples/robot_io)용.
-hand     = ["onnxruntime", "pin", "dex-retargeting>=0.4.6",
+receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
+# 글러브 OpenXR 26관절 → 로봇 손. 엔진 두 가지:
+#  - geort(GeoRT 소프트 프롬프트): 추론(`whatslab.solvers.hand.geort`)은 numpy 만 쓴다(모델 npz 는 별도).
+#    단 teleop 프리셋·rig(`whatslab.robot`)는 pinocchio 를 import 하므로 arm 또는 hand extra 가 필요하다.
+#  - dex(dex-retargeting DexPilot, XRHandRetargeter): 아래 hand extra.
+#    0.4.6 은 numpy<2 전용, 0.5.0 부터 numpy>=2 — 소비자의 numpy 에 맞는 쪽이 설치된다.
+#    torch 를 최상단 import 하고 nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
+# pin·dexhand-description 은 dex 와 실물 관절 매핑(examples/robot_io)용.
+hand     = ["pin", "dex-retargeting>=0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 arm      = ["pin",                               # 수치 IK: pinocchio(double) + numpy/scipy
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]           # 3D 씬 viz + 정렬 튜너 (viser, pinocchio FK)
 # lerobot 라이브러리 없이 v2.1 데이터셋을 기록하는 경량 sink (isaacsim numpy1.26 env 비오염 목적).
 data     = ["pyarrow>=14", "imageio[ffmpeg]>=2.30"]
-# 실물 하드웨어 드라이버 — examples/robot_io.py 전용이고 src/ 는 이것을 모른다.
-# CAN 을 끌고 오므로 all 에는 넣지 않는다(sim 소비자 env 비오염 목적).
-# orca_core 는 여기 못 넣는다: 전 태그가 numpy>=2.2.6 을 선언해 이 저장소의
-# numpy<2 핀과 충돌한다(실제로는 numpy1.26 에서 동작). scripts/install_robot_deps.sh 참조.
-robot    = ["pyAgxArm @ git+https://github.com/agilexrobotics/pyAgxArm"]
+# 실물 하드웨어 드라이버(pyAgxArm·orca_core)는 extra 가 아니다 — examples/robot_io.py 전용이고 src/ 는 모른다.
+# examples/requirements-robot.txt · scripts/install_robot_deps.sh 참조.
 all      = ["whatslab-sdk[receiver,hand,arm,viz,data]"]
 dev      = ["pytest"]
 
@@ -64,11 +62,23 @@ include = ["whatslab*"]
 # configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
 # 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
 [tool.setuptools.package-data]
-whatslab = ["configs/**", "solvers/hand/assets/*.onnx", "solvers/hand/assets/*.npz",
-            "receiver/webxr/static/*.html"]
+whatslab = ["configs/**", "receiver/webxr/static/*.html", "solvers/hand/geort/assets/*.npz"]
 
 [tool.setuptools.exclude-package-data]
 whatslab = ["**/__pycache__/**", "**/*.py[cod]"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# PEP 8 검사(ruff): pycodestyle(E·W), 이름 규칙(N, pep8-naming), import 순서(I), pyflakes(F).
+# 줄 길이는 PEP 8 이 팀 합의로 허용하는 최대 99자.
+[tool.ruff]
+line-length = 99
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["whatslab"]
+known-local-folder = ["conftest", "test_webxr_receiver"]

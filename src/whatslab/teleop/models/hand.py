@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from whatslab.receiver.glove.openxr import GloveOpenXRReceiver
-
+from whatslab.core.constants import SIDES
 from whatslab.solvers.hand import HandRetargetController
 
 from ..base import TeleopModel
@@ -18,8 +17,12 @@ class HandModel(TeleopModel):
         if hand_source is not None and hand_kwargs:
             raise ValueError("hand_source 인스턴스와 hand_kwargs 는 함께 줄 수 없다")
         self._side = side
-        self.hand_source = (hand_source if hand_source is not None
-                            else GloveOpenXRReceiver(**(hand_kwargs or {})))
+        if hand_source is None:
+            # airglove-client 는 receiver extra — 다른 수신기를 넘기는 쪽은 없어도 쓸 수 있게.
+            from whatslab.receiver.glove.airglove import AirGloveReceiver
+
+            hand_source = AirGloveReceiver(**(hand_kwargs or {}))
+        self.hand_source = hand_source
         super().__init__(robot=None)
         self.sides[side] = SideModel(
             side=side, robot=None,
@@ -27,4 +30,4 @@ class HandModel(TeleopModel):
                                             **kwargs))
 
     def _get_raw_target(self):
-        return {s: None for s in self.SIDES}
+        return {s: None for s in SIDES}

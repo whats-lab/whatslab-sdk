@@ -27,7 +27,6 @@ from scipy.spatial.transform import Rotation
 from whatslab.solvers.hand import XRHandRetargeter, mirror_xr_joints
 from whatslab.solvers.hand.xr_input import palm_frame, xr_wrist_positions
 
-FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 XR_TIP = (5, 10, 15, 20, 25)
 XR_BONES = ((3, 4, 5), (7, 8, 10), (12, 13, 15), (17, 18, 20), (22, 23, 25))
 XR_BASE = (3, 7, 12, 17, 22)
@@ -38,10 +37,12 @@ LIMIT_FRAC = 0.02
 
 def quest_to_xr(a25):
     a = np.asarray(a25, dtype=float).reshape(25, 7)
-    Rw = Rotation.from_quat(a[0, 3:]).as_matrix()
+    rot_w = Rotation.from_quat(a[0, 3:]).as_matrix()
     out = np.zeros((26, 8))
-    out[1:, :4] = Rotation.from_matrix(Rw.T @ Rotation.from_quat(a[:, 3:]).as_matrix()).as_quat()
-    out[1:, 4:7] = (a[:, :3] - a[0, :3]) @ Rw
+    out[1:, :4] = Rotation.from_matrix(
+        rot_w.T @ Rotation.from_quat(a[:, 3:]).as_matrix()
+    ).as_quat()
+    out[1:, 4:7] = (a[:, :3] - a[0, :3]) @ rot_w
     out[0, :4] = out[11, :4]
     out[0, 4:7] = 0.5 * (out[11, 4:7] + out[12, 4:7])
     return out
@@ -56,7 +57,7 @@ def load_sequences(paths):
             side = str(z["side"])
             sq = {"tag": tag, "side": side, "xr": np.asarray(z["xr"], float)}
             if tag.endswith("_" + side):
-                sq["pair"] = tag[:-len(side) - 1]
+                sq["pair"] = tag[: -len(side) - 1]
             seqs.append(sq)
             continue
         with open(p) as f:
@@ -64,13 +65,13 @@ def load_sequences(paths):
         for side in ("left", "right"):
             xr = [quest_to_xr(fr[side]) for fr in d["frames"] if fr.get(side)]
             if len(xr) > 1:
-                seqs.append({"tag": f"{tag}:{side}", "side": side, "xr": np.array(xr),
-                             "pair": tag})
+                seqs.append(
+                    {"tag": f"{tag}:{side}", "side": side, "xr": np.array(xr), "pair": tag}
+                )
     return seqs
 
 
 class RobotProbe:
-
     def __init__(self, eng: XRHandRetargeter):
         self.eng = eng
         self.model = pin.buildModelFromUrdf(eng.urdf_path)
@@ -81,11 +82,17 @@ class RobotProbe:
         self.tips = [self.model.getFrameId(n) for n in cfg["finger_tip_link_names"]]
         self.wrist = self.model.getFrameId(cfg["wrist_link_name"])
         self.chains = [self._chain(t, k == 0) for k, t in enumerate(self.tips)]
-        self._fk(eng.full_qpos(np.clip(np.zeros(len(eng.joint_names)),
-                                       eng.joint_limits[:, 0], eng.joint_limits[:, 1])))
+        self._fk(
+            eng.full_qpos(
+                np.clip(
+                    np.zeros(len(eng.joint_names)), eng.joint_limits[:, 0], eng.joint_limits[:, 1]
+                )
+            )
+        )
         palm = [self.model.getFrameId(n) for n in eng.config.palm_links]
-        self.R_palm = palm_frame(self._pos(self.wrist), *(self._pos(f) for f in palm),
-                                 side=eng.config.side)
+        self.rot_palm = palm_frame(
+            self._pos(self.wrist), *(self._pos(f) for f in palm), side=eng.config.side
+        )
         self.length = float(np.linalg.norm(self._pos(self.tips[2]) - self._pos(self.wrist)))
 
     def _pos(self, fid):
@@ -109,16 +116,18 @@ class RobotProbe:
     def points(self, q):
         self._fk(self.eng.full_qpos(q))
         tips = np.array([self.data.oMf[f].translation for f in self.tips])
-        bones = [np.array([self.data.oMi[j].translation for j in ch] + [tips[k]])
-                 for k, ch in enumerate(self.chains)]
+        bones = [
+            np.array([self.data.oMi[j].translation for j in ch] + [tips[k]])
+            for k, ch in enumerate(self.chains)
+        ]
         return tips, bones
 
 
-def bone_angles(h_pts, r_bones, R_h, R_r):
+def bone_angles(h_pts, r_bones, rot_h, rot_r):
     out = []
-    for k, idx in enumerate(XR_BONES[:len(r_bones)]):
-        hb = h_pts[list(idx)] @ R_h
-        rb = r_bones[k] @ R_r
+    for k, idx in enumerate(XR_BONES[: len(r_bones)]):
+        hb = h_pts[list(idx)] @ rot_h
+        rb = r_bones[k] @ rot_r
         for a in range(2):
             u, v = hb[a + 1] - hb[a], rb[a + 1] - rb[a]
             nu, nv = np.linalg.norm(u), np.linalg.norm(v)
@@ -144,10 +153,14 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
         else:
             continue
         eng.reset()
-        H = np.array([xr_wrist_positions(x) for x in xr])
-        s = probe.length / np.percentile(np.linalg.norm(H[:, 15] - H[:, 1], axis=1), 95)
+        hand_pts = np.array([xr_wrist_positions(x) for x in xr])
+        s = probe.length / np.percentile(
+            np.linalg.norm(hand_pts[:, 15] - hand_pts[:, 1], axis=1), 95
+        )
         n_f = len(probe.tips)
-        ext = np.linalg.norm(H[:, list(XR_TIP[:n_f])] - H[:, list(XR_BASE[:n_f])], axis=2)
+        ext = np.linalg.norm(
+            hand_pts[:, list(XR_TIP[:n_f])] - hand_pts[:, list(XR_BASE[:n_f])], axis=2
+        )
         ext_ref = np.percentile(ext, 95, axis=0)
         prev = None
         for i, x in enumerate(xr):
@@ -160,9 +173,9 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
             prev = q
             acc["limit"].append(float(np.mean((q < lo + band) | (q > hi - band))))
             tips, bones = probe.points(q)
-            h = H[i]
-            R_h = palm_frame(*(h[j] for j in XR_PALM), side=side)
-            acc["bone"].extend(bone_angles(h, bones, R_h, probe.R_palm))
+            h = hand_pts[i]
+            rot_h = palm_frame(*(h[j] for j in XR_PALM), side=side)
+            acc["bone"].extend(bone_angles(h, bones, rot_h, probe.rot_palm))
             hd = np.linalg.norm(h[tip_idx] - h[XR_TIP[0]], axis=1) * 1e3
             rd = np.linalg.norm(tips[1:] - tips[0], axis=1) * 1e3
             if np.all(ext[i] >= OPEN_FRAC * ext_ref):
@@ -174,8 +187,10 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
 
 
 def two_hand_latency(name_l, name_r, seqs, overrides):
-    eng = {"left": XRHandRetargeter(name_l, **overrides),
-           "right": XRHandRetargeter(name_r, **overrides)}
+    eng = {
+        "left": XRHandRetargeter(name_l, **overrides),
+        "right": XRHandRetargeter(name_r, **overrides),
+    }
     pairs = {}
     for sq in seqs:
         if "pair" in sq:
@@ -203,25 +218,40 @@ def _mean(v):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("data", nargs="+", help="npz/json 파일 또는 디렉터리")
-    ap.add_argument("--configs", nargs="+",
-                    default=["orca_right", "orca_left", "dg5f_right", "dg5f_left"])
-    ap.add_argument("--mirror", action="store_true",
-                    help="반대손 시퀀스를 거울상으로 바꿔 같이 쓴다")
-    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VAL",
-                    help="dex RetargetingConfig 덮어쓰기 (예: low_pass_alpha=0.3)")
-    ap.add_argument("--pinch-mm", type=float, default=20.0,
-                    help="핀치 프레임 판정: 사람 엄지-손가락 끝 거리 상한 (mm)")
+    ap.add_argument(
+        "--configs", nargs="+", default=["orca_right", "orca_left", "dg5f_right", "dg5f_left"]
+    )
+    ap.add_argument(
+        "--mirror", action="store_true", help="반대손 시퀀스를 거울상으로 바꿔 같이 쓴다"
+    )
+    ap.add_argument(
+        "--set",
+        nargs="*",
+        default=[],
+        metavar="KEY=VAL",
+        help="dex RetargetingConfig 덮어쓰기 (예: low_pass_alpha=0.3)",
+    )
+    ap.add_argument(
+        "--pinch-mm",
+        type=float,
+        default=20.0,
+        help="핀치 프레임 판정: 사람 엄지-손가락 끝 거리 상한 (mm)",
+    )
     ap.add_argument("--max-evals", type=int, help="SLSQP 평가 상한 덮어쓰기 (0 = 무제한)")
     ap.add_argument("--json", help="결과를 json 으로 저장")
     args = ap.parse_args()
 
     paths = []
     for p in args.data:
-        paths += sorted(glob.glob(os.path.join(p, "*.npz")) + glob.glob(os.path.join(p, "*.json"))
-                        ) if os.path.isdir(p) else [p]
+        paths += (
+            sorted(glob.glob(os.path.join(p, "*.npz")) + glob.glob(os.path.join(p, "*.json")))
+            if os.path.isdir(p)
+            else [p]
+        )
     seqs = load_sequences(paths)
     overrides = {}
     for kv in args.set:
@@ -231,31 +261,67 @@ def main():
         overrides["max_evals"] = args.max_evals
     print(f"시퀀스 {len(seqs)}개, 프레임 {sum(len(s['xr']) for s in seqs)}")
     hdr = "%-14s %7s %6s %9s %8s %8s %7s %7s %7s %7s %7s" % (
-        "config", "frames", "open", "pinch(n)", "pinchErr", "bone°", "|dq|95", "limit",
-        "ms50", "ms99", "2손99")
+        "config",
+        "frames",
+        "open",
+        "pinch(n)",
+        "pinchErr",
+        "bone°",
+        "|dq|95",
+        "limit",
+        "ms50",
+        "ms99",
+        "2손99",
+    )
     print(hdr)
     out = {}
     for name in args.configs:
         eng, acc, n = run_config(name, seqs, args.mirror, overrides, args.pinch_mm)
         row = {
-            "frames": n, "open_mm": _mean(acc["open"]), "open_n": len(acc["open"]),
-            "pinch_mm": _mean(acc["pinch"]), "pinch_p90_mm": _pct(acc["pinch"], 90),
-            "pinch_n": len(acc["pinch"]), "pinch_err_mm": _mean(acc["pinch_err"]),
-            "bone_deg": _mean(acc["bone"]), "dq_p95": _pct(acc["dq"], 95),
-            "limit_ratio": _mean(acc["limit"]), "ms_p50": _pct(acc["ms"], 50),
+            "frames": n,
+            "open_mm": _mean(acc["open"]),
+            "open_n": len(acc["open"]),
+            "pinch_mm": _mean(acc["pinch"]),
+            "pinch_p90_mm": _pct(acc["pinch"], 90),
+            "pinch_n": len(acc["pinch"]),
+            "pinch_err_mm": _mean(acc["pinch_err"]),
+            "bone_deg": _mean(acc["bone"]),
+            "dq_p95": _pct(acc["dq"], 95),
+            "limit_ratio": _mean(acc["limit"]),
+            "ms_p50": _pct(acc["ms"], 50),
             "ms_p99": _pct(acc["ms"], 99),
         }
-        other = name.replace("_right", "_left") if name.endswith("_right") else \
-            name.replace("_left", "_right")
-        two = two_hand_latency(other if name.endswith("_right") else name,
-                               name if name.endswith("_right") else other, seqs, overrides)
+        other = (
+            name.replace("_right", "_left")
+            if name.endswith("_right")
+            else name.replace("_left", "_right")
+        )
+        two = two_hand_latency(
+            other if name.endswith("_right") else name,
+            name if name.endswith("_right") else other,
+            seqs,
+            overrides,
+        )
         row["two_hand_ms_p50"] = _pct(two, 50)
         row["two_hand_ms_p99"] = _pct(two, 99)
         out[name] = row
-        print("%-14s %7d %6.1f %5.1f(%3d) %8.1f %8.1f %7.3f %7.3f %7.2f %7.2f %7.2f" % (
-            name, n, row["open_mm"], row["pinch_mm"], row["pinch_n"], row["pinch_err_mm"],
-            row["bone_deg"], row["dq_p95"], row["limit_ratio"], row["ms_p50"], row["ms_p99"],
-            row["two_hand_ms_p99"]))
+        print(
+            "%-14s %7d %6.1f %5.1f(%3d) %8.1f %8.1f %7.3f %7.3f %7.2f %7.2f %7.2f"
+            % (
+                name,
+                n,
+                row["open_mm"],
+                row["pinch_mm"],
+                row["pinch_n"],
+                row["pinch_err_mm"],
+                row["bone_deg"],
+                row["dq_p95"],
+                row["limit_ratio"],
+                row["ms_p50"],
+                row["ms_p99"],
+                row["two_hand_ms_p99"],
+            )
+        )
     if args.json:
         with open(args.json, "w") as f:
             json.dump(out, f, indent=2)

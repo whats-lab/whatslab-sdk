@@ -8,19 +8,22 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from airglove_client import JOINT_COUNT, JOINT_NAMES, AirGloveError, Client, Side
-from scipy.spatial.transform import Rotation
+from airglove_client import JOINT_NAMES, AirGloveError, Client, Side
 
+from whatslab.core.constants import FINGER_COUNT, OPENXR26_TO_HAND21, XR_JOINT_NAMES
 from whatslab.core.types import HandPose, InputSample
-from ..webxr.base import _CANONICAL_M
-from .base import AGA_FINGER_COUNT, GLOVE_CLIENT_PORT, GLOVE_OSC_PORT, GLOVE_TARGET_IP
+
+from ..base import Y_UP_RH_TO_CANONICAL, to_canonical_quat
 
 _log = logging.getLogger(__name__)
 
-XR_JOINT_COUNT = JOINT_COUNT
-XR_JOINT_FIELDS = 8
-XR_JOINT_NAMES = tuple(JOINT_NAMES)
-XR_WRIST_INDEX = XR_JOINT_NAMES.index("wrist")
+GLOVE_OSC_PORT = 4040          # Spine → 이 클라이언트 (PC 당 하나)
+GLOVE_CLIENT_PORT = 4042       # 이 클라이언트 → Spine
+GLOVE_TARGET_IP = "127.0.0.1"  # Spine 은 로컬 전용
+
+if tuple(JOINT_NAMES) != XR_JOINT_NAMES:   # airglove-client 와 core 의 관절 순서가 같아야 한다
+    raise ImportError("airglove_client JOINT_NAMES 가 OpenXR 26관절 순서와 다르다")
+
 HAPTIC_LEVEL_MAX = 3
 OPENXR_STALE_TIMEOUT = 0.2
 DEVICE_STATUS_MAX_AGE = 2.0
@@ -29,16 +32,16 @@ DEFAULT_PAIR = 1
 MIN_LIBRARY_VERSION = (0, 4)
 
 _SIDES = {"left": Side.LEFT, "right": Side.RIGHT}
+_HAND21 = list(OPENXR26_TO_HAND21)
 
 
 def openxr_quat_to_canonical(quat) -> np.ndarray:
-    R = Rotation.from_quat(np.asarray(quat, dtype=float)).as_matrix()
-    return Rotation.from_matrix(_CANONICAL_M @ R @ _CANONICAL_M.T).as_quat()
+    return to_canonical_quat(Y_UP_RH_TO_CANONICAL, quat)
 
 
 def haptic_levels(values) -> list:
-    out = [0] * AGA_FINGER_COUNT
-    for i, v in enumerate(list(values)[:AGA_FINGER_COUNT]):
+    out = [0] * FINGER_COUNT
+    for i, v in enumerate(list(values)[:FINGER_COUNT]):
         try:
             f = float(v)
         except (TypeError, ValueError):
@@ -81,7 +84,8 @@ class GloveWrist:
     age_s: float
 
 
-class GloveOpenXRReceiver:
+class AirGloveReceiver:
+    """AirGlove Spine 3.0.0 OpenXR 26관절 수신기(airglove-client 래퍼)."""
 
     def __init__(
         self,
@@ -115,16 +119,24 @@ class GloveOpenXRReceiver:
                 return
             version = Client.version()
             if _library_version(version) < MIN_LIBRARY_VERSION:
-                _log.warning("airglove_client 네이티브 라이브러리 %s 는 Spine 프로토콜 %d 이전 — "
-                             "0.4.0 이상이 필요하다(AIRGLOVE_CLIENT_LIBRARY)", version, SPINE_PROTOCOL)
-            client = Client(listen_address=self._listen_ip, listen_port=self._glove_port,
-                            spine_address=self._target_ip, spine_port=self._client_port)
+                _log.warning(
+                    "airglove_client 네이티브 라이브러리 %s 는 Spine 프로토콜 %d 이전 — "
+                    "0.4.0 이상이 필요하다(AIRGLOVE_CLIENT_LIBRARY)",
+                    version, SPINE_PROTOCOL)
+            client = Client(
+                listen_address=self._listen_ip,
+                listen_port=self._glove_port,
+                spine_address=self._target_ip,
+                spine_port=self._client_port,
+            )
             if self._pair != DEFAULT_PAIR:
                 set_pair = getattr(client, "set_pair", None)
                 if set_pair is None:
                     client.close()
-                    raise AirGloveError(f"이 airglove_client 는 set_pair 가 없어 pair {self._pair} 를 "
-                                        "쓸 수 없다(0.4.0 이상 필요)")
+                    raise AirGloveError(
+                        f"이 airglove_client 는 set_pair 가 없어 pair {self._pair} 를 "
+                        "쓸 수 없다(0.4.0 이상 필요)"
+                    )
                 set_pair(self._pair)
             self._client = client
             self._protocol_checked = False
@@ -150,7 +162,9 @@ class GloveOpenXRReceiver:
             return
         self._protocol_checked = True
         if int(reported[0]) != SPINE_PROTOCOL:
-            _log.warning("Spine 프로토콜 %s 보고됨 — 이 리시버는 %d 기준이다", reported[0], SPINE_PROTOCOL)
+            _log.warning(
+                "Spine 프로토콜 %s 보고됨 — 이 리시버는 %d 기준이다", reported[0], SPINE_PROTOCOL
+            )
 
     def spine_protocol(self) -> Optional[int]:
         with self._lock:
@@ -165,7 +179,9 @@ class GloveOpenXRReceiver:
             if self._client is None:
                 return None
             frame = self._client.wrist(key)
-        if frame is None or (self._stale_timeout > 0 and float(frame.age_s) >= self._stale_timeout):
+        if frame is None or (
+            self._stale_timeout > 0 and float(frame.age_s) >= self._stale_timeout
+        ):
             return None
         return np.asarray(frame.orientation, dtype=float).copy()
 
@@ -173,10 +189,14 @@ class GloveOpenXRReceiver:
         frame = self._read(side)
         if frame is None:
             return None
-        return GloveFrame(side=side, xr_joints=_xr_joints(frame),
-                          valid=np.asarray(frame.valid, dtype=bool).copy(),
-                          seq=int(frame.seq), sender_time_us=int(frame.sender_time_us),
-                          age_s=float(frame.age_s))
+        return GloveFrame(
+            side=side,
+            xr_joints=_xr_joints(frame),
+            valid=np.asarray(frame.valid, dtype=bool).copy(),
+            seq=int(frame.seq),
+            sender_time_us=int(frame.sender_time_us),
+            age_s=float(frame.age_s),
+        )
 
     def wrist_frame(self, side: str) -> Optional[GloveWrist]:
         key = _SIDES[side]
@@ -186,9 +206,13 @@ class GloveOpenXRReceiver:
             frame = self._client.wrist(key)
         if frame is None:
             return None
-        return GloveWrist(side=side, orientation_raw=np.asarray(frame.orientation, dtype=float).copy(),
-                          seq=int(frame.seq), sender_time_us=int(frame.sender_time_us),
-                          age_s=float(frame.age_s))
+        return GloveWrist(
+            side=side,
+            orientation_raw=np.asarray(frame.orientation, dtype=float).copy(),
+            seq=int(frame.seq),
+            sender_time_us=int(frame.sender_time_us),
+            age_s=float(frame.age_s),
+        )
 
     def device_status(self):
         with self._lock:
@@ -210,8 +234,16 @@ class GloveOpenXRReceiver:
         if frame is None:
             return InputSample(tracked=False, timestamp=0.0)
         ts = time.monotonic() - float(frame.age_s)
-        tracked = self._fresh(float(frame.age_s)) and bool(np.all(frame.valid))
-        hand = HandPose(wrist=None, xr_joints=_xr_joints(frame), tracked=tracked, timestamp=ts)
+        # 리타게팅이 쓰는 21점만 본다 — 안 쓰는 palm·중수골이 무효여도 추적 중이다.
+        valid = np.asarray(frame.valid, dtype=bool)
+        tracked = self._fresh(float(frame.age_s)) and bool(np.all(valid[_HAND21]))
+        hand = HandPose(
+            wrist=None,
+            xr_joints=_xr_joints(frame),
+            xr_valid=np.asarray(frame.valid, dtype=bool).copy(),
+            tracked=tracked,
+            timestamp=ts,
+        )
         return InputSample(hand=hand, tracked=tracked, timestamp=ts)
 
     def connected(self, side: str) -> bool:
@@ -221,8 +253,11 @@ class GloveOpenXRReceiver:
                 return False
             status = self._client.device_status()
             frame = self._client.hand(key)
-        if (status is not None and float(status.age_s) < DEVICE_STATUS_MAX_AGE
-                and (status.left_connected if key == Side.LEFT else status.right_connected)):
+        if (
+            status is not None
+            and float(status.age_s) < DEVICE_STATUS_MAX_AGE
+            and (status.left_connected if key == Side.LEFT else status.right_connected)
+        ):
             return True
         return frame is not None and self._fresh(float(frame.age_s))
 

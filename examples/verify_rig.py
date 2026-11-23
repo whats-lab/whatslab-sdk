@@ -9,14 +9,14 @@ PASS_POS_MM = 5.0
 SETTLE_TICKS = 150
 
 
-def _solve_settled(model, T_c):
+def _solve_settled(model, tf_c):
     ik = RobotArmIK(model)
     for _ in range(SETTLE_TICKS):
-        q = ik.solve(T_c)
-    T = model.ee_pose(q)
-    pos_err = float(np.linalg.norm(T[:3, 3] - T_c[:3, 3]))
-    R = T[:3, :3].T @ T_c[:3, :3]
-    ori_err = float(np.arccos(np.clip((np.trace(R) - 1) / 2, -1, 1)))
+        q = ik.solve(tf_c)
+    tf = model.ee_pose(q)
+    pos_err = float(np.linalg.norm(tf[:3, 3] - tf_c[:3, 3]))
+    rot = tf[:3, :3].T @ tf_c[:3, :3]
+    ori_err = float(np.arccos(np.clip((np.trace(rot) - 1) / 2, -1, 1)))
     return q, pos_err, ori_err
 
 
@@ -60,8 +60,8 @@ def main():
 
     print("\n0) reach_max 측정 (target_ee 최대 반경)")
     rng0 = np.random.default_rng(args.seed)
-    Q = lo + (hi - lo) * rng0.random((args.samples, model.solver.nq))
-    r_max = max(float(np.linalg.norm(model.solver.fk(q)[:3, 3])) for q in Q)
+    q_mat = lo + (hi - lo) * rng0.random((args.samples, model.solver.nq))
+    r_max = max(float(np.linalg.norm(model.solver.fk(q)[:3, 3])) for q in q_mat)
     reach_reco = round(r_max * args.reach_factor, 4)
     print(f"  샘플 {args.samples}개  최대 반경 {r_max:.4f}m")
     print(f"  → 측정 reach_max = {reach_reco} (={args.reach_factor:.2f}×)")
@@ -77,9 +77,9 @@ def main():
     rng = np.random.default_rng(args.seed)
     for i in range(5):
         q_true = lo + (hi - lo) * (0.2 + 0.6 * rng.random(model.solver.nq))
-        T_c = model.ee_pose(q_true)
+        tf_c = model.ee_pose(q_true)
         model.sync_state(q_true + 0.2 * rng.standard_normal(model.solver.nq))
-        _, pe, oe = _solve_settled(model, T_c)
+        _, pe, oe = _solve_settled(model, tf_c)
         results.append(_row(f"roundtrip #{i}", pe, oe))
 
     rig.calibration.enabled = cal_enabled
@@ -87,10 +87,10 @@ def main():
     if args.target:
         print("\n2) 사용자 지정 목표 (정준좌표)")
         for t in args.target:
-            T_c = np.eye(4)
-            T_c[:3, 3] = np.asarray(t, dtype=float)
+            tf_c = np.eye(4)
+            tf_c[:3, 3] = np.asarray(t, dtype=float)
             model.sync_state(np.zeros(model.solver.nq))
-            _, pe, oe = _solve_settled(model, T_c)
+            _, pe, oe = _solve_settled(model, tf_c)
             results.append(_row(f"target {t}", pe, oe))
 
     n_ok = sum(results)

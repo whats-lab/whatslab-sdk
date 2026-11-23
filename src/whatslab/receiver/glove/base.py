@@ -1,6 +1,0 @@
-from __future__ import annotations
-
-GLOVE_OSC_PORT = 4040
-GLOVE_CLIENT_PORT = 4042
-GLOVE_TARGET_IP = "127.0.0.1"
-AGA_FINGER_COUNT = 5

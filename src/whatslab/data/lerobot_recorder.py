@@ -8,7 +8,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from . import lerobot_schema as S
+from . import lerobot_schema
 
 
 class LeRobotRecorder:
@@ -33,7 +33,7 @@ class LeRobotRecorder:
         self._ep_stats_lines: list[dict] = []
         self._buf: list[dict] = []
         self._writers: dict[str, object] = {}
-        self._img_stats: dict[str, S.ImageStats] = {}
+        self._img_stats: dict[str, lerobot_schema.ImageStats] = {}
 
     def _video_path(self, key: str, episode: int) -> Path:
         return self.root / f"videos/chunk-000/{key}/episode_{episode:06d}.mp4"
@@ -50,7 +50,7 @@ class LeRobotRecorder:
                 pixelformat="yuv420p",
                 macro_block_size=1,
             )
-            self._img_stats[k] = S.ImageStats()
+            self._img_stats[k] = lerobot_schema.ImageStats()
 
     def _close_writers(self) -> None:
         for w in self._writers.values():
@@ -58,9 +58,9 @@ class LeRobotRecorder:
         self._writers = {}
 
     def add_frame(self, state, action, images: dict, replay: dict, task: str) -> None:
-        if self._ep >= S.CHUNKS_SIZE:
+        if self._ep >= lerobot_schema.CHUNKS_SIZE:
             raise NotImplementedError(
-                f"mini-writer supports a single chunk (<{S.CHUNKS_SIZE} episodes); "
+                f"mini-writer supports a single chunk (<{lerobot_schema.CHUNKS_SIZE} episodes); "
                 f"episode {self._ep} exceeds chunks_size"
             )
         if self._img_keys and not self._writers:
@@ -105,7 +105,8 @@ class LeRobotRecorder:
 
         stacks: dict[str, np.ndarray] = {}
         for feat in self._vec_keys:
-            stacks[feat] = np.stack([self._vec_value(f, feat) for f in self._buf]).astype(np.float32)
+            values = [self._vec_value(f, feat) for f in self._buf]
+            stacks[feat] = np.stack(values).astype(np.float32)
 
         timestamp = np.array([i / self.fps for i in range(n)], dtype=np.float32)
         frame_index = np.arange(n, dtype=np.int64)
@@ -129,14 +130,14 @@ class LeRobotRecorder:
 
         stats = {}
         for feat in self._vec_keys:
-            stats[feat] = S._reduce_stats(stacks[feat].astype(np.float64))
+            stats[feat] = lerobot_schema._reduce_stats(stacks[feat].astype(np.float64))
         for k in self._img_keys:
             stats[k] = self._img_stats[k].result()
-        stats["timestamp"] = S._reduce_stats(timestamp.astype(np.float64))
-        stats["frame_index"] = S._reduce_stats(frame_index.astype(np.float64))
-        stats["episode_index"] = S._reduce_stats(episode_index.astype(np.float64))
-        stats["index"] = S._reduce_stats(index.astype(np.float64))
-        stats["task_index"] = S._reduce_stats(task_index.astype(np.float64))
+        stats["timestamp"] = lerobot_schema._reduce_stats(timestamp.astype(np.float64))
+        stats["frame_index"] = lerobot_schema._reduce_stats(frame_index.astype(np.float64))
+        stats["episode_index"] = lerobot_schema._reduce_stats(episode_index.astype(np.float64))
+        stats["index"] = lerobot_schema._reduce_stats(index.astype(np.float64))
+        stats["task_index"] = lerobot_schema._reduce_stats(task_index.astype(np.float64))
         self._ep_stats_lines.append({"episode_index": self._ep, "stats": stats})
 
         self._global += n
@@ -146,7 +147,7 @@ class LeRobotRecorder:
 
     def finalize(self) -> None:
         self._close_writers()
-        info = S.build_info(
+        info = lerobot_schema.build_info(
             self.features, self.fps, self.robot_type, self._ep, self._global, len(self._tasks)
         )
         (self.root / "meta/info.json").write_text(json.dumps(info, indent=4))

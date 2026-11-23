@@ -3,6 +3,221 @@
 이 저장소는 [Semantic Versioning](https://semver.org/lang/ko/) 을 따른다.
 1.0 이전이므로 minor 버전에서 호환 없는 변경이 있을 수 있다.
 
+## [0.5.0] — 2026-11-19
+
+Spine 3.0.0(OSC 프로토콜 3) 대응을 마무리하고 손 리타게팅을 OpenXR 26관절 입력 하나로 통일한다.
+아래 [Unreleased] 항목(글러브 OpenXR 수신·DexPilot)도 이 버전에 들어간다.
+
+### 변경 — 이름 (호환 없는 변경)
+
+- **`GloveOpenXRReceiver` → `AirGloveReceiver`**, 모듈 `receiver.glove.openxr` → `receiver.glove.airglove`.
+  `GloveModel(hand_source=…)` 키도 `"openxr"` → `"airglove"`.
+
+### 변경 — Quest 입력을 브라우저 WebXR 로 일원화 (호환 없는 변경)
+
+- **`WebXRHandReceiver` 추가** — 헤드셋 브라우저의 WebXR 핸드트래킹(25관절)을 OpenXR 26관절(`HandPose.xr_joints`,
+  palm 은 Spine 과 같은 규칙으로 합성)과 손목 자세로 준다. 글러브와 같은 dex·geort 리타게팅을 맨손으로 쓸 수 있다.
+  웹 페이지(`receiver/webxr/static/index.html`)는 `hand-tracking` 을 선택 기능으로 요청하고 `hands` 를 보낸다.
+- **WebXR 서버가 메시지를 모든 수신기에 준다**(`set_handler` → `add_handler`/`remove_handler`). 같은 포트에서
+  컨트롤러·손 수신기를 함께 쓸 수 있다. 서버를 함께 쓰려면 고정 포트를 준다(`port=0` 은 공유하지 않는다).
+- **제거:** Quest 앱(PoseDataTracker) 경로 — `receiver/quest`(`QuestControllerReceiver`·`QuestHandReceiver`),
+  `receiver/osc_transport`, `python-osc` 의존성, `assets/quest/*.apk`, `scripts/install_quest_app.sh`, 앱 전용
+  `UNITY_TO_CANONICAL`·컨트롤러 마운트 보정(`CONTROLLER_POS_OFFSET`, WebXR grip 에는 해당 없음 — 필요하면
+  `pos_offset`). 앱은 손가락 16관절만 보내고 손끝이 없어 리타게팅 입력을 만들 수 없었다.
+- `QuestModel` 은 `WebXRHandReceiver`(손목 → 팔, 손 → 리타게팅), `GloveModel` 의 `arm_source` 는 `"webxr"` 만
+  (기본). `examples/quest_arm.py` 의 `--arm-source`·`--hand-config` 옵션 제거.
+- 알려진 제약: WebXR 손목 축(OpenXR)이 앱(Unity OVR)과 달라 `QuestModel` 팔 EE 방위는 실기 재확인이 필요하다.
+
+### 변경 — 의존성
+
+- **`robot` extra(pyAgxArm) 제거** — `src/` 는 쓰지 않고 `examples/robot_io.py` 만 쓰는 하드웨어 드라이버라
+  `examples/requirements-robot.txt` 로 옮겼다. `scripts/install_robot_deps.sh` 가 함께 설치한다.
+
+### 추가 — GeoRT 모델 동봉
+
+- 학습된 GeoRT 소프트 프롬프트 모델(`geort_prompt.npz`, 약 5MB — orca_right·hx5_right·allegro_right·dg5f_s_right)을
+  `solvers/hand/geort/assets/` 에 넣었다. 모델 경로는 설정의 `model` > `$WHATSLAB_GEORT_MODEL` > 동봉 모델 순이다.
+- `whatslab.solvers` 도 지연 import 한다 — 전에는 `whatslab.solvers.hand.geort` 만 써도 패키지 `__init__` 이 팔
+  IK(pinocchio)를 불러왔다. 이제 numpy·scipy·pyyaml 만 있는 환경에서 GeoRT 리타게팅이 돈다(확인함).
+
+### 수정 — 코드 리뷰
+
+- **손 컨트롤러 구조:** 엔진(`XRHandRetargeter`, `GeortHandSolver`)은 계산만 하고, 직전 값 유지·추적 끊김 시 초기화·
+  `last_error`·관절범위로 자른 초기값은 `HandRetargetController` 한 곳에 있다(엔진별로 중복·차이가 나던 것).
+  `GeortHandController`(·`compute_q`)는 제거 — 텔레옵은 `HandRetargetController(side, "geort:…")`, 계산만은
+  `GeortHandSolver.from_config(...).solve(masked_keypoints(...))`.
+- **안전:** rig 경로(`RobotModel.make_hand_controller`)의 geort 출력을 실제 손 URDF 관절 범위로도 자른다
+  (`RobotModel.hand_joint_limits()` → `robot_limits`). 전에는 학습 모델 범위로만 잘랐다. geort 의 첫 명령(입력 전)도
+  0 이 아니라 관절범위로 자른 값이다.
+- WebXR: 수신기가 `start()` 에서 서버에 핸들러를 붙이고 `stop()` 에서 뗀다(버린 수신기가 계속 메시지를 받던 누수),
+  서버는 핸들러마다 예외를 격리한다(한 수신기의 예외가 다른 수신기·연결을 끊던 문제), `WebXRControllerReceiver`
+  `stale_timeout` 기본 0.2 s(손 추적으로 바뀌어 grip 이 끊겨도 마지막 자세를 추적 중으로 내던 문제).
+- `geort:<이름>` 은 동봉 설정을 쓴다 — 현재 디렉토리에 같은 이름의 `geort/<이름>.yaml` 이 있어도 그것을 읽지 않는다.
+- geort 에 `urdf_root` 를 주면 에러 대신 무시한다(호출자가 엔진을 알 필요 없게).
+- 추적이 끊기거나 입력 오류가 나면 low-pass·warm start 상태를 비운다 — 다시 잡혔을 때 몇 초 전 자세와 섞이던 문제.
+- GeoRT 는 실제로 쓰는 21점만 유한성을 검사한다 — 쓰지 않는 palm·검지~소지 중수골이 무효여도 프레임을
+  버리지 않는다(엄지 중수골은 21점에 들어간다).
+- `$WHATSLAB_GEORT_MODEL` 의 상대경로는 현재 디렉토리 기준이다(설정 yaml 의 `model` 만 설정 파일 기준).
+- `examples/airglove_hand.py --config geort:…` 가 `WHATSLAB_MODELS_ROOT` 환경에서 `urdf_root` 때문에 죽던 문제.
+- `QuestModel` 팔 목표의 방위도 위치와 같은 `pos_frame` 기준이다 — `WebXRHandReceiver` 가 `hmd_yaw` 에서 위치만
+  머리 yaw 를 빼고 방위는 방 기준으로 내 한 `Pose` 안에 두 좌표계가 섞였다(고개를 돌리면 EE 방위가 그만큼 틀어짐).
+  `GloveModel` 도 같은 규약이다 — 전에는 `pos_frame` 과 관계없이 방위에서 머리 yaw 를 뺐다(`room`·`hmd` 에서는
+  위치는 방/머리 기준인데 방위만 머리 yaw 기준). `WebXRControllerReceiver.get()` 의 `controller.quat` 도
+  이제 `pos_frame` 기준이다(**동작 변경** — 전에는 `hmd_yaw` 에서도 방 기준 방위를 냈다).
+- 텔레옵 경로에서 손 추적이 끊기면 `SideModel` 이 리타게팅 엔진 `reset()` 을 부른다 — 끊긴 프레임에는 `compute()` 를
+  부르지 않아 위의 「추적이 끊기면 상태를 비운다」가 텔레옵에서는 실행되지 않았다.
+- GeoRT `robot_limits` 의 관절 이름이 모델과 하나도 안 맞으면 `GEORT_LIMITS_UNMATCHED` 오류, 일부만 맞으면 경고 —
+  전에는 URDF 범위 클램프가 조용히 꺼졌다. 오른손 GeoRT 모델을 왼손 로봇 손 rig 에 쓰면 이 오류가 난다(미지원).
+- WebXR 수신기 `start()`/`stop()` 은 여러 번 불러도 한 번만 동작한다 — 같은 수신기를 두 번 시작하면 서버 참조 수가
+  2 가 돼 `stop()` 한 번으로 포트가 풀리지 않던 문제(`examples/quest_arm.py` 가 그렇게 불렀다).
+- GeoRT 모델 파일을 경로·수정시각별로 한 번만 읽는다(양손 rig 가 5MB npz 를 side 마다 두 번씩 열던 것).
+- `TeleopModel.samples()`: 한 틱에 수신기를 side 마다 한 번만 읽는다(QuestModel 은 같은 수신기를 3번 읽어 팔·손의
+  tracked 판정 시각이 달랐다). 직접 만든 `_get_raw_target()` 도 수신기 대신 이것을 쓰면 된다.
+- `MANIFEST.in` 이 삭제된 `solvers/hand/assets` 대신 `solvers/hand/geort/assets` 를 담는다.
+- 틱 샘플(`samples()`)은 스레드별이다 — 캘리브 스레드(`calibrate_yaw`/`calibrate_reach`)와 메인 루프가
+  동시에 `get_data()` 를 부르면 한쪽이 다른 쪽 틱을 비워 `TypeError` 로 죽을 수 있었다.
+- WebXR 서버는 bind 가 성공한 뒤에만 참조 수를 센다 — 포트가 점유돼 `start()` 가 실패한 뒤 다시 시작하면
+  `stop()` 으로 포트가 풀리지 않던 문제. 실패한 수신기는 핸들러도 뗀다.
+- `GloveModel`: 컨트롤러 추적이 끊기면(`stale_timeout`) 마지막 자세를 팔 목표로 내지 않는다.
+- `make_hand_controller` 는 geort 일 때만 rig 손 URDF 범위를 읽는다(dex 는 자기 설정의 URDF 를 쓴다).
+- `whatslab.receiver` 는 하위 패키지를 쓸 때 불러온다 — WebXR 만 쓰면 airglove-client 가 없어도 된다.
+  `whatslab.teleop` 도 같다 — `GloveModel` 은 쓸 때 불러오고 `HandModel` 은 `hand_source` 를 안 줄 때만
+  `AirGloveReceiver` 를 불러온다(전에는 `from whatslab.teleop import QuestModel` 도 airglove-client 를 요구했다).
+  두 패키지의 `__all__`(star import)에는 airglove-client 가 필요한 이름이 없다.
+- 캘리브(`calibrate_yaw`·`calibrate_reach`·`set_reach`)는 진행 중인 `get_q()` 틱(보정 적용·IK·안전필터)이
+  끝난 뒤에 적용된다 — 캘리브 스레드가 IK 도중 `reseed()` 하거나 새 yaw 와 옛 원점을 섞어 읽게 할 수 있었다.
+  캘리브가 읽은 샘플은 `SideModel.raw_target` 에 쓰지 않는다(메인 루프의 진단·`--dump-targets` 행이 섞이던 문제).
+- `HandRetargetController.compute` 는 `GeortInputError`(이번 프레임 입력 오류)만 삼킨다 — 전에는 모든
+  `ValueError`(입력 모양 오류 같은 버그 포함)를 삼켜 손이 첫 명령에 멈춘 채 아무 로그도 없었다. 연속 실패의 첫 번에
+  경고를 남긴다. dex 도 같은 정책이다 — 퇴화(손바닥 프레임을 못 정함)·비유한 입력이나 비유한 해는
+  `xr_input.HandInputError` 로 이번 프레임만 거른다. 전에는 퇴화 입력이 `ValueError` 로 텔레옵 루프를 죽이고,
+  NaN 입력은 NaN 관절각을 그대로 냈다.
+- dex 도 `HandPose.xr_valid` 를 따른다 — 전에는 무효 관절(원점·항등으로 남은 값)이 그대로 DexPilot 에 들어갔다.
+  두 엔진 모두 무효 관절 위치를 NaN 으로 가리고, 쓰는 관절이 무효면 그 프레임은 직전 명령을 유지한다(`last_error`).
+- `mirror_xr_joints` 는 0·NaN 쿼터니언(무효 관절)을 항등으로 둔다 — 반대 손 dex 설정에서 무효 palm 이 0 쿼터니언이면
+  `ValueError` 로 텔레옵 루프가 죽었다.
+- WebXR `hmd_yaw` 의 머리 yaw 는 머리 앞 축을 바닥에 투영한 방향이다(롤 무관). 정확히 위·아래를 봐 투영이 0 이면
+  위 축의 수평 방향을 쓴다 — 전에는 그때 yaw 가 정의되지 않았다. 피치가 ±90° 에 가까우면 머리를 조금만 움직여도
+  yaw 가 크게 바뀐다(알려진 제약 — 손을 거의 수직으로 내려다보며 고개를 기울이는 경우).
+- `examples/quest_arm.py` 의 다른 IP 후보가 URL IP 의 접두사인 주소(192.168.0.1 vs .10)를 빠뜨리던 문제.
+  `scripts/install_robot_deps.sh` 는 저장소 루트에서 돈다(다른 디렉토리에서 실행하면 `-e .` 가 엉뚱한 곳을 가리켰다).
+- `TeleopModel.start()` 는 수신기 하나가 시작에 실패하면 그 앞에서 시작한(이미 돌던 것 포함) 수신기를 멈추고 예외를 올린다 — 글러브
+  UDP 소켓이 열린 채 남아 같은 프로세스에서 다시 시작할 수 없었다. 수신기 `start()`·`stop()` 은 여러 번 불러도
+  한 번만 동작해야 한다(`Receiver` 프로토콜 규약). 수신기 인스턴스 하나를 두 모델이 함께 쓰는 것은 지원하지 않는다.
+  WebXR 수신기에 `running`(시작했고 아직 멈추지 않음) 추가.
+- `scripts/install_robot_deps.sh` 의 마지막 확인이 numpy 1 을 요구하던 것 — 저장소에 numpy<2 핀이 없어 새 환경
+  (numpy 2)에서 설치를 다 하고도 실패했다. `examples/quest_arm.py` 는 나머지 준비가 끝난 뒤 수신기를 시작한다.
+- `safety.load_limits_from_urdf`: `<limit>` 에 `lower`·`upper` 가 없으면 URDF 사양대로 0(continuous 관절만 ±inf).
+  전에는 ±inf 로 읽어 geort 출력의 URDF 범위 클램프가 그 관절에서 꺼졌다.
+- `HandRetargetController.reset()` 은 `last_error` 도 비운다(텔레옵은 추적이 끊기면 `reset()` 만 부른다).
+- `HandRetargetController.last_error` 는 지금 프레임 기준이다 — 추적이 없는 프레임에서는 `None`(전에는 이전 오류가 남았다).
+- `HandRetargetController.robot_side` 추가 — 엔진이 내는 관절각의 로봇 손 side(dex: 설정 side, geort: 모델 side).
+  오른손 geort 모델은 왼손 사람 입력에도 `"right"` 이므로 호출자가 URDF side 를 추측하지 않아도 된다.
+- WebXR 서버: 같은 핸들러의 예외 트레이스백은 처음 한 번만 남긴다(전에는 프레임마다 — 72–90 Hz). 핸들러 예외는
+  `stats` 의 버린 프레임이 아니라 `WebXRServer.handler_errors` 로 센다.
+- WebXR 페이지 송신 버퍼 상한 8 KB → 64 KB — 양손 메시지(≈4 KB)는 수십 ms 의 Wi-Fi 지연에도 프레임을 버렸다.
+- WebXR 서버: 프레임 헤더만 오고 payload 가 유휴 ping 주기(5 s)보다 늦으면 읽은 헤더를 버려 다음 프레임부터
+  payload 를 헤더로 읽던 문제(연결 끊김) — 읽은 바이트를 되돌려 다시 읽는다.
+- WebXR 서버가 클라이언트 프레임 마스크를 바이트별 파이썬 루프 대신 정수 XOR 로 푼다(손 메시지는 수 KB × 72–90 Hz).
+- **제거(호환 없는 변경):** `WebXRReceiverBase.to_canonical(pos, quat)`·`to_canonical_quat(quat)` 메서드 —
+  `receiver.base.to_canonical_pose(Y_UP_RH_TO_CANONICAL, pos, quat)`·`to_canonical_quat(Y_UP_RH_TO_CANONICAL, quat)`
+  를 쓴다. 컨트롤러 수신기의 `_relative` 는 기반 클래스의 `relative()`·`relative_quat()` 가 됐다.
+- `AirGloveReceiver`: `tracked` 는 리타게팅이 쓰는 21점이 모두 유효한지로 정한다 — 전에는 26관절 전부라 안 쓰는 palm·
+  중수골 하나만 무효여도 손이 멈췄다. 관절별 유효성은 그대로 `xr_valid` 로 온다.
+- `WebXRReceiverBase.__init__` 의 `pos_frame` 은 키워드 전용이다 — 위치 인자 순서는 0.4 와 같은
+  `(port, listen_ip, tls, certfile, keyfile)`.
+- `examples/quest_arm.py`: yaw 캘리브가 실패해도 「완료」를 찍던 문제 — side 별 결과를 찍는다.
+- `examples/quest_arm.py --arm wrist` 는 airglove-client 없이 돈다(`GloveModel` 은 controller 모드에서만 불러온다).
+- WebXR: 모양이 틀리거나 유한하지 않은 `hmd`·컨트롤러 항목(`pos` 3개·`quat` 4개가 아님)은 버린다 — 저장했다가
+  이후 모든 `get()` 이 메인 루프에서 죽던 문제.
+- **WebXR `port=0` 서버는 공유하지 않는다(동작 변경)** — 수신기마다 따로 임시 포트를 잡고 레지스트리에 넣지 않는다
+  (전에는 `port=0` 수신기끼리 서버를 공유했다). 서버를 함께 쓰려면(컨트롤러·손 수신기) 고정 포트를 준다. 한 번 받은
+  임시 포트는 다시 시작해도 유지한다(페이지가 그 포트에 붙어 있다 — 그 사이 다른 프로세스가 잡았으면 `start()` 가
+  포트 사용 중 오류를 낸다). **제거:** `ws_server.clear_registry()`(테스트 전용이었다).
+- 같은 포트의 WebXR 수신기를 다른 설정(`listen_ip`·`tls`·인증서)으로 만들면 `ValueError` — 전에는 먼저 만든
+  서버 설정을 조용히 써 `tls=True` 를 줘도 평문으로 열릴 수 있었다.
+- `examples/airglove_hand.py` 가 한 틱에 수신기를 두 번 읽던 것(추적 표시와 q 가 어긋날 수 있었다),
+  `examples/quest_arm.py` 상태 줄의 손 관절 수가 팔 해가 없을 때 틀리던 것.
+- WebXR 서버를 멈추고 곧바로 다시 시작할 때: 옛 리슨 소켓이 아직 열려 있어 bind 가 실패할 수 있었고, 멈추기 전에
+  붙은 페이지 연결이 끊기지 않고 지난 세션의 자세를 새 실행의 수신기에 계속 넘겼다.
+- WebXR 수신기 `start()` 가 bind 외의 이유(인증서 생성 실패 등)로 실패해도 서버에서 핸들러를 뗀다.
+- `whatslab.solvers`·`whatslab.solvers.hand` 의 `__all__` 에는 numpy 만 쓰는 이름만 둔다 — star import 가
+  pinocchio·dex-retargeting 을 요구하지 않는다.
+- GeoRT `prompt.FINGERS` 를 `core.constants.FINGER_COUNT` 로 바꿨다.
+- `docs/API.md` 예제가 `receiver.glove` 에서 `XR_JOINT_NAMES` 를 import 하던 것 — `whatslab.core.constants` 에서 가져온다.
+- 좌표계 헬퍼 통합: `receiver.base.conjugate`·`to_canonical_quat`·`to_canonical_pose`(같은 `M R Mᵀ` 가 4곳에 있었다),
+  상수 배열용 `core.constants.readonly_array`(두 벌이던 `_frozen`).
+- `HandPose` 필드는 `wrist, xr_joints, xr_valid, tracked, timestamp` 순서다 — 위치 인자로 만들던 코드는 키워드 인자로
+  바꿔야 한다. 쓰지 않는 import·중복 import·낡은 주석 정리.
+
+### 변경 — PEP 8 정리 (호환 없는 변경)
+
+- `pyproject.toml` 에 ruff 설정(`E`·`W`·`F`·`I`·`N`, 줄 길이 99 — PEP 8 이 허용하는 팀 상한)을 넣고
+  `src`·`tests`·`examples`·`tools` 전체가 통과하게 했다(`ruff check`).
+- 이름(PEP 8): `Origin.T` → `Origin.transform`, `robot.config.origin_to_T` → `origin_to_transform`.
+  행렬 인자·지역 변수도 소문자다 — `RobotModel.to_base(tf_canonical)`·`to_canonical(tf_base)`·
+  `clamp_reach(tf_base)`, `receiver.base.conjugate(basis, rot)`·`to_canonical_quat(basis, q)`·
+  `to_canonical_pose(basis, …)` 등. 위치 인자로 부르던 코드는 그대로 동작하고, 키워드로 넘기던
+  코드만 이름을 바꿔야 한다.
+- `tools/export_combined_usd.py`: 선택 의존성 `pxr.PhysxSchema` 를 `importlib` 로 읽는다.
+
+### 수정 — 기존 테스트 실패
+
+- `dex:robotis` 가 시작하자마자 `URDF 에 없는 링크: right_sensor_middle_distal` 로 죽던 문제 —
+  upstream dexhand_description 의 HX5-D20 URDF 에는 센서 링크가 없다. 손끝을 두 URDF(upstream·센서 패치판)에 모두
+  있는 손가락 끝 링크 `finger_end_{r,l}_link1..5` 로 바꿨다. 센서 패치판 URDF 를 쓰던 환경은 손끝 기준점이 센서
+  패드에서 손가락 끝 링크로 바뀌어 DexPilot 목표·자동 `scaling_factor` 가 조금 달라질 수 있다.
+- `test_neutral_is_mid_range_and_posture_pull_is_on` 이 rig `solver.posture`(0.4.x 에서 추가) 이전
+  기대값(자세 목표 = 범위 중앙)을 검사하던 것 — rig 에 posture 가 있으면 그것이 자세 목표다.
+  별도 테스트 `test_rig_posture_overrides_neutral_as_posture_target` 로 나눴다.
+
+### 추가 — GeoRT 소프트 프롬프트 (`whatslab.solvers.hand.geort`)
+
+- robotPlatform `plugins/hand_solvers/geort` 의 추론(소프트 프롬프트 모델 읽기, numpy 순전파, 입력 좌표계)을
+  옮겼다. robotPlatform 은 이 모듈을 정본으로 쓴다. 실제 Spine 캡처 794프레임에서 원본과 출력 차이 최대 1.2e-14 rad.
+- rig `retarget: geort:<이름>`(`configs/geort/<이름>.yaml`). 동봉: `orca_right`, `hx5_right`.
+  모델 npz 는 패키지에 동봉한다(아래 「추가 — GeoRT 모델 동봉」).
+- `HandPose.xr_valid`(관절별 유효), `HandRetargetController.engine_name` / `last_error`, `engine_of()`.
+
+### 제거 (호환 없는 변경)
+
+- **관절각 ONNX 엔진 `UniRetargeter`** 와 자산(`uni_all.onnx`·`uni_igris_right.onnx`·`uni_tables*.npz`),
+  `examples/run_retarget.py`. 입력인 사람 손 URDF 관절각을 Spine 3 이 보내지 않아 실시간 입력이 없었다.
+  `retarget:` 은 `dex:` / `geort:` 접두사만 받는다. `hand` extra 에서 onnxruntime 을 뺐다.
+- rig `hand_solver:` 블록(`onnx_path`·`tables_path`·`threads`, ONNX 전용)과 `HandSolverCfg`. 있으면 `load_rig` 가 에러.
+- `HandPose.joint_angles`·`joint_rot`·`to_sensor_array`·`from_sensor_array`, `HUMAN_HAND`·`SENSED_JOINTS`·`JointSpec`
+  (옛 AGA 17-quat 형식). 손 입력은 `xr_joints`(OpenXR 26관절) 하나다.
+- `tools/` 의 관절각 데이터셋 파이프라인(BHaM·NinaPro → URDF q, URDF 피팅, IK 넷 학습·렌더 16개).
+  `align_frames`·`export_*`·`bench_hand_retarget` 는 남는다.
+
+### 변경 — 구조 정리
+
+- **공유 상수를 `whatslab.core.constants` 한 곳으로 모았다**(`typing.Final`). `SIDES`, `FINGER_COUNT`,
+  OpenXR 26관절(`XR_JOINT_NAMES`·`XR_JOINT_COUNT`·`XR_JOINT_FIELDS`·`XR_WRIST`), 사람 손 21점
+  (`OPENXR26_TO_HAND21`·`HAND21_*`), OpenXR → 손 21점 축 변환(`OPENXR_TO_HAND21_AXES`). 같은 값이 dex
+  (`xr_input`)·geort(`keypoints`·`solver`)·`airglove`·`teleop` 에 따로 정의돼 있었다. **옛 이름은 별칭으로 남기지
+  않았다(호환 없는 변경)** — `OPENXR_TO_MANO`·`XR_TO_MANO`·`MANO_WRIST`·`MANO_TIPS`(xr_input),
+  `OPENXR26_TO_MEDIAPIPE21`·`MEDIAPIPE21_COUNT`·`WRIST`·`INDEX_MCP`·`MIDDLE_MCP`·`RING_MCP`·`LITTLE_MCP`·`TIP_IDS`·
+  `CANONICAL_TO_GEORT`(geort.keypoints), `XR_WRIST_INDEX`·`AGA_FINGER_COUNT`(airglove), `whatslab.receiver.glove`
+  의 `XR_JOINT_NAMES`·`XR_JOINT_COUNT`·`XR_JOINT_FIELDS`·`XR_WRIST_INDEX` 재export, `TeleopModel.SIDES`,
+  수신기의 `_CANONICAL_M`·`_M`, `vive.M` 은 `core.constants` / `receiver.base` 의 이름을 직접 쓴다.
+  규칙: 한 모듈만 쓰는 상수는 그 모듈에, 두 곳 이상이 쓰면 `core.constants` 로. 튜닝 값은 인자·yaml.
+  같은 값에 이름을 하나 더 붙이는 별칭(`X = Y`, 프로젝트 내부 `import … as …`)은 쓰지 않는다 —
+  외부 라이브러리 관용 표기(`np`, `pin`, `pa`, `pq`, `ET`)만 예외.
+- 기기 좌표계 → 정준 프레임 행렬을 `receiver/base.py` 로 모았다: `Y_UP_RH_TO_CANONICAL`(WebXR·OpenVR·OpenXR —
+  webxr·vive·airglove 가 각자 정의하거나 webxr 의 private 이름을 import 하던 것).
+- `DEX_PREFIX` 는 `solvers/hand/controller.py` 하나만 정의한다(dex_retargeter 는 거기서 가져온다).
+- 모듈 이동·이름: `robot/arm_ik.py` → `robot/arm.py`(`solvers/arm/arm_ik.py` 와 이름이 같았다),
+  `receiver/glove/base.py`(포트 상수뿐) → `airglove.py`.
+- **사람 손 시각화 제거** — `human_fk`(`HumanHandFK`)·`human_upright_root`·`upright_root`. 관절각 입력이 사라져
+  쓰는 곳이 없었고, 사람 손 화면은 Spine 이 맡는다. `whatslab.viz` 는 로봇(팔·손 URDF) 시각화만 남는다.
+- `FINGER_NAMES`(URDF 센서 링크용 손가락 이름)를 `core.constants` 로 — tests·bench 도구에 같은 튜플이 있었다.
+
+### 변경
+
+- `whatslab.solvers` / `whatslab.solvers.hand` 는 지연 import 한다 — GeoRT 만 쓰면 pinocchio·dex-retargeting(torch)을
+  불러오지 않는다.
+
 ## [Unreleased]
 
 ### 추가 — 글러브 프레임 메타데이터

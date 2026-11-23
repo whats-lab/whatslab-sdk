@@ -11,7 +11,7 @@ import ssl
 import struct
 import threading
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .tls import ensure_cert, preferred_ip
 
@@ -60,9 +60,10 @@ class _FrameReader:
     def __init__(self, sock: socket.socket, max_payload: int = 1 << 20):
         self._sock = sock
         self._buf = bytearray()
+        self._consumed = bytearray()
         self._max = max_payload
 
-    def _need(self, n: int) -> bytes:
+    def _need(self, n: int, track: bool = True) -> bytes:
         while len(self._buf) < n:
             chunk = self._sock.recv(4096)
             if not chunk:
@@ -70,9 +71,24 @@ class _FrameReader:
             self._buf.extend(chunk)
         out = bytes(self._buf[:n])
         del self._buf[:n]
+        if track:
+            self._consumed += out
         return out
 
     def read_frame(self) -> Tuple[int, bytes]:
+        """프레임 하나. 중간에 recv 가 timeout 나면 읽은 바이트를 버퍼에 되돌린다.
+
+        호출자는 timeout 을 유휴로 보고 ping 뒤 다시 부르므로, 반쯤 읽은 헤더를 버리면 다음
+        호출이 payload 를 헤더로 읽어 연결이 어긋난다.
+        """
+        self._consumed = bytearray()
+        try:
+            return self._read_frame()
+        except socket.timeout:
+            self._buf[:0] = self._consumed
+            raise
+
+    def _read_frame(self) -> Tuple[int, bytes]:
         b0, b1 = self._need(2)
         fin = b0 & 0x80
         opcode = b0 & 0x0F
@@ -87,12 +103,21 @@ class _FrameReader:
         if not masked:
             raise ProtocolError("client frame must be masked")
         mask = self._need(4)
-        data = bytearray(self._need(length))
-        for i in range(length):
-            data[i] ^= mask[i & 3]
+        # payload 는 마지막 읽기라 timeout 때 되돌릴 것이 없다.
+        data = unmask(self._need(length, track=False), mask)
         if not fin:
             raise ProtocolError("fragmented frames are not supported")
-        return opcode, bytes(data)
+        return opcode, data
+
+
+def unmask(payload: bytes, mask: bytes) -> bytes:
+    """클라이언트 프레임 마스크(4바이트 반복 XOR)를 푼다.
+
+    손 메시지는 수 KB 라 바이트별 파이썬 루프 대신 큰 정수 XOR 한 번으로 한다.
+    """
+    n = len(payload)
+    key = (mask * (n // 4 + 1))[:n]
+    return (int.from_bytes(payload, "big") ^ int.from_bytes(key, "big")).to_bytes(n, "big")
 
 
 class WebXRServer:
@@ -105,32 +130,58 @@ class WebXRServer:
         self._certfile = certfile
         self._keyfile = keyfile
         self._ssl_ctx: Optional[ssl.SSLContext] = None
-        self._on_message: Optional[Callable[[dict], None]] = None
+        self._handlers: List[Callable[[dict], None]] = []
         self._lock = threading.Lock()
         self._refcount = 0
         self._sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
-        self._stop = threading.Event()
+        self._stop = threading.Event()  # 실행마다 새로 — 옛 연결이 새 실행에 섞이지 않게
         self._clients = 0
         self._frames = 0
         self._bad = 0
+        self._handler_errors = 0  # 파싱은 됐지만 수신기가 처리에 실패한 횟수(_bad 와 따로)
+        self._failed_handlers: List[Callable[[dict], None]] = []
 
     @classmethod
     def get(cls, port: int, listen_ip: str = "0.0.0.0", tls: bool = True,
             certfile: str = None, keyfile: str = None) -> "WebXRServer":
-        with _registry_lock:
-            srv = _registry.get(port)
-            if srv is None:
-                srv = cls(port, listen_ip, tls, certfile, keyfile)
-                _registry[port] = srv
+        """포트의 공유 서버. port=0 은 공유하지 않는 새 서버다(서버를 함께 쓰려면 고정 포트).
+
+        한 포트의 서버는 프로세스에서 하나이고 설정도 하나다 — 같은 포트를 다른 설정으로 달라고
+        하면 ValueError.
+        """
+        srv = cls(port, listen_ip, tls, certfile, keyfile)
+        if port == 0:
             return srv
+        with _registry_lock:
+            have = _registry.setdefault(port, srv)
+        if have._settings != srv._settings:
+            raise ValueError(
+                f"포트 {port} 의 WebXR 서버가 이미 다른 설정 {have._settings} 으로 있다 — "
+                f"요청 {srv._settings}. 같은 포트의 수신기는 listen_ip·tls·인증서가 같아야 한다")
+        return have
+
+    @property
+    def _settings(self) -> Tuple[str, bool, Optional[str], Optional[str]]:
+        return self._listen_ip, self._tls, self._certfile, self._keyfile
 
     @property
     def scheme(self) -> str:
         return "https" if self._tls else "http"
 
-    def set_handler(self, fn: Callable[[dict], None]) -> None:
-        self._on_message = fn
+    def add_handler(self, fn: Callable[[dict], None]) -> None:
+        """메시지 하나를 모든 핸들러에 넘긴다 — 같은 포트의 컨트롤러·손 수신기가 함께 받는다."""
+        with self._lock:
+            if fn not in self._handlers:
+                self._handlers.append(fn)
+
+    def remove_handler(self, fn: Callable[[dict], None]) -> None:
+        """핸들러를 뺀다. 없으면 무시한다."""
+        with self._lock:
+            if fn in self._handlers:
+                self._handlers.remove(fn)
+            if fn in self._failed_handlers:  # 버린 수신기를 붙잡지 않고, 다시 붙으면 다시 경고한다
+                self._failed_handlers.remove(fn)
 
     @property
     def port(self) -> int:
@@ -143,14 +194,20 @@ class WebXRServer:
 
     @property
     def stats(self) -> Tuple[int, int, int]:
+        """(접속 수, 받은 JSON 메시지 수, 버린 프레임 수 — 파싱 실패·형식 오류)."""
         return self._clients, self._frames, self._bad
+
+    @property
+    def handler_errors(self) -> int:
+        """파싱된 메시지를 수신기 핸들러가 처리하다 예외를 낸 횟수."""
+        return self._handler_errors
 
     def start(self) -> None:
         with self._lock:
-            self._refcount += 1
             if self._sock is not None:
+                self._refcount += 1
                 return
-            self._stop.clear()
+            self._stop = threading.Event()
             if self._tls and self._ssl_ctx is None:
                 cert, key = ((self._certfile, self._keyfile) if self._certfile
                              else ensure_cert())
@@ -172,13 +229,20 @@ class WebXRServer:
             sock.listen(4)
             sock.settimeout(0.5)
             self._sock = sock
-            if self._port == 0:
-                self._port = sock.getsockname()[1]
-            self._thread = threading.Thread(target=self._accept_loop, daemon=True,
-                                            name=f"webxr-{self._port}")
+            self._refcount += 1  # bind 가 성공한 뒤에만 센다 — 실패한 start 가 참조를 남기지 않게
+            # port=0 은 처음 bind 한 포트를 계속 쓴다 — 다시 시작해도 페이지가 붙은 포트 그대로.
+            self._port = sock.getsockname()[1]
+            self._thread = threading.Thread(
+                target=self._accept_loop, args=(sock, self._stop), daemon=True,
+                name=f"webxr-{self._port}",
+            )
             self._thread.start()
-            _log.info("WebXR 서버 %s://%s:%d", self.scheme,
-                      preferred_ip() if self._tls else "localhost", self._port)
+            _log.info(
+                "WebXR 서버 %s://%s:%d",
+                self.scheme,
+                preferred_ip() if self._tls else "localhost",
+                self._port,
+            )
 
     def stop(self) -> None:
         with self._lock:
@@ -187,20 +251,15 @@ class WebXRServer:
             if self._refcount > 0 or self._sock is None:
                 return
             self._stop.set()
-            sock, thread = self._sock, self._thread
+            thread = self._thread
+            self._sock.close()  # 잠금 안에서 닫는다 — 곧바로 다시 start() 해도 포트가 비어 있게
             self._sock = self._thread = None
-        try:
-            sock.close()
-        except OSError:
-            pass
         if thread is not None:
             thread.join(timeout=2.0)
 
-    def _accept_loop(self) -> None:
-        while not self._stop.is_set():
-            sock = self._sock
-            if sock is None:
-                break
+    def _accept_loop(self, sock: socket.socket, stop: threading.Event) -> None:
+        # 자기 실행의 소켓·이벤트만 본다 — stop() 의 join 전에 다시 start() 해도 섞이지 않게.
+        while not stop.is_set():
             try:
                 conn, _ = sock.accept()
             except socket.timeout:
@@ -219,10 +278,11 @@ class WebXRServer:
                     except OSError:
                         pass
                     continue
-            threading.Thread(target=self._serve, args=(conn,), daemon=True,
-                             name="webxr-conn").start()
+            threading.Thread(
+                target=self._serve, args=(conn, stop), daemon=True, name="webxr-conn"
+            ).start()
 
-    def _serve(self, conn: socket.socket) -> None:
+    def _serve(self, conn: socket.socket, stop: threading.Event) -> None:
         try:
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             conn.settimeout(10.0)
@@ -232,7 +292,7 @@ class WebXRServer:
             request, headers = head
             if headers.get("upgrade", "").lower() == "websocket":
                 self._handshake(conn, headers)
-                self._pump(conn)
+                self._pump(conn, stop)
             else:
                 self._serve_static(conn, request)
         except (ConnectionError, OSError, ProtocolError) as exc:
@@ -267,19 +327,21 @@ class WebXRServer:
         key = headers.get("sec-websocket-key")
         if not key:
             raise ProtocolError("Sec-WebSocket-Key 없음")
-        resp = ("HTTP/1.1 101 Switching Protocols\r\n"
-                "Upgrade: websocket\r\n"
-                "Connection: Upgrade\r\n"
-                f"Sec-WebSocket-Accept: {accept_key(key)}\r\n\r\n")
+        resp = (
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Accept: {accept_key(key)}\r\n\r\n"
+        )
         conn.sendall(resp.encode("ascii"))
 
-    def _pump(self, conn: socket.socket) -> None:
+    def _pump(self, conn: socket.socket, stop: threading.Event) -> None:
         conn.settimeout(IDLE_PING_S)
         reader = _FrameReader(conn)
         self._clients += 1
         last = time.monotonic()
         try:
-            while not self._stop.is_set():
+            while not stop.is_set():
                 try:
                     opcode, data = reader.read_frame()
                 except socket.timeout:
@@ -288,6 +350,8 @@ class WebXRServer:
                         return
                     conn.sendall(encode_frame(b"", OP_PING))
                     continue
+                if stop.is_set():  # 읽는 동안 서버가 멈췄다 — 이 프레임은 넘기지 않는다
+                    return
                 last = time.monotonic()
                 if opcode == OP_CLOSE:
                     conn.sendall(encode_frame(b"", OP_CLOSE))
@@ -313,9 +377,24 @@ class WebXRServer:
             self._bad += 1
             return
         self._frames += 1
-        fn = self._on_message
-        if fn is not None:
-            fn(msg)
+        with self._lock:
+            handlers = list(self._handlers)
+        for fn in handlers:  # 한 수신기의 예외가 다른 수신기·연결을 끊지 않게 한다
+            try:
+                fn(msg)
+            except Exception:
+                # 72–90 Hz 라 트레이스백은 핸들러마다 한 번만(연결 스레드끼리 잠금 아래에서 센다).
+                with self._lock:
+                    self._handler_errors += 1
+                    first = fn in self._handlers and fn not in self._failed_handlers
+                    if first:
+                        self._failed_handlers.append(fn)
+                if first:
+                    _log.warning(
+                        "WebXR 메시지 처리 실패 (%s) — 이후 같은 실패는 handler_errors 로만 센다",
+                        getattr(fn, "__qualname__", fn),
+                        exc_info=True,
+                    )
 
     def _serve_static(self, conn: socket.socket, request: str) -> None:
         parts = request.split()
@@ -329,15 +408,12 @@ class WebXRServer:
         with open(full, "rb") as fp:
             body = fp.read()
         ctype = "text/html; charset=utf-8" if name.endswith(".html") else "text/plain"
-        conn.sendall((f"HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\n"
-                      f"Content-Length: {len(body)}\r\n"
-                      f"Cache-Control: no-store\r\n\r\n").encode("ascii") + body)
+        conn.sendall(
+            (
+                f"HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\n"
+                f"Content-Length: {len(body)}\r\n"
+                f"Cache-Control: no-store\r\n\r\n"
+            ).encode("ascii")
+            + body
+        )
 
-
-def clear_registry() -> None:
-    with _registry_lock:
-        servers = list(_registry.values())
-        _registry.clear()
-    for srv in servers:
-        srv._refcount = 1
-        srv.stop()

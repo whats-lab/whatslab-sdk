@@ -1,5 +1,6 @@
 import pytest
 
+from whatslab.core.constants import SIDES
 from whatslab.safety import JointLimit, SafetyFilter, load_limits_from_urdf, tighten
 
 URDF = """<robot name="t">
@@ -92,13 +93,13 @@ def test_step_negative_dt_is_clamped_to_zero():
 
 
 def test_teleop_model_passes_measured_dt_to_filter():
-    import time as _time
+    import time
 
     from whatslab.teleop.base import TeleopModel
 
     class _Model(TeleopModel):
         def _get_raw_target(self):
-            return {s: None for s in self.SIDES}
+            return {s: None for s in SIDES}
 
     m = _Model(None)
     seen = []
@@ -110,12 +111,12 @@ def test_teleop_model_passes_measured_dt_to_filter():
 
     m.safety = _Spy()
     m.solve = lambda data: {"right": {}}
-    m.get_data = lambda: {s: {} for s in m.SIDES}
+    m.get_data = lambda: {s: {} for s in SIDES}
     m._apply_calib = lambda d: d
 
     m.get_q()
     assert seen == [None]
-    _time.sleep(0.02)
+    time.sleep(0.02)
     m.get_q()
     assert seen[-1] is not None and seen[-1] >= 0.015
 
@@ -125,12 +126,12 @@ def test_each_side_gets_its_own_filter_state():
 
     class _Model(TeleopModel):
         def _get_raw_target(self):
-            return {s: None for s in self.SIDES}
+            return {s: None for s in SIDES}
 
     lim = {"j1": JointLimit(-10.0, 10.0, 1.0)}
     m = _Model(None)
     m.safety = SafetyFilter(lim, dt=1.0, initial={"j1": 0.0})
-    m.get_data = lambda: {s: {} for s in m.SIDES}
+    m.get_data = lambda: {s: {} for s in SIDES}
     m._apply_calib = lambda d: d
     m.solve = lambda data: {"left": {"j1": -5.0}, "right": {"j1": 5.0}}
 
@@ -139,3 +140,14 @@ def test_each_side_gets_its_own_filter_state():
     assert q["right"]["j1"] > 0.0 and q["left"]["j1"] < 0.0, (
         f"side 가 필터 상태를 공유해 서로를 끌어당긴다: {q}")
     assert q["right"]["j1"] == pytest.approx(-q["left"]["j1"])
+
+
+def test_urdf_limit_defaults_follow_spec():
+    """URDF 사양: lower·upper 를 빼면 0, continuous 만 범위가 없다."""
+    urdf = """<robot name="r">
+      <joint name="rev" type="revolute"><limit effort="1" velocity="2"/></joint>
+      <joint name="cont" type="continuous"><limit effort="1" velocity="2"/></joint>
+    </robot>"""
+    lim = load_limits_from_urdf(urdf)
+    assert (lim["rev"].lower, lim["rev"].upper) == (0.0, 0.0)
+    assert lim["cont"].lower == float("-inf") and lim["cont"].upper == float("inf")
