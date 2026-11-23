@@ -1,9 +1,3 @@
-"""GeoRT 소프트 프롬프트 손 리타게팅.
-
-입력은 OpenXR 26관절 × [qx qy qz qw px py pz radius] (손목 기준, m) — `HandPose.xr_joints`
-그대로이고, 위치만 쓴다.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -22,7 +16,6 @@ from .keypoints import POSITION
 from .prompt import KIND_ROBOT, Embodiment, PromptModel, load_prompt_model
 
 KEYPOINT_SHAPE = (XR_JOINT_COUNT, XR_JOINT_FIELDS)
-# 패키지에 동봉한 학습 모델(orca_right·hx5_right·allegro_right·dg5f_s_right 프롬프트).
 DEFAULT_MODEL = str(Path(__file__).resolve().parent / "assets" / "geort_prompt.npz")
 MODEL_ENV = "WHATSLAB_GEORT_MODEL"
 
@@ -31,7 +24,6 @@ _REMEDY_FILE = "GeoRT 설정 YAML(name, side, model)과 모델 파일 경로를 
 
 
 class GeortHandSolver:
-    """keypoints(26×8) → 로봇 손 관절각. 모델이 오른손용이면 왼손 입력은 좌우 반전해 푼다."""
 
     def __init__(
         self,
@@ -63,35 +55,26 @@ class GeortHandSolver:
         human_side: str = "right",
         low_pass_alpha: Optional[float] = None,
     ) -> "GeortHandSolver":
-        """GeoRT 설정 YAML(name/side/model/low_pass_alpha)로 만든다.
-
-        ``low_pass_alpha`` 를 주면 설정값 대신 쓴다.
-        """
         cfg = read_config(config_path)
         alpha = cfg.low_pass_alpha if low_pass_alpha is None else float(low_pass_alpha)
         return cls(load_embodiment(cfg), human_side, alpha)
 
     @property
     def joint_names(self) -> Tuple[str, ...]:
-        """출력 관절 이름(모델 순서)."""
         return self._model.joint_names
 
     @property
     def joint_limits(self) -> np.ndarray:
-        """출력을 자르는 관절 범위 (n, 2) — 모델 학습 범위."""
         return self._limits
 
     @property
     def model(self) -> Embodiment:
-        """쓰는 프롬프트 모델의 손."""
         return self._model
 
     def reset(self) -> None:
-        """저역통과 상태를 비운다."""
         self._last = None
 
     def keypoints(self, keypoints: np.ndarray) -> np.ndarray:
-        """OpenXR 26×8 을 모델 입력 키포인트로. 풀 수 없으면 GeortInputError."""
         kp = np.asarray(keypoints, dtype=np.float64)
         if kp.shape != KEYPOINT_SHAPE:
             raise ValueError(
@@ -100,7 +83,7 @@ class GeortHandSolver:
             )
         if not np.all(
             np.isfinite(kp[list(OPENXR26_TO_HAND21), POSITION])
-        ):  # palm·검지~소지 중수골은 안 쓴다(엄지 중수골은 쓴다)
+        ):
             raise GeortInputError(
                 "GEORT_INPUT_NON_FINITE",
                 "손 추적 위치에 유한하지 않은 값이 있어 리타게팅하지 않았습니다",
@@ -116,7 +99,6 @@ class GeortHandSolver:
         return points
 
     def solve(self, keypoints: np.ndarray) -> np.ndarray:
-        """OpenXR 26×8 → 관절각(범위로 자르고 저역통과)."""
         q = np.clip(
             self._model.forward(self.keypoints(keypoints)), self._limits[:, 0], self._limits[:, 1]
         )
@@ -128,7 +110,6 @@ class GeortHandSolver:
 
 @dataclasses.dataclass(frozen=True)
 class GeortConfig:
-    """GeoRT 설정 YAML 내용."""
     name: str
     side: str
     model_path: Path
@@ -144,10 +125,6 @@ def _invalid(path: Path, reason: str) -> GeortConfigError:
 
 
 def _model_path(raw: Optional[str], base: Path) -> Path:
-    """모델 경로: 설정의 model > $WHATSLAB_GEORT_MODEL > 동봉 모델.
-
-    설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준이다.
-    """
     if raw:
         model = Path(raw).expanduser()
         return model if model.is_absolute() else base / model
@@ -155,7 +132,6 @@ def _model_path(raw: Optional[str], base: Path) -> Path:
 
 
 def resolve_config_path(path: "str | os.PathLike[str]") -> Path:
-    """절대·현재 디렉토리 기준 경로가 없으면 whatslab configs 루트 기준으로 찾는다."""
     from whatslab.paths import configs_root
 
     p = Path(path).expanduser()
@@ -166,24 +142,8 @@ def resolve_config_path(path: "str | os.PathLike[str]") -> Path:
 
 
 def read_config(config_path: "str | os.PathLike[str]") -> GeortConfig:
-    """GeoRT 설정 YAML 을 읽고 검사한다. 실패하면 GeortConfigError."""
     path = resolve_config_path(config_path)
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as e:
-        raise GeortConfigError(
-            "GEORT_CONFIG_MISSING",
-            f"GeoRT 설정 파일을 찾을 수 없습니다: {path}",
-            "설정 경로를 확인하세요.",
-        ) from e
-    except OSError as e:
-        raise GeortConfigError(
-            "GEORT_CONFIG_MISSING",
-            f"GeoRT 설정 파일을 읽을 수 없습니다: {path} ({e.strerror or e})",
-            "파일 경로와 읽기 권한을 확인하세요.",
-        ) from e
-    except yaml.YAMLError as e:
-        raise _invalid(path, "YAML 문법 오류") from e
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise _invalid(path, "최상위가 키-값 목록이 아닙니다")
     missing = [k for k in ("name", "side") if not isinstance(raw.get(k), str)]
@@ -205,23 +165,11 @@ def _cached_prompt_model(path: str, mtime_ns: int) -> PromptModel:
 
 
 def _load_prompt_model_cached(path: Path) -> PromptModel:
-    """같은 모델 파일은 한 번만 읽는다(양손·여러 솔버).
-
-    파일이 바뀌면(mtime) 다시 읽는다. 모델은 불변이라 솔버끼리 공유해도 된다.
-    형식 검사는 load_prompt_model 이 한다.
-    """
     path = path.expanduser()
-    try:
-        mtime = path.stat().st_mtime_ns
-    except OSError:
-        return load_prompt_model(
-            path
-        )  # 없는 파일 — load_prompt_model 이 GEORT_MODEL_MISSING 을 낸다
-    return _cached_prompt_model(str(path.resolve()), mtime)
+    return _cached_prompt_model(str(path.resolve()), path.stat().st_mtime_ns)
 
 
 def load_embodiment(cfg: GeortConfig) -> Embodiment:
-    """설정이 가리키는 모델에서 로봇 손 하나를 꺼낸다."""
     model = _load_prompt_model_cached(cfg.model_path)
     embodiment = model.embodiments.get(cfg.name)
     if embodiment is None or embodiment.kind != KIND_ROBOT or model.side != cfg.side:

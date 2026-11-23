@@ -84,10 +84,10 @@ Spine 은 임시 송신 포트에서 `127.0.0.1:4040` 으로 보낸다)이고 �
 - `connected(side)` = 2 s 안에 받은 Spine `device_status` 가 그 손을 연결로 보고하거나
   신선한 프레임이 있음. 2 s 보다 오래된 상태(Spine 이 응답을 멈춤)는 무시한다.
 - `send_haptic(side, values)` → `bool`. 값은 손가락별(엄지..소지, 앞 5개까지) Spine 세기
-  단계로 본다: `round` 후 `[0, 3]` 클램프(0 끔, 1 약, 2 중, 3 강), 숫자가 아니거나 NaN 이면 0
+  단계로 본다: `round` 후 `[0, 3]` 클램프(0 끔, 1 약, 2 중, 3 강), NaN 이면 0, 숫자가 아니면 예외
   (`haptic_levels`). 항상 정확히 5개를 보낸다 — 빠진 손가락은 0(빈 값 = 전부 끔).
   글러브는 0 을 받을 때까지 계속 진동한다(Spine 은 클라이언트 하트비트가 3 s 끊기면 끈다).
-  시작 전·전송 실패면 `False`.
+  시작 전이면 `False`, 전송 실패는 `AirGloveError` 를 그대로 올린다.
 
 ### WebXR 경로 (`WebXRHandReceiver`)
 
@@ -191,16 +191,16 @@ q = solver.solve(masked_keypoints(xr_joints, xr_valid))       # 계산만
 GeoRT 소프트 프롬프트 모델(여러 손이 공유하는 신경망 + 손별 프롬프트·출력층)의 numpy 추론이다.
 학습 도구는 이 SDK 에 없다. 지원하는 모델은 하나의 조합이다 — 모델 구조 `format = geort-prompt-v1`(MLP + 손별
 soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 원점 + Kabsch 정렬). 다른 값이면
-`GEORT_MODEL_INVALID`.
+`ValueError`. 설정·모델 파일이 없으면 `FileNotFoundError` 가 그대로 올라온다.
 
 | 심볼 | 설명 |
 |---|---|
 | `GeortHandSolver.from_config(path, human_side="right", low_pass_alpha=None)` | 설정 YAML 로 솔버를 만든다. `low_pass_alpha` 를 주면 설정값 대신 쓴다. |
 | `GeortHandSolver(embodiment, human_side="right", low_pass_alpha=1.0)` | 26×8 → q (`solve`, 모델 학습 범위로 자름). 계산만 한다 — 직전 값 유지·추적 끊김 처리는 `HandRetargetController`. 모델 손과 반대쪽 입력은 좌우 반전해 푼다. 실제로 쓰는 21점의 위치가 유한하지 않으면 `GeortInputError`(`masked_keypoints` 가 무효 관절을 NaN 으로 바꾼다 — palm·중수골은 안 쓴다). `reset()`, `joint_names`, `joint_limits`. |
 | `read_config(path)` | 설정 YAML: `name`(모델 안 손 이름), `side`, `model`(생략 시 `$WHATSLAB_GEORT_MODEL` → 패키지 동봉 `solvers/hand/geort/assets/geort_prompt.npz`), `low_pass_alpha`. 설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준. |
-| `load_prompt_model(path)` | npz → `PromptModel`(`embodiments`). 형식이 위 조합이 아니면 `GeortConfigError`. |
+| `load_prompt_model(path)` | npz → `PromptModel`(`embodiments`). 형식이 위 조합이 아니거나 배열 모양이 틀리면 `ValueError`. |
 | `keypoints` 모듈 | OpenXR 26 → MediaPipe 21 → `openxr-wrist-kabsch-v2` 입력 좌표계(`InputFrame`, `canonical_points`, `to_geort` …). |
-| `GeortConfigError` / `GeortInputError` | `code`·`cause`·`remedy` 를 가진 `ValueError`(`GeortInputError` 는 `HandInputError` 이기도 하다). |
+| `GeortConfigError` / `GeortInputError` | `code`·`cause`·`remedy` 를 가진 `ValueError`. `GeortConfigError` 는 설정 내용 검사(필수 키·값 범위·모델 안 손 이름), `GeortInputError` 는 이번 프레임 입력 오류이자 `HandInputError`. |
 
 동봉 설정(`configs/geort/`): `orca_right`(ORCA 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
 dexhand-description URDF 와 같다(테스트로 확인). 모델에는 Allegro·DG-5F-S 프롬프트도 있지만 관절 이름이 아직

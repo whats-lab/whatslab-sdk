@@ -120,7 +120,6 @@ def test_hand_model_passes_measured_dt_to_filter():
 
 
 def test_urdf_limit_defaults_follow_spec():
-    """URDF 사양: lower·upper 를 빼면 0, continuous 만 범위가 없다."""
     urdf = """<robot name="r">
       <joint name="rev" type="revolute"><limit effort="1" velocity="2"/></joint>
       <joint name="cont" type="continuous"><limit effort="1" velocity="2"/></joint>

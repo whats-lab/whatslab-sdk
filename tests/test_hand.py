@@ -27,7 +27,7 @@ def test_solvers_package_import_is_light():
     try:
         importlib.import_module("whatslab.solvers.hand")
         assert "whatslab.solvers.hand.dex_retargeter" not in sys.modules
-    finally:  # 원래 모듈로 되돌린다 — 다시 import 한 예외 클래스가 두 벌로 남지 않게
+    finally:
         for m in ours():
             del sys.modules[m]
         sys.modules.update(saved)

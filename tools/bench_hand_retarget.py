@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""OpenXR(글러브) 손 리타게팅을 목표 구성과 무관한 물리 지표로 잰다.
-
-입력은 OpenXR 26관절 시퀀스다 — npz(xr: (N, 26, 8) [qx qy qz qw px py pz r] 손목 공간, side)
-또는 Quest WebXR 녹화 json(frames[{t, left: 25x7, right: 25x7}], [px py pz qx qy qz qw]).
-지표(전부 사람·로봇 각자의 해부학 프레임에서 잰다 — 리타게터의 목표를 정답으로 쓰지 않는다):
-  open   펴진 손 프레임에서 |로봇 엄지-손가락 끝 거리 − s·사람 거리| 평균 (mm)
-  pinch  사람 엄지-손가락 끝 거리 < --pinch-mm(기본 20) 인 프레임의 로봇 끝 거리 평균 (mm)
-         (OpenXR 끝 관절은 손끝 표면이라 사람 패드 접촉도 10~15mm 로 남는다)
-  bone   손바닥 프레임 기준 뼈 방향각 오차 평균 (°) — 엄지 MCP→IP→끝, 손가락 MCP→PIP→끝
-  |dq|   연속 프레임 관절 변화 최댓값의 p95 (rad)
-  limit  관절범위 양 끝 2% 안에 있는 (프레임, 관절) 비율
-  ms     호출 1회 비용, 2손 = 같은 틱의 왼손+오른손 합 (같은 녹화의 양손 — Quest json,
-         또는 이름이 *_left.npz / *_right.npz 로 짝인 npz)
-s = 로봇 손 길이(q=0 손목→중지 끝) / 사람 손 길이(시퀀스의 손목→중지 끝 p95).
-"""
 import argparse
 import glob
 import json

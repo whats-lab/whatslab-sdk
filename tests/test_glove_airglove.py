@@ -195,7 +195,8 @@ def test_haptic_levels_mapping():
     assert haptic_levels([0, 1, 2, 3, 4]) == [0, 1, 2, 3, 3]
     assert haptic_levels([-1, 0.4, 0.6, 2.5, float("nan")]) == [0, 0, 1, 2, 0]
     assert haptic_levels([1, 1, 1, 1, 1, 1, 1]) == [1, 1, 1, 1, 1]
-    assert haptic_levels(["x", None, 2]) == [0, 0, 2, 0, 0]
+    with pytest.raises((TypeError, ValueError)):
+        haptic_levels(["x"])
     assert haptic_levels([]) == [0, 0, 0, 0, 0]
 
 
@@ -207,7 +208,8 @@ def test_send_haptic_clamps_pads_and_reports(fake_client):
     assert c.haptics == [(Side.RIGHT, [3, 3, 3, 3, 3]), (Side.LEFT, [2, 0, 0, 0, 0]),
                          (Side.LEFT, [0, 0, 0, 0, 0])]
     c.fail_haptics = True
-    assert rx.send_haptic("left", [1]) is False
+    with pytest.raises(AirGloveError):
+        rx.send_haptic("left", [1])
 
 
 def test_connected_uses_device_status_then_fresh_frame(fake_client):
@@ -365,7 +367,6 @@ def test_end_to_end_against_spine_replayer():
 
 
 def test_unused_invalid_joint_keeps_frame_tracked(fake_client):
-    """palm 하나만 무효면 추적 중 — 관절별 유효성은 xr_valid 로 넘긴다."""
     rx, c = _started(stale_timeout=0.2)
     frame = _frame(age=0.01)
     frame.valid[0] = False
@@ -375,9 +376,8 @@ def test_unused_invalid_joint_keeps_frame_tracked(fake_client):
 
 
 def test_invalid_used_joint_is_untracked(fake_client):
-    """리타게팅이 쓰는 21점 중 하나라도 무효면 추적 아님(손목 등)."""
     rx, c = _started(stale_timeout=0.2)
     frame = _frame(age=0.01)
-    frame.valid[1] = False  # 손목
+    frame.valid[1] = False
     c.hands[Side.RIGHT] = frame
     assert rx.get("right").tracked is False

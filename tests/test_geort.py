@@ -17,7 +17,6 @@ ORCA = "orca_right"
 
 
 def _ctrl(tmp_path, model, side="right", **over):
-    """GeoRT 엔진 HandRetargetController (사용자 yaml 경로 = geort:<path>.yaml)."""
     return HandRetargetController(side, f"geort:{_cfg(tmp_path, model, **over)}")
 
 
@@ -30,7 +29,6 @@ def _q(solver, joints, valid=None):
 
 
 def identity_joints(spread: float = 0.0) -> np.ndarray:
-    """26×8 — 항등 회전, 손가락이 -Z 로 뻗은 대략적인 손 (spread 만큼 위치를 흔든다)."""
     j = np.zeros((26, 8))
     j[:, 3] = 1.0
     j[:, 7] = 0.01
@@ -89,7 +87,6 @@ def test_masked_keypoints_nan_only_invalid_positions():
 
 
 def test_model_reproduces_bake_self_check(geort_model):
-    """모델 파일에 저장된 bake 자기검증(check_points → check_<이름>)을 이식 코드가 재현한다."""
     model = load_prompt_model(__import__("pathlib").Path(geort_model))
     for name, emb in model.embodiments.items():
         assert np.allclose(emb.forward(emb.check_points), emb.check_qpos, atol=1e-5), name
@@ -114,7 +111,7 @@ def test_controller_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
         ctrl.compute(_sample(identity_joints(0.01), tracked=False)).joint_angles, first
     )
     valid = np.ones(26, dtype=bool)
-    valid[12] = False  # middle proximal(MCP) → 손바닥 방향 못 정함
+    valid[12] = False
     held = ctrl.compute(_sample(identity_joints(0.01), valid=valid)).joint_angles
     assert np.array_equal(held, first)
     assert isinstance(ctrl.last_error, GeortInputError)
@@ -123,7 +120,6 @@ def test_controller_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
 
 
 def test_controller_raises_non_input_errors(tmp_path, geort_model):
-    """입력 모양 오류 같은 버그는 삼키지 않는다 — 손이 조용히 멈추지 않게."""
     ctrl = _ctrl(tmp_path, geort_model)
     with pytest.raises(ValueError) as info:
         ctrl.compute(_sample(np.zeros((25, 8))))
@@ -140,7 +136,7 @@ def test_left_hand_is_mirrored_onto_right_model(tmp_path, geort_model):
     left = _solver(tmp_path, geort_model, "left")
     j = identity_joints(0.003)
     mirrored = j.copy()
-    mirrored[:, 4] *= -1.0  # 위치 x 반전 = 거울상 왼손
+    mirrored[:, 4] *= -1.0
     assert right.joint_names == left.joint_names
     assert np.allclose(_q(right, j), _q(left, mirrored), atol=1e-6)
 
@@ -159,10 +155,9 @@ def test_unknown_embodiment_is_config_error(tmp_path, geort_model):
     assert e.value.code == "GEORT_MODEL_MISMATCH"
 
 
-def test_missing_model_is_config_error(tmp_path):
-    with pytest.raises(GeortConfigError) as e:
+def test_missing_model_raises_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError):
         _solver(tmp_path, str(tmp_path / "none.npz"))
-    assert e.value.code == "GEORT_MODEL_MISSING"
 
 
 def test_config_validation(tmp_path):
@@ -207,7 +202,7 @@ def test_bundled_configs_match_dexhand_urdf(config, urdf, geort_model):
 
 def test_unused_joints_do_not_block_solving(tmp_path, geort_model):
     valid = np.ones(26, dtype=bool)
-    valid[[0, 6, 11, 16, 21]] = False  # palm·검지~소지 중수골 — 21점에 안 들어간다
+    valid[[0, 6, 11, 16, 21]] = False
     q = _q(_solver(tmp_path, geort_model), identity_joints(0.002), valid)
     assert q.shape == (16,) and np.all(np.isfinite(q))
 
@@ -216,10 +211,10 @@ def test_low_pass_restarts_after_tracking_loss(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model, low_pass_alpha=0.3)
     fresh = _ctrl(tmp_path, geort_model, low_pass_alpha=0.3)
     ctrl.compute(_sample(identity_joints(0.0)))
-    ctrl.compute(_sample(identity_joints(0.0), tracked=False))  # 글러브를 벗음
+    ctrl.compute(_sample(identity_joints(0.0), tracked=False))
     again = ctrl.compute(_sample(identity_joints(0.01))).joint_angles
     first = fresh.compute(_sample(identity_joints(0.01))).joint_angles
-    assert np.allclose(again, first)  # 예전 자세와 섞이지 않는다
+    assert np.allclose(again, first)
 
 
 def test_env_model_path_is_relative_to_cwd(tmp_path, monkeypatch):
@@ -258,7 +253,6 @@ def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):
 
 
 def test_reset_clears_last_error(tmp_path, geort_model):
-    """HandModel 은 추적이 끊기면 reset 만 부른다 — 재획득 뒤 첫 실패도 경고되게 비운다."""
     ctrl = _ctrl(tmp_path, geort_model)
     valid = np.ones(26, dtype=bool)
     valid[12] = False

@@ -28,7 +28,6 @@ def require_sensor_urdf(*configs, sides=("left", "right")):
 
 @pytest.fixture
 def free_port():
-    """지금 비어 있는 TCP 포트 — 서버를 공유하려면 고정 포트가 필요하다(port=0 은 공유 안 함)."""
     with socket.socket() as probe:
         probe.bind(("0.0.0.0", 0))
         return probe.getsockname()[1]

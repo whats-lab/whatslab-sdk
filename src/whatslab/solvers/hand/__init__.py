@@ -1,5 +1,3 @@
-# dex(DexPilot)는 pinocchio·dex-retargeting(torch)을 import 한다. GeoRT 는 numpy 만 쓴다.
-# 패키지 import 만으로 무거운 의존을 요구하지 않게 지연 import 한다.
 _LAZY = {
     "HandRetargetController": ".controller",
     "engine_of": ".controller",
@@ -11,7 +9,6 @@ _LAZY = {
     "GeortHandSolver": ".geort",
 }
 
-# star import 가 dex(pinocchio·torch)를 끌어오지 않게 그 이름은 __all__ 에서 뺀다.
 __all__ = sorted(n for n, m in _LAZY.items() if m != ".dex_retargeter")
 
 

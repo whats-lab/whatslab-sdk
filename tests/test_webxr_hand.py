@@ -17,7 +17,6 @@ from test_webxr_receiver import _wait
 
 
 def _hand26(seed=0):
-    """손목 기준 OpenXR 26관절 (palm 은 중지 중수골·근위 중점, 방향 = 중수골)."""
     rng = np.random.default_rng(seed)
     j = np.zeros((XR_JOINT_COUNT, XR_JOINT_FIELDS))
     j[:, 0:4] = Rotation.random(XR_JOINT_COUNT, random_state=seed).as_quat()
@@ -33,7 +32,6 @@ def _hand26(seed=0):
 
 
 def _to_world25(j26, wrist_pos, wrist_rot):
-    """손목 기준 26관절 → 세션 좌표의 WebXR 25관절 (palm 제외)."""
     w = Rotation.from_quat(wrist_rot)
     out = np.zeros((25, 8))
     rot = w * Rotation.from_quat(j26[1:, 0:4])

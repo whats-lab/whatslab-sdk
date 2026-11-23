@@ -1,35 +1,28 @@
-"""GeoRT 소프트 프롬프트 모델(.npz, 형식 geort-prompt-v1) 읽기·검사와 numpy 순전파."""
 from __future__ import annotations
 
 import dataclasses
 import json
-import zipfile
 from pathlib import Path
 
 import numpy as np
 
 from whatslab.core.constants import HAND21_COUNT
 
-from .errors import GeortConfigError
 from .keypoints import FRAME_V2, PALM_MCPS, InputFrame
 
-# 모델 구조 형식(MLP + 손별 soft prompt). 손 입력 형식은 keypoints.FRAME_V2 로 따로 검사한다.
 PROMPT_FORMAT = "geort-prompt-v1"
 KIND_ROBOT = "robot"
 KIND_HUMAN = "human"
 KINDS = (KIND_ROBOT, KIND_HUMAN)
 POINT_DIM = 3
 INPUT_DIM = (HAND21_COUNT - 1) * POINT_DIM
-_REMEDY = "설정 파일의 model 경로나 WHATSLAB_GEORT_MODEL 을 확인하세요."
 
 
 def silu(x: np.ndarray) -> np.ndarray:
-    """SiLU 활성화 x·σ(x)."""
     return x / (1.0 + np.exp(-x))
 
 
 def layer_norm(x: np.ndarray, weight: np.ndarray, bias: np.ndarray, eps: float) -> np.ndarray:
-    """마지막 축 LayerNorm (affine 포함)."""
     mean = x.mean(axis=-1, keepdims=True)
     centered = x - mean
     var = (centered * centered).mean(axis=-1, keepdims=True)
@@ -38,7 +31,6 @@ def layer_norm(x: np.ndarray, weight: np.ndarray, bias: np.ndarray, eps: float) 
 
 @dataclasses.dataclass(frozen=True)
 class Linear:
-    """완전연결층 ``x @ Wᵀ + b``."""
     weight: np.ndarray
     bias: np.ndarray
 
@@ -47,13 +39,11 @@ class Linear:
 
 
 def normalized(points: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    """손목을 뺀 20점을 펴서 입력 평균·표준편차로 정규화한다."""
     return (points[..., 1:, :].reshape(points.shape[:-2] + (INPUT_DIM,)) - mean) / std
 
 
 @dataclasses.dataclass(frozen=True)
 class Backbone:
-    """MLP 인코더 + FiLM 조건 디코더 백본. 손마다 다른 soft prompt 로 조건을 건다."""
     in_mean: np.ndarray
     in_std: np.ndarray
     encoder: tuple[Linear, ...]
@@ -66,15 +56,12 @@ class Backbone:
 
     @property
     def width(self) -> int:
-        """디코더 은닉 폭."""
         return self.dec_in.bias.size
 
     def prompt_shape(self) -> tuple[int, ...]:
-        """이 백본이 받는 프롬프트 모양."""
         return (self.dec_prompt.shape[1],)
 
     def encode(self, points: np.ndarray) -> np.ndarray:
-        """키포인트를 잠재 벡터로 인코딩한다."""
         x = normalized(points, self.in_mean, self.in_std)
         for k, layer in enumerate(self.encoder):
             x = layer(x)
@@ -83,13 +70,11 @@ class Backbone:
         return x
 
     def condition(self, prompt: np.ndarray) -> tuple[np.ndarray, ...]:
-        """프롬프트로 디코더 조건(shift, gamma, beta)을 만든다."""
         shift = self.dec_prompt @ prompt + self.dec_in.bias
         film = self.film(prompt).reshape(len(self.decoder), 2, self.width)
         return shift, 1.0 + film[:, 0], film[:, 1]
 
     def raw(self, points: np.ndarray, cond: tuple[np.ndarray, ...], head: Linear) -> np.ndarray:
-        """조건을 건 디코더 출력(출력층 적용, 범위 변환 전)."""
         shift, gamma, beta = cond
         h = silu(self.encode(points) @ self.dec_in.weight.T + shift)
         for k, layer in enumerate(self.decoder):
@@ -100,7 +85,6 @@ class Backbone:
 
 @dataclasses.dataclass(frozen=True)
 class Embodiment:
-    """프롬프트 모델 안의 손 하나(로봇 관절 또는 사람 손 키포인트 출력)."""
     name: str
     kind: str
     side: str
@@ -122,11 +106,9 @@ class Embodiment:
         object.__setattr__(self, "cond", self.backbone.condition(self.prompt))
 
     def raw(self, points: np.ndarray) -> np.ndarray:
-        """백본·출력층 원출력."""
         return self.backbone.raw(np.asarray(points, dtype=np.float64), self.cond, self.head)
 
     def forward(self, points: np.ndarray) -> np.ndarray:
-        """키포인트 → 출력. 로봇은 관절 범위로, 사람 손은 역정규화한다."""
         y = self.raw(points)
         if self.kind == KIND_HUMAN:
             return y * self.out_scale + self.out_mean
@@ -135,7 +117,6 @@ class Embodiment:
 
 @dataclasses.dataclass(frozen=True)
 class PromptModel:
-    """공유 백본과 손별 프롬프트를 담은 GeoRT 프롬프트 모델."""
     name: str
     side: str
     embodiments: dict[str, Embodiment]
@@ -276,38 +257,20 @@ def _embodiment(
 
 
 def load_prompt_model(path: Path) -> PromptModel:
-    """GeoRT 프롬프트 모델(.npz)을 읽고 검사한다. 실패하면 GeortConfigError."""
     path = path.expanduser()
-    try:
-        with np.load(path, allow_pickle=False) as data:
-            fmt = _text(data, "format")
-            if fmt != PROMPT_FORMAT:
-                raise ValueError(f"format {fmt}을(를) 지원하지 않습니다 ({PROMPT_FORMAT})")
-            frame = _frame(data)
-            names = [str(n) for n in data["embodiments"]]
-            backbone = _backbone(data)
-            side = _text(data, "side")
-            meta = json.loads(_text(data, "meta_json"))
-            check_points = _array(data, "check_points")
-            embodiments = {
-                n: _embodiment(data, n, side, backbone, frame, check_points, meta) for n in names
-            }
-            model = PromptModel(_text(data, "name"), side, embodiments, meta)
-    except FileNotFoundError as e:
-        raise GeortConfigError(
-            "GEORT_MODEL_MISSING", f"GeoRT 프롬프트 모델 파일을 찾을 수 없습니다: {path}", _REMEDY
-        ) from e
-    except OSError as e:
-        raise GeortConfigError(
-            "GEORT_MODEL_MISSING",
-            f"GeoRT 프롬프트 모델 파일을 읽을 수 없습니다: {path} ({e.strerror or e})",
-            _REMEDY,
-        ) from e
-    except (KeyError, ValueError, TypeError, IndexError, zipfile.BadZipFile) as e:
-        raise GeortConfigError(
-            "GEORT_MODEL_INVALID",
-            f"GeoRT 프롬프트 모델 파일 형식이 잘못됐습니다: {path} ({e})",
-            _REMEDY,
-        ) from e
+    with np.load(path, allow_pickle=False) as data:
+        fmt = _text(data, "format")
+        if fmt != PROMPT_FORMAT:
+            raise ValueError(f"format {fmt}을(를) 지원하지 않습니다 ({PROMPT_FORMAT})")
+        frame = _frame(data)
+        names = [str(n) for n in data["embodiments"]]
+        backbone = _backbone(data)
+        side = _text(data, "side")
+        meta = json.loads(_text(data, "meta_json"))
+        check_points = _array(data, "check_points")
+        embodiments = {
+            n: _embodiment(data, n, side, backbone, frame, check_points, meta) for n in names
+        }
+        model = PromptModel(_text(data, "name"), side, embodiments, meta)
     return model
 

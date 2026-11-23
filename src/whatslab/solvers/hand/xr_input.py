@@ -21,7 +21,7 @@ _MIRROR = np.diag([-1.0, 1.0, 1.0])
 
 
 class HandInputError(ValueError):
-    """이번 프레임의 손 입력으로는 풀 수 없다(퇴화·비유한) — 호출자는 직전 값을 유지하면 된다."""
+    pass
 
 
 def _as_xr(xr_joints) -> np.ndarray:
@@ -41,23 +41,20 @@ def _wrist_rotation(a: np.ndarray) -> np.ndarray:
 
 
 def xr_wrist_positions(xr_joints) -> np.ndarray:
-    """OpenXR 26관절 위치를 손목 원점·손목 축 기준으로 (26, 3)."""
     a = _as_xr(xr_joints)
     rot_w = _wrist_rotation(a)
     return (a[:, 4:7] - a[XR_WRIST, 4:7]) @ rot_w
 
 
 def xr_to_mano(xr_joints) -> np.ndarray:
-    """OpenXR 26관절 → MANO 21점(손목 기준, MANO 축)."""
     return xr_wrist_positions(xr_joints)[list(OPENXR26_TO_HAND21)] @ OPENXR_TO_HAND21_AXES.T
 
 
 def palm_frame(wrist, index, middle, pinky, side: str) -> np.ndarray:
-    """손목·검지·중지·소지 MCP 로 손바닥 프레임(열 = x, y, z). 퇴화·비유한이면 HandInputError."""
     w, i, m, p = (np.asarray(v, dtype=float) for v in (wrist, index, middle, pinky))
     z = m - w
     nz = float(np.linalg.norm(z))
-    if not nz >= 1e-6:  # NaN 도 여기서 거른다
+    if not nz >= 1e-6:
         raise HandInputError("손바닥 프레임: 손목과 중지 MCP 가 겹치거나 유한하지 않다")
     z = z / nz
     y = i - p if side == "right" else p - i
@@ -75,13 +72,11 @@ def mano_palm_frame(mano: np.ndarray, side: str) -> np.ndarray:
 
 
 def mirror_xr_joints(xr_joints) -> np.ndarray:
-    """OpenXR 26관절을 좌우 반전(x 거울상)한 반대 손 관절로. 무효 관절의 0 쿼터니언은 항등으로."""
     a = _as_xr(xr_joints)
     rot_w = _wrist_rotation(a)
     out = a.copy()
     quat = a[:, :4].copy()
     norm = np.linalg.norm(quat, axis=1)
-    # 무효 관절은 0·NaN 쿼터니언일 수 있다 — 항등으로 두고 위치(NaN)로 거른다.
     bad = ~(norm > 1e-9)
     quat[bad], norm[bad] = (0.0, 0.0, 0.0, 1.0), 1.0
     rot = Rotation.from_quat(quat / norm[:, None])
@@ -92,7 +87,6 @@ def mirror_xr_joints(xr_joints) -> np.ndarray:
 
 
 def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.ndarray:
-    """무효 관절의 위치를 NaN 으로 — 원점(항등)으로 남은 관절이 솔버에 들어가지 않게 한다."""
     kp = np.array(keypoints, dtype=np.float64, copy=True)
     if valid is not None:
         kp[~np.asarray(valid, dtype=bool), 4:7] = np.nan

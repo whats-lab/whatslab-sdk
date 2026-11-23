@@ -8,12 +8,6 @@ import numpy as np
 
 @dataclass
 class HandPose:
-    """사람 손 한 프레임.
-
-    ``xr_joints``: OpenXR ``XrHandJointEXT`` 26관절 × ``[qx qy qz qw px py pz radius]``,
-    손목 기준(m), OpenXR 손 관절 축. 손 리타게팅(dex·geort)의 입력이다. ``xr_valid`` 는 관절별
-    유효 여부(없으면 전부 유효로 본다). 손목 자세는 담지 않는다 — 팔·손목은 사용하는 쪽 몫이다.
-    """
 
     xr_joints: Optional[np.ndarray] = None
     xr_valid: Optional[np.ndarray] = None

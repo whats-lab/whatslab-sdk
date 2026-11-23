@@ -75,10 +75,9 @@ class DexHandConfig:
         if unknown:
             raise ValueError(f"retargeting 에 dex-retargeting 이 모르는 키: {sorted(unknown)}")
         palm = d.get("palm_links") or {}
-        try:
-            palm_links = (str(palm["index"]), str(palm["middle"]), str(palm["pinky"]))
-        except KeyError as e:
-            raise ValueError(f"palm_links 에 index/middle/pinky 가 필요하다: {e}") from None
+        if not {"index", "middle", "pinky"} <= set(palm):
+            raise ValueError(f"palm_links 에 index/middle/pinky 가 필요하다: {sorted(palm)}")
+        palm_links = (str(palm["index"]), str(palm["middle"]), str(palm["pinky"]))
         frame = d.get("mano_to_root")
         limits = {
             str(k): (float(v[0]), float(v[1]))
@@ -227,7 +226,6 @@ class XRHandRetargeter:
         return keypoints[self._human_idx[1]] - keypoints[self._human_idx[0]]
 
     def compute(self, xr_joints) -> np.ndarray:
-        """OpenXR 26관절 → 로봇 손 관절각(joint_names 순서). 풀 수 없는 입력이면 HandInputError."""
         kp = self.human_keypoints(xr_joints)
         if not np.all(np.isfinite(kp)):
             raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")

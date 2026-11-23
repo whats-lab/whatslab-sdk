@@ -8,18 +8,18 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from airglove_client import JOINT_NAMES, AirGloveError, Client, Side
+from airglove_client import JOINT_NAMES, Client, Side
 
 from whatslab.core.constants import FINGER_COUNT, OPENXR26_TO_HAND21, XR_JOINT_NAMES
 from whatslab.core.types import HandPose, InputSample
 
 _log = logging.getLogger(__name__)
 
-GLOVE_OSC_PORT = 4040          # Spine → 이 클라이언트 (PC 당 하나)
-GLOVE_CLIENT_PORT = 4042       # 이 클라이언트 → Spine
-GLOVE_TARGET_IP = "127.0.0.1"  # Spine 은 로컬 전용
+GLOVE_OSC_PORT = 4040
+GLOVE_CLIENT_PORT = 4042
+GLOVE_TARGET_IP = "127.0.0.1"
 
-if tuple(JOINT_NAMES) != XR_JOINT_NAMES:   # airglove-client 와 core 의 관절 순서가 같아야 한다
+if tuple(JOINT_NAMES) != XR_JOINT_NAMES:
     raise ImportError("airglove_client JOINT_NAMES 가 OpenXR 26관절 순서와 다르다")
 
 HAPTIC_LEVEL_MAX = 3
@@ -36,10 +36,7 @@ _HAND21 = list(OPENXR26_TO_HAND21)
 def haptic_levels(values) -> list:
     out = [0] * FINGER_COUNT
     for i, v in enumerate(list(values)[:FINGER_COUNT]):
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            f = 0.0
+        f = float(v)
         if not math.isfinite(f):
             f = 0.0
         out[i] = int(min(max(round(f), 0), HAPTIC_LEVEL_MAX))
@@ -53,10 +50,7 @@ def _xr_joints(frame) -> np.ndarray:
 
 
 def _library_version(version: str) -> tuple:
-    try:
-        return tuple(int(x) for x in str(version).split(".")[:2])
-    except ValueError:
-        return (0, 0)
+    return tuple(int(x) for x in str(version).split(".")[:2])
 
 
 @dataclass(frozen=True)
@@ -70,7 +64,6 @@ class GloveFrame:
 
 
 class AirGloveReceiver:
-    """AirGlove Spine 3.0.0 OpenXR 26관절 수신기(airglove-client 래퍼)."""
 
     def __init__(
         self,
@@ -184,7 +177,6 @@ class AirGloveReceiver:
         if f is None:
             return InputSample(tracked=False, timestamp=0.0)
         ts = time.monotonic() - f.age_s
-        # 리타게팅이 쓰는 21점만 본다 — 안 쓰는 palm·중수골이 무효여도 추적 중이다.
         tracked = self._fresh(f.age_s) and bool(np.all(f.valid[_HAND21]))
         hand = HandPose(xr_joints=f.xr_joints, xr_valid=f.valid, tracked=tracked, timestamp=ts)
         return InputSample(hand=hand, tracked=tracked, timestamp=ts)
@@ -210,9 +202,5 @@ class AirGloveReceiver:
         with self._lock:
             if self._client is None:
                 return False
-            try:
-                self._client.set_haptics(key, levels)
-            except AirGloveError as e:
-                _log.warning("햅틱 전송 실패 (%s): %s", side, e)
-                return False
+            self._client.set_haptics(key, levels)
         return True

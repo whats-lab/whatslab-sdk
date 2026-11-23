@@ -205,7 +205,7 @@ def test_controller_uses_xr_joints():
     assert ctrl.engine.config.name == "orca_right"
     assert not any("Carpals" in n and "TopTower" in n for n in ctrl.joint_names)
     held = ctrl.compute(InputSample(hand=HandPose(tracked=True), tracked=True))
-    lim = ctrl.engine.joint_limits                 # 아직 입력이 없으면 0 을 관절범위로 자른 값
+    lim = ctrl.engine.joint_limits
     assert np.allclose(held.joint_angles, np.clip(0.0, lim[:, 0], lim[:, 1]))
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=hand_for("right", 1.0),
                                                  tracked=True), tracked=True))
@@ -222,7 +222,6 @@ def test_controller_rejects_onnx_kwargs():
 
 
 def test_degenerate_input_holds_last_command():
-    """퇴화·비유한 손 입력은 이번 프레임만 거른다 — 루프를 죽이거나 NaN 을 내지 않는다."""
     _require_urdf("orca_right")
     from whatslab.solvers.hand.xr_input import HandInputError
 
@@ -237,7 +236,6 @@ def test_degenerate_input_holds_last_command():
 
 
 def test_dex_respects_xr_valid():
-    """dex 도 무효 관절을 쓰지 않는다 — 쓰는 관절이 무효면 직전 명령 유지, 안 쓰는 palm 은 무시."""
     _require_urdf("orca_right")
     from whatslab.solvers.hand.xr_input import HandInputError
 
@@ -245,18 +243,18 @@ def test_dex_respects_xr_valid():
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True))).joint_angles
     valid = np.ones(26, dtype=bool)
-    valid[0] = False  # palm — 21점에 안 들어간다
+    valid[0] = False
     ctrl.reset()
     q = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, xr_valid=valid, tracked=True)))
     assert ctrl.last_error is None and np.allclose(q.joint_angles, first, atol=1e-6)
-    valid[0], valid[12] = True, False  # middle proximal → 쓰는 관절
+    valid[0], valid[12] = True, False
     held = ctrl.compute(
         InputSample(hand=HandPose(xr_joints=synthetic_right_hand(0.8), xr_valid=valid,
                                   tracked=True))).joint_angles
     assert np.array_equal(held, q.joint_angles)
     assert isinstance(ctrl.last_error, HandInputError)
     ctrl.compute(InputSample(hand=None))
-    assert ctrl.last_error is None  # 지금 프레임 기준
+    assert ctrl.last_error is None
 
 
 def test_robot_side_is_config_side_for_dex():
@@ -265,7 +263,6 @@ def test_robot_side_is_config_side_for_dex():
 
 
 def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
-    """반대 손 입력의 무효 관절이 0 쿼터니언이어도 루프를 죽이지 않는다."""
     _require_urdf("orca_right")
     j = synthetic_right_hand(0.3).copy()
     j[0, :4] = 0.0

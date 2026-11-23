@@ -35,7 +35,6 @@ def main():
     src = args.urdf_root or "(패키지 내장 URDF)"
     print(f"[setup] config={args.config} side={args.side} models={src}", flush=True)
     dex = args.config.startswith(DEX_PREFIX)
-    # urdf_root 는 dex(URDF 를 읽는 엔진)만 쓴다 — geort 는 모델 npz 에 관절 정보가 있다.
     m = HandModel(
         hand_config=args.config, side=args.side, urdf_root=args.urdf_root if dex else None
     )
@@ -61,7 +60,6 @@ def main():
     try:
         while True:
             q = m.get_q()[args.side]
-            # 추적이 끊기면 손 관절이 q 에서 빠진다 — 한 번 읽은 q 로 판정한다.
             tracked = all(n in q for n in ctrl.joint_names)
             now = time.monotonic()
             qv = np.array([q[n] for n in ctrl.joint_names]) if tracked else None

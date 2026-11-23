@@ -59,17 +59,11 @@ class URDFScene:
         urdf_text = _rebased_urdf(urdf, mesh_dir)
         best = 0
         for gtype in (pin.GeometryType.VISUAL, pin.GeometryType.COLLISION):
-            try:
-                if urdf_text is None:
-                    gm = pin.buildGeomFromUrdf(self.model, urdf, gtype,
-                                               package_dirs=pkg_dirs)
-                else:
-                    gm = pin.buildGeomFromUrdfString(self.model, urdf_text,
-                                                     gtype,
-                                                     package_dirs=pkg_dirs)
-            except Exception as e:
-                _log.info("%s 지오메트리 건너뜀: %s", gtype, e)
-                continue
+            if urdf_text is None:
+                gm = pin.buildGeomFromUrdf(self.model, urdf, gtype, package_dirs=pkg_dirs)
+            else:
+                gm = pin.buildGeomFromUrdfString(self.model, urdf_text, gtype,
+                                                 package_dirs=pkg_dirs)
             n = sum(1 for g in gm.geometryObjects
                     if os.path.exists(str(g.meshPath)))
             if n > best:
@@ -82,14 +76,9 @@ class URDFScene:
                         or not os.path.exists(path):
                     self.handles.append(None)
                     continue
-                try:
-                    mesh = trimesh.load(path, force="mesh")
-                    mesh.apply_scale(np.asarray(g.meshScale))
-                    self.handles.append(server.scene.add_mesh_trimesh(
-                        f"{root_path}/{g.name}", mesh))
-                except Exception as e:
-                    _log.info("메쉬 건너뜀 %s: %s", path, e)
-                    self.handles.append(None)
+                mesh = trimesh.load(path, force="mesh")
+                mesh.apply_scale(np.asarray(g.meshScale))
+                self.handles.append(server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:
             _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", urdf)
