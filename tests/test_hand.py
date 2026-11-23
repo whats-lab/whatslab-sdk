@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from whatslab.core.types import HandPose, InputSample
-from whatslab.solvers.hand.controller import HandRetargetController, engine_of
+from whatslab.retarget.controller import HandRetargetController, engine_of
 
 
 @pytest.mark.parametrize("name,engine", [("dex:orca", "dex:"), ("geort:orca_right", "geort:")])
@@ -16,17 +16,17 @@ def test_unknown_engine_rejected(name):
         engine_of(name)
 
 
-def test_solvers_package_import_is_light():
+def test_retarget_package_import_is_light():
     import importlib
     import sys
 
     def ours():
-        return [m for m in sys.modules if m.startswith("whatslab.solvers")]
+        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
 
     saved = {m: sys.modules.pop(m) for m in ours()}
     try:
-        importlib.import_module("whatslab.solvers.hand")
-        assert "whatslab.solvers.hand.dex_retargeter" not in sys.modules
+        importlib.import_module("whatslab.retarget")
+        assert "whatslab.retarget.dex_retargeter" not in sys.modules
     finally:
         for m in ours():
             del sys.modules[m]
@@ -36,7 +36,7 @@ def test_solvers_package_import_is_light():
 def _geort_model_or_skip():
     import os
 
-    from whatslab.solvers.hand.geort.solver import DEFAULT_MODEL, MODEL_ENV
+    from whatslab.retarget.geort.solver import DEFAULT_MODEL, MODEL_ENV
     path = os.path.expanduser(os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
     if not os.path.isfile(path):
         pytest.skip("GeoRT 모델 없음")

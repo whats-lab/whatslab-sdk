@@ -4,7 +4,7 @@ import time
 from typing import Dict, Optional
 
 from whatslab.core.interfaces import Receiver
-from whatslab.solvers.hand import HandRetargetController
+from whatslab.retarget import HandRetargetController
 
 
 class HandModel:

@@ -15,12 +15,12 @@ import whatslab.receiver
 import whatslab.receiver.glove
 from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES, XR_WRIST
 from whatslab.core.interfaces import Receiver
+from whatslab.hand import HandModel
 from whatslab.receiver.glove import airglove
 from whatslab.receiver.glove.airglove import (
     AirGloveReceiver,
     haptic_levels,
 )
-from whatslab.teleop import HandModel
 
 CORE_ENV = "AIRGLOVE_CORE_DIR"
 REPLAYER = "tools/spine_replay.py"

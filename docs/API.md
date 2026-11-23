@@ -3,8 +3,8 @@
 공개 API 목록. import 루트는 `whatslab` (PEP 420 네임스페이스). 시그니처는 소스에서
 추출한 것이며 `self` 는 생략한다. 개념·사용 흐름은 [README](../README.md) 참고.
 
-의존 규칙: `core ← receiver`, `core·paths ← solvers`, `core·solvers·receiver ← teleop`.
-`teleop` 이 맨 위이고, 아래 패키지는 화살표 방향으로만 안다.
+의존 규칙: `core ← receiver`, `core·paths ← retarget`, `core·receiver·retarget ← hand`.
+`hand` 가 맨 위이고, 아래 패키지는 화살표 방향으로만 안다.
 
 범위는 **손**이다(입력 수신 → 로봇 손 관절각). 손목 자세·팔 IK·팔 제어는 이 SDK 에 없다 — 손목은 별도 트래커로
 얻어 사용하는 쪽 팔 제어기에 넘긴다.
@@ -12,10 +12,10 @@
 
 ---
 
-## whatslab.teleop — 손 하나를 돌리는 최상위 API
+## whatslab.hand — 손 하나를 돌리는 최상위 API
 
 ```python
-from whatslab.teleop import HandModel
+from whatslab.hand import HandModel
 m = HandModel("geort:orca_right", side="right")   # 기본 입력 = AirGloveReceiver
 m.start()
 q = m.get_q()          # {"right": {관절: rad}} — 추적이 끊긴 틱에는 {"right": {}}
@@ -120,10 +120,10 @@ print(rx.url)                            # https://192.168.1.88:8443/
   메시지가 JSON 객체가 아니거나 처리 중 예외가 나면 그 연결만 닫히고(로그), 페이지가 다시 붙는다.
   ping·무응답 끊기는 라이브러리 기본값(20 s)이다.
 
-## whatslab.solvers.hand — 손 리타게팅
+## whatslab.retarget — 손 리타게팅
 
 ```python
-from whatslab.solvers.hand import HandRetargetController, XRHandRetargeter
+from whatslab.retarget import HandRetargetController, XRHandRetargeter
 ```
 
 엔진은 둘이고 입력은 같다 — `HandPose.xr_joints` `(26, 8)`(OpenXR 26관절). `config_name` 의
@@ -132,7 +132,7 @@ from whatslab.solvers.hand import HandRetargetController, XRHandRetargeter
 - **`dex:<이름>`** — dex-retargeting(0.4.6 이상)의 DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). URDF 만 있으면
   되고 `hand` extra(pinocchio·dex-retargeting·torch)가 필요하다.
 - **`geort:<이름>`** — GeoRT 소프트 프롬프트 신경망(numpy 만). `configs/geort/<이름>.yaml` 또는 yaml 경로.
-  학습된 모델 npz 가 필요하다(아래 `whatslab.solvers.hand.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
+  학습된 모델 npz 가 필요하다(아래 `whatslab.retarget.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
   오른손 모델(동봉 전부)은 왼손 사람 입력을 반전해 풀 수 있지만 왼손 로봇 손은 구동하지 못한다.
 
 | 심볼 | 설명 |
@@ -176,14 +176,14 @@ allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names`
 | `max_evals` | 틱당 SLSQP 평가 상한(동봉값 20). 무제한과 결과는 거의 같고 p99 지연만 줄인다. |
 | `retargeting` | dex-retargeting `RetargetingConfig` 그대로(`type`, `wrist_link_name`, `finger_tip_link_names`, `low_pass_alpha`, …). `urdf_path` 는 위 `urdf` 로 채우고 `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(dex-retargeting 이 mimic 으로 채운다 — ability·schunk). |
 
-## whatslab.solvers.hand.geort — GeoRT 소프트 프롬프트
+## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 
 ```python
-from whatslab.solvers.hand import HandRetargetController
+from whatslab.retarget import HandRetargetController
 ctrl = HandRetargetController("right", "geort:orca_right")     # 텔레옵용 (직전 값 유지·초기화 포함)
 
-from whatslab.solvers.hand.geort import GeortHandSolver
-from whatslab.solvers.hand.xr_input import masked_keypoints
+from whatslab.retarget.geort import GeortHandSolver
+from whatslab.retarget.xr_input import masked_keypoints
 solver = GeortHandSolver.from_config("geort/orca_right.yaml", human_side="right")
 q = solver.solve(masked_keypoints(xr_joints, xr_valid))       # 계산만
 ```
@@ -197,7 +197,7 @@ soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 �
 |---|---|
 | `GeortHandSolver.from_config(path, human_side="right", low_pass_alpha=None)` | 설정 YAML 로 솔버를 만든다. `low_pass_alpha` 를 주면 설정값 대신 쓴다. |
 | `GeortHandSolver(embodiment, human_side="right", low_pass_alpha=1.0)` | 26×8 → q (`solve`, 모델 학습 범위로 자름). 계산만 한다 — 직전 값 유지·추적 끊김 처리는 `HandRetargetController`. 모델 손과 반대쪽 입력은 좌우 반전해 푼다. 실제로 쓰는 21점의 위치가 유한하지 않으면 `GeortInputError`(`masked_keypoints` 가 무효 관절을 NaN 으로 바꾼다 — palm·중수골은 안 쓴다). `reset()`, `joint_names`, `joint_limits`. |
-| `read_config(path)` | 설정 YAML: `name`(모델 안 손 이름), `side`, `model`(생략 시 `$WHATSLAB_GEORT_MODEL` → 패키지 동봉 `solvers/hand/geort/assets/geort_prompt.npz`), `low_pass_alpha`. 설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준. |
+| `read_config(path)` | 설정 YAML: `name`(모델 안 손 이름), `side`, `model`(생략 시 `$WHATSLAB_GEORT_MODEL` → 패키지 동봉 `retarget/geort/assets/geort_prompt.npz`), `low_pass_alpha`. 설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준. |
 | `load_prompt_model(path)` | npz → `PromptModel`(`embodiments`). 형식이 위 조합이 아니거나 배열 모양이 틀리면 `ValueError`. |
 | `keypoints` 모듈 | OpenXR 26 → MediaPipe 21 → `openxr-wrist-kabsch-v2` 입력 좌표계(`InputFrame`, `canonical_points`, `to_geort` …). |
 | `GeortConfigError` / `GeortInputError` | `code`·`cause`·`remedy` 를 가진 `ValueError`. `GeortConfigError` 는 설정 내용 검사(필수 키·값 범위·모델 안 손 이름), `GeortInputError` 는 이번 프레임 입력 오류이자 `HandInputError`. |

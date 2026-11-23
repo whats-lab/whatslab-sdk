@@ -95,7 +95,7 @@ def test_hand_model_passes_measured_dt_to_filter():
     import time
 
     from whatslab.core.types import InputSample
-    from whatslab.teleop import HandModel
+    from whatslab.hand import HandModel
 
     class _Source:
         def start(self): ...

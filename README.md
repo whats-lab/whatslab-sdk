@@ -42,7 +42,7 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
 - Output is `{side: {joint_name: rad}}`, ready to publish; an optional `SafetyFilter` clamps
   position and rate
 - Pure Python, no ROS dependency; strict dependency direction
-  (`receiver → core`, `solvers → core`, `teleop → core·receiver·solvers`)
+  (`receiver → core`, `retarget → core`, `hand → core·receiver·retarget`)
 
 ### Supported hands
 
@@ -62,7 +62,7 @@ mirroring the input.
 
 **GeoRT soft prompt** — `geort:<name>`, where `<name>` is a file in `configs/geort/` (a path
 ending in `.yaml` also works). The trained model ships with the package
-(`solvers/hand/geort/assets/geort_prompt.npz`, about 5 MB); a config's `model:` or
+(`retarget/geort/assets/geort_prompt.npz`, about 5 MB); a config's `model:` or
 `WHATSLAB_GEORT_MODEL` overrides it. The model is right-handed; a left hand is mirrored onto it.
 
 | Hand | Engine name | URDF in `dexhand-description` |
@@ -123,7 +123,7 @@ record the whatslab-ros2 topics with rosbag2.
 ## Quick start
 
 ```python
-from whatslab.teleop import HandModel
+from whatslab.hand import HandModel
 
 m = HandModel("geort:orca_right", side="right")   # AirGlove → ORCA right hand
 m.start()

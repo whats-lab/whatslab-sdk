@@ -9,8 +9,8 @@ import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
-from whatslab.solvers.hand import XRHandRetargeter, mirror_xr_joints
-from whatslab.solvers.hand.xr_input import palm_frame, xr_wrist_positions
+from whatslab.retarget import XRHandRetargeter, mirror_xr_joints
+from whatslab.retarget.xr_input import palm_frame, xr_wrist_positions
 
 XR_TIP = (5, 10, 15, 20, 25)
 XR_BONES = ((3, 4, 5), (7, 8, 10), (12, 13, 15), (17, 18, 20), (22, 23, 25))

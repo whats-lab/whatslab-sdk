@@ -10,7 +10,7 @@ pin = pytest.importorskip("pinocchio")
 from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  # noqa: E402
 from whatslab.core.types import HandPose, InputSample  # noqa: E402
 from whatslab.paths import models_root  # noqa: E402
-from whatslab.solvers.hand import (  # noqa: E402
+from whatslab.retarget import (  # noqa: E402
     DexHandConfig,
     HandRetargetController,
     XRHandRetargeter,
@@ -18,8 +18,8 @@ from whatslab.solvers.hand import (  # noqa: E402
     mirror_xr_joints,
     xr_to_mano,
 )
-from whatslab.solvers.hand.dex_retargeter import resolve_hand_config  # noqa: E402
-from whatslab.solvers.hand.xr_input import mano_palm_frame, xr_wrist_positions  # noqa: E402
+from whatslab.retarget.dex_retargeter import resolve_hand_config  # noqa: E402
+from whatslab.retarget.xr_input import mano_palm_frame, xr_wrist_positions  # noqa: E402
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
@@ -223,7 +223,7 @@ def test_controller_rejects_onnx_kwargs():
 
 def test_degenerate_input_holds_last_command():
     _require_urdf("orca_right")
-    from whatslab.solvers.hand.xr_input import HandInputError
+    from whatslab.retarget.xr_input import HandInputError
 
     ctrl = HandRetargetController("right", "dex:orca")
     good = synthetic_right_hand(0.3)
@@ -237,7 +237,7 @@ def test_degenerate_input_holds_last_command():
 
 def test_dex_respects_xr_valid():
     _require_urdf("orca_right")
-    from whatslab.solvers.hand.xr_input import HandInputError
+    from whatslab.retarget.xr_input import HandInputError
 
     ctrl = HandRetargetController("right", "dex:orca")
     good = synthetic_right_hand(0.3)

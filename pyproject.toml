@@ -30,7 +30,7 @@ dependencies = [
 # v0.4.0 = Spine 프로토콜 3(메시지 번호 헤더, /pair/N).
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
 # 글러브 OpenXR 26관절 → 로봇 손. 엔진 두 가지:
-#  - geort(GeoRT 소프트 프롬프트): 추론(`whatslab.solvers.hand.geort`)은 numpy 만 쓴다(모델 npz 는 별도).
+#  - geort(GeoRT 소프트 프롬프트): 추론(`whatslab.retarget.geort`)은 numpy 만 쓴다(모델 npz 는 별도).
 #  - dex(dex-retargeting DexPilot, XRHandRetargeter): 아래 hand extra.
 #    0.4.6 은 numpy<2 전용, 0.5.0 부터 numpy>=2 — 소비자의 numpy 에 맞는 쪽이 설치된다.
 #    torch 를 최상단 import 하고 nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
@@ -55,7 +55,7 @@ include = ["whatslab*"]
 # configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
 # 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
 [tool.setuptools.package-data]
-whatslab = ["configs/**", "receiver/webxr/static/*.html", "solvers/hand/geort/assets/*.npz"]
+whatslab = ["configs/**", "receiver/webxr/static/*.html", "retarget/geort/assets/*.npz"]
 
 [tool.setuptools.exclude-package-data]
 whatslab = ["**/__pycache__/**", "**/*.py[cod]"]

@@ -63,7 +63,7 @@ DexPilot(`dex:<손>`, README 「지원하는 손」).
 
 ```python
 from whatslab.receiver import WebXRHandReceiver
-from whatslab.teleop import HandModel
+from whatslab.hand import HandModel
 
 m = HandModel("dex:orca", hand_source=WebXRHandReceiver())
 m.start()

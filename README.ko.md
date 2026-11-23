@@ -39,7 +39,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
   - **GeoRT 소프트 프롬프트** 신경망 — numpy 순전파 한 번(약 0.2ms), 학습 모델 하나를 여러 로봇 손이 공유
 - 출력은 `{side: {관절 이름: rad}}` 로 바로 발행할 수 있고, 선택으로 `SafetyFilter` 가 위치·속도를 제한합니다.
 - 순수 Python, ROS 의존 없음. 의존 방향이 한쪽으로 정해져 있습니다
-  (`receiver → core`, `solvers → core`, `teleop → core·receiver·solvers`).
+  (`receiver → core`, `retarget → core`, `hand → core·receiver·retarget`).
 
 ### 지원하는 손
 
@@ -57,7 +57,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic) |
 
 **GeoRT 소프트 프롬프트** — `geort:<이름>`. `<이름>` 은 `configs/geort/` 의 파일입니다(`.yaml` 로 끝나는
-경로도 됩니다). 학습된 모델이 패키지에 들어 있고(`solvers/hand/geort/assets/geort_prompt.npz`, 약 5MB),
+경로도 됩니다). 학습된 모델이 패키지에 들어 있고(`retarget/geort/assets/geort_prompt.npz`, 약 5MB),
 설정의 `model:` 이나 `WHATSLAB_GEORT_MODEL` 로 바꿀 수 있습니다. 모델은 오른손용이고 왼손은 거울상으로 씁니다.
 
 | 손 | 엔진 이름 | `dexhand-description` URDF |
@@ -114,7 +114,7 @@ Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC �
 ## 빠른 시작
 
 ```python
-from whatslab.teleop import HandModel
+from whatslab.hand import HandModel
 
 m = HandModel("geort:orca_right", side="right")   # AirGlove → ORCA 오른손
 m.start()

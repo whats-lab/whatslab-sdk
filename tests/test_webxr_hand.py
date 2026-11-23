@@ -156,12 +156,12 @@ def test_webxr_path_imports_without_airglove_client():
 
     code = (
         "import sys; sys.modules['airglove_client'] = None\n"
-        "from whatslab.teleop import HandModel\n"
+        "from whatslab.hand import HandModel\n"
         "from whatslab.receiver import WebXRHandReceiver\n"
         "from whatslab.receiver import *\n"
-        "from whatslab.teleop import *\n"
+        "from whatslab.hand import *\n"
         "sys.modules['dex_retargeting'] = None; sys.modules['pinocchio'] = None\n"
-        "from whatslab.solvers.hand import *\n"
+        "from whatslab.retarget import *\n"
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                           timeout=60)

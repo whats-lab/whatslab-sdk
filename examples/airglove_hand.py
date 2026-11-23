@@ -5,8 +5,8 @@ import time
 
 import numpy as np
 
-from whatslab.solvers.hand.controller import DEX_PREFIX
-from whatslab.teleop import HandModel
+from whatslab.hand import HandModel
+from whatslab.retarget.controller import DEX_PREFIX
 
 
 def main():

@@ -2,16 +2,16 @@ import numpy as np
 import pytest
 
 from whatslab.core.types import HandPose, InputSample
-from whatslab.solvers.hand.controller import HandRetargetController, geort_config_path
-from whatslab.solvers.hand.geort import (
+from whatslab.retarget.controller import HandRetargetController, geort_config_path
+from whatslab.retarget.geort import (
     GeortConfigError,
     GeortHandSolver,
     GeortInputError,
     load_prompt_model,
     read_config,
 )
-from whatslab.solvers.hand.geort.keypoints import canonical_points, mediapipe21
-from whatslab.solvers.hand.xr_input import masked_keypoints
+from whatslab.retarget.geort.keypoints import canonical_points, mediapipe21
+from whatslab.retarget.xr_input import masked_keypoints
 
 ORCA = "orca_right"
 
@@ -46,7 +46,7 @@ def identity_joints(spread: float = 0.0) -> np.ndarray:
 def geort_model():
     import os
 
-    from whatslab.solvers.hand.geort.solver import DEFAULT_MODEL, MODEL_ENV
+    from whatslab.retarget.geort.solver import DEFAULT_MODEL, MODEL_ENV
     path = os.path.expanduser(os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
     if not os.path.isfile(path):
         pytest.skip(f"GeoRT 모델 없음: {path} (${MODEL_ENV} 로 지정)")
@@ -241,7 +241,7 @@ def test_bare_geort_name_uses_packaged_config_not_cwd(tmp_path, monkeypatch):
 
 
 def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):
-    from whatslab.solvers.hand.geort import solver
+    from whatslab.retarget.geort import solver
 
     solver._cached_prompt_model.cache_clear()
     calls = []
