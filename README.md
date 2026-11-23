@@ -25,6 +25,7 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
 - [Installation](#installation)
 - [Compatibility](#compatibility)
 - [Quick start](#quick-start)
+- [Package layout](#package-layout)
 - [Examples & tools](#examples--tools)
 - [Documentation](#documentation)
 - [Acknowledgments](#acknowledgments)
@@ -62,8 +63,11 @@ mirroring the input.
 
 **GeoRT soft prompt** — `geort:<name>`, where `<name>` is a file in `configs/geort/` (a path
 ending in `.yaml` also works). The trained model ships with the package
-(`retarget/geort/assets/geort_prompt.npz`, about 5 MB); a config's `model:` or
-`WHATSLAB_GEORT_MODEL` overrides it. The model is right-handed; a left hand is mirrored onto it.
+(`retarget/geort/assets/geort_prompt.npz`, about 5 MB). The model file is looked up in this order:
+the config's `model:`, then `$WHATSLAB_GEORT_MODEL`, then the bundled file. The model is
+right-handed; a left hand is mirrored onto it.
+
+The keys of both config formats are described in [API.md](docs/API.md).
 
 | Hand | Engine name | URDF in `dexhand-description` |
 |---|---|---|
@@ -75,7 +79,8 @@ dexhand-description yet. Training tools are not part of this SDK.
 
 ## Installation
 
-Published under a source-available license. It is not on PyPI; install from source.
+Published under a source-available license. It is not on PyPI; install from source. The
+`Private :: Do Not Upload` classifier makes PyPI reject an accidental upload.
 
 ```bash
 pip install '.[all]'      # receiver + hand + viz + webxr
@@ -93,7 +98,8 @@ pip install -e '.[all]'   # editable, for development
 GeoRT inference (`geort:`) needs only numpy. dex-retargeting 0.4.6 is the last release for
 numpy 1 and 0.5.0 is the first for numpy 2, so pip picks the one that matches your
 environment; it imports `torch` at module level and needs `nlopt<2.8`, `pin>=2.7` and
-Python < 3.13. URDFs and meshes come from
+Python < 3.13. numpy has no upper bound: numpy-1 environments (Isaac Sim 5.1, for example) pin
+`numpy<2` and `dex-retargeting<0.5` on their side. URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
 `hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
 
@@ -140,6 +146,41 @@ from whatslab.receiver import WebXRHandReceiver
 m = HandModel("dex:orca", hand_source=WebXRHandReceiver())   # open the printed https URL in the headset
 ```
 
+Your own hand source: build an `InputSample` and call `HandRetargeter` directly.
+
+```python
+from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget import HandRetargeter
+
+r = HandRetargeter("right", "geort:orca_right")
+cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr, tracked=True)))   # xr: (26, 8) OpenXR joints
+cmd.joint_names, cmd.joint_angles
+```
+
+`HandRetargeter` picks the engine from the prefix (`dex:` → `DexEngine`, `geort:` → `GeortEngine`),
+resets the engine when tracking is lost and holds the last command when an input cannot be solved.
+Both engines expose `solve(xr_joints)` if you want the bare computation.
+
+## Package layout
+
+```
+whatslab/
+├── core/             types (HandPose, InputSample, HandCommand), Receiver interface, OpenXR joints
+├── receiver/
+│   ├── glove/        AirGloveReceiver (airglove-client, connection status and alarms)
+│   └── webxr/        WebXRHandReceiver, its websockets server, TLS certificate, headset page
+├── retarget/
+│   ├── retargeter.py HandRetargeter: engine selection and tracking-loss handling
+│   ├── dex.py        DexEngine (dex-retargeting DexPilot)
+│   ├── xr_input.py   input validation, mirroring, OpenXR → MANO
+│   └── geort/        GeortEngine, soft-prompt model inference, bundled model
+├── hand.py           HandModel: receiver → retargeter → optional SafetyFilter
+├── safety.py         SafetyFilter
+├── viz/              HandViz, URDFScene (viser)
+├── paths.py          configs / models roots
+└── configs/          hands/ (DexPilot, 14 files), geort/ (2 files)
+```
+
 ## Examples & tools
 
 ```bash
@@ -148,7 +189,8 @@ python examples/airglove_hand.py --config dex:orca --viz                 # with 
 python tools/bench_hand_retarget.py --help                               # retargeting quality metrics
 ```
 
-Run the tests with `pip install -e '.[all,dev]' && pytest`.
+Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with `ruff check .`
+(PEP 8 through ruff: pycodestyle, pep8-naming, isort and pyflakes; line length 99).
 
 ## Documentation
 

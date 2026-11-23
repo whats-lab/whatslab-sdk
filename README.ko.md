@@ -24,6 +24,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 - [설치](#설치)
 - [호환성](#호환성)
 - [빠른 시작](#빠른-시작)
+- [패키지 구성](#패키지-구성)
 - [예제와 도구](#예제와-도구)
 - [문서](#문서)
 - [감사의 말](#감사의-말)
@@ -58,7 +59,10 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 **GeoRT 소프트 프롬프트** — `geort:<이름>`. `<이름>` 은 `configs/geort/` 의 파일입니다(`.yaml` 로 끝나는
 경로도 됩니다). 학습된 모델이 패키지에 들어 있고(`retarget/geort/assets/geort_prompt.npz`, 약 5MB),
-설정의 `model:` 이나 `WHATSLAB_GEORT_MODEL` 로 바꿀 수 있습니다. 모델은 오른손용이고 왼손은 거울상으로 씁니다.
+모델 파일은 설정의 `model:` → `$WHATSLAB_GEORT_MODEL` → 동봉 파일 순서로 찾습니다. 모델은 오른손용이고
+왼손은 거울상으로 씁니다.
+
+두 설정 형식의 키 설명은 [API.md](docs/API.md) 에 있습니다.
 
 | 손 | 엔진 이름 | `dexhand-description` URDF |
 |---|---|---|
@@ -70,7 +74,8 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 ## 설치
 
-source-available 라이선스로 공개합니다. PyPI 에는 없고 소스에서 설치합니다.
+source-available 라이선스로 공개합니다. PyPI 에는 없고 소스에서 설치합니다. `Private :: Do Not Upload`
+분류자가 있어 실수로 PyPI 에 올려도 거부됩니다.
 
 ```bash
 pip install '.[all]'      # receiver + hand + viz + webxr
@@ -87,7 +92,8 @@ pip install -e '.[all]'   # 개발용 editable
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. dex-retargeting 은 0.4.6 이 numpy 1 의 마지막, 0.5.0 이
 numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. 모듈 최상단에서 `torch` 를 import 하고
-`nlopt<2.8`, `pin>=2.7`, Python 3.13 미만이 필요합니다. URDF·메쉬는 별도 패키지
+`nlopt<2.8`, `pin>=2.7`, Python 3.13 미만이 필요합니다. numpy 상한은 두지 않습니다 — numpy 1 환경(예:
+Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `dex-retargeting<0.5` 를 고정합니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
 다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
 
@@ -131,6 +137,41 @@ from whatslab.receiver import WebXRHandReceiver
 m = HandModel("dex:orca", hand_source=WebXRHandReceiver())   # 출력되는 https 주소를 헤드셋에서 연다
 ```
 
+직접 만든 손 입력: `InputSample` 을 만들어 `HandRetargeter` 를 바로 부릅니다.
+
+```python
+from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget import HandRetargeter
+
+r = HandRetargeter("right", "geort:orca_right")
+cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr, tracked=True)))   # xr: (26, 8) OpenXR 관절
+cmd.joint_names, cmd.joint_angles
+```
+
+`HandRetargeter` 는 접두어로 엔진을 고르고(`dex:` → `DexEngine`, `geort:` → `GeortEngine`), 추적이 끊기면
+엔진을 초기화하고, 풀 수 없는 입력이 오면 직전 명령을 유지합니다. 계산만 필요하면 두 엔진의
+`solve(xr_joints)` 를 바로 써도 됩니다.
+
+## 패키지 구성
+
+```
+whatslab/
+├── core/             타입(HandPose, InputSample, HandCommand), Receiver 인터페이스, OpenXR 관절
+├── receiver/
+│   ├── glove/        AirGloveReceiver (airglove-client, 연결 상태·알람)
+│   └── webxr/        WebXRHandReceiver, websockets 서버, TLS 인증서, 헤드셋 페이지
+├── retarget/
+│   ├── retargeter.py HandRetargeter: 엔진 선택, 추적 끊김 처리
+│   ├── dex.py        DexEngine (dex-retargeting DexPilot)
+│   ├── xr_input.py   입력 검증, 거울상, OpenXR → MANO
+│   └── geort/        GeortEngine, 소프트 프롬프트 모델 추론, 동봉 모델
+├── hand.py           HandModel: 수신 → 리타게팅 → (선택) SafetyFilter
+├── safety.py         SafetyFilter
+├── viz/              HandViz, URDFScene (viser)
+├── paths.py          configs·models 경로
+└── configs/          hands/ (DexPilot, 14개), geort/ (2개)
+```
+
 ## 예제와 도구
 
 ```bash
@@ -139,7 +180,8 @@ python examples/airglove_hand.py --config dex:orca --viz                 # viser
 python tools/bench_hand_retarget.py --help                               # 리타게팅 품질 지표
 ```
 
-테스트는 `pip install -e '.[all,dev]' && pytest` 로 돌립니다.
+테스트는 `pip install -e '.[all,dev]' && pytest`, 린트는 `ruff check .` 로 돌립니다(ruff 로 PEP 8 검사:
+pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
 
 ## 문서
 
