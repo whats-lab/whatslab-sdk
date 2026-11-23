@@ -36,7 +36,7 @@ def main():
     print(f"[setup] config={args.config} side={args.side} models={src}", flush=True)
     dex = args.config.startswith(DEX_PREFIX)
     m = HandModel(
-        hand_config=args.config, side=args.side, urdf_root=args.urdf_root if dex else None
+        config=args.config, side=args.side, urdf_root=args.urdf_root if dex else None
     )
     ctrl = m.retarget
 

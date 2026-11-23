@@ -25,14 +25,14 @@ def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.n
     return kp
 
 
-def engine_of(config_name) -> str:
-    if isinstance(config_name, str):
+def engine_of(config) -> str:
+    if isinstance(config, str):
         for prefix in ENGINES:
-            if config_name.startswith(prefix) and len(config_name) > len(prefix):
+            if config.startswith(prefix) and len(config) > len(prefix):
                 return prefix
     raise ValueError(
         "손 리타게팅 이름은 dex:<손> (DexPilot) 또는 geort:<설정> (GeoRT) — "
-        f"받은 값 {config_name!r}"
+        f"받은 값 {config!r}"
     )
 
 
@@ -40,13 +40,13 @@ class HandRetargeter:
 
     def __init__(
         self,
-        config_name: str = "dex:orca",
+        config: str = "dex:orca",
         side: str = "right",
         urdf_root=None,
         **kwargs,
     ):
-        self.engine_name = engine_of(config_name)
-        name = config_name[len(self.engine_name):]
+        self.engine_name = engine_of(config)
+        name = config[len(self.engine_name):]
         if self.engine_name == DEX_PREFIX:
             from .dex import DexEngine
 

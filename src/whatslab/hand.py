@@ -9,7 +9,7 @@ from whatslab.retarget import HandRetargeter
 
 class HandModel:
 
-    def __init__(self, hand_config: str = "dex:orca", side: str = "right",
+    def __init__(self, config: str = "dex:orca", side: str = "right",
                  urdf_root: Optional[str] = None, hand_source: Optional[Receiver] = None,
                  hand_kwargs: Optional[dict] = None, **kwargs):
         if hand_source is not None and hand_kwargs:
@@ -20,7 +20,7 @@ class HandModel:
             hand_source = AirGloveReceiver(**(hand_kwargs or {}))
         self.side = side
         self.hand_source = hand_source
-        self.retarget = HandRetargeter(hand_config, side=side, urdf_root=urdf_root, **kwargs)
+        self.retarget = HandRetargeter(config, side=side, urdf_root=urdf_root, **kwargs)
         self.safety = None
         self.q: Dict[str, float] = {}
         self._t_prev: Optional[float] = None
