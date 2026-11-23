@@ -11,14 +11,14 @@ from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  #
 from whatslab.core.types import HandPose, InputSample  # noqa: E402
 from whatslab.paths import models_root  # noqa: E402
 from whatslab.retarget import (  # noqa: E402
+    DexEngine,
     DexHandConfig,
-    HandRetargetController,
-    XRHandRetargeter,
+    HandRetargeter,
     hand_config_names,
     mirror_xr_joints,
     xr_to_mano,
 )
-from whatslab.retarget.dex_retargeter import resolve_hand_config  # noqa: E402
+from whatslab.retarget.dex import resolve_hand_config  # noqa: E402
 from whatslab.retarget.xr_input import mano_palm_frame, xr_wrist_positions  # noqa: E402
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
@@ -155,14 +155,14 @@ def _tip_wrist_mean(eng, q):
 def _settle(eng, xr, n=25):
     q = None
     for _ in range(n):
-        q = eng.compute(xr)
+        q = eng.solve(xr)
     return q
 
 
 @pytest.mark.parametrize("name", CONFIGS)
 def test_retargeter_smoke(name):
     cfg = _require_urdf(name)
-    eng = XRHandRetargeter(name)
+    eng = DexEngine(name)
     lim = eng.joint_limits
     assert len(eng.joint_names) == len(lim)
     assert not set(cfg.fixed_joints) & set(eng.joint_names)
@@ -180,7 +180,7 @@ def test_retargeter_smoke(name):
 
 def test_full_qpos_fills_mimic_joints():
     _require_urdf("ability_right")
-    eng = XRHandRetargeter("ability_right")
+    eng = DexEngine("ability_right")
     assert "index_q2" not in eng.joint_names
     q = _settle(eng, hand_for("right", 1.0))
     full = dict(zip(eng.robot_joint_names, eng.full_qpos(q)))
@@ -190,17 +190,17 @@ def test_full_qpos_fills_mimic_joints():
 
 def test_retargeter_mirrors_opposite_side_input():
     _require_urdf("orca_right")
-    eng = XRHandRetargeter("orca_right", side="left")
+    eng = DexEngine("orca_right", side="left")
     assert eng.mirror
-    ref = XRHandRetargeter("orca_right")
+    ref = DexEngine("orca_right")
     q_l = _settle(eng, hand_for("left", 0.7))
     q_r = _settle(ref, hand_for("right", 0.7))
     assert np.allclose(q_l, q_r, atol=1e-4)
 
 
-def test_controller_uses_xr_joints():
+def test_retargeter_uses_xr_joints():
     _require_urdf("orca_right")
-    ctrl = HandRetargetController("right", "dex:orca")
+    ctrl = HandRetargeter("right", "dex:orca")
     assert ctrl.engine_name == "dex:"
     assert ctrl.engine.config.name == "orca_right"
     assert not any("Carpals" in n and "TopTower" in n for n in ctrl.joint_names)
@@ -215,17 +215,17 @@ def test_controller_uses_xr_joints():
     assert np.allclose(lost.joint_angles, cmd.joint_angles)
 
 
-def test_controller_rejects_onnx_kwargs():
+def test_retargeter_rejects_onnx_kwargs():
     _require_urdf("orca_right")
     with pytest.raises(TypeError, match="모르는 인자"):
-        HandRetargetController("right", "dex:orca", onnx_path="x.onnx")
+        HandRetargeter("right", "dex:orca", onnx_path="x.onnx")
 
 
 def test_degenerate_input_holds_last_command():
     _require_urdf("orca_right")
     from whatslab.retarget.xr_input import HandInputError
 
-    ctrl = HandRetargetController("right", "dex:orca")
+    ctrl = HandRetargeter("right", "dex:orca")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True)))
     for bad in (np.zeros((26, 8)), np.full((26, 8), np.nan)):
@@ -239,7 +239,7 @@ def test_dex_respects_xr_valid():
     _require_urdf("orca_right")
     from whatslab.retarget.xr_input import HandInputError
 
-    ctrl = HandRetargetController("right", "dex:orca")
+    ctrl = HandRetargeter("right", "dex:orca")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True))).joint_angles
     valid = np.ones(26, dtype=bool)
@@ -259,7 +259,7 @@ def test_dex_respects_xr_valid():
 
 def test_robot_side_is_config_side_for_dex():
     _require_urdf("orca_right")
-    assert HandRetargetController("left", "dex:orca_right").robot_side == "right"
+    assert HandRetargeter("left", "dex:orca_right").robot_side == "right"
 
 
 def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
@@ -268,6 +268,6 @@ def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
     j[0, :4] = 0.0
     valid = np.ones(26, dtype=bool)
     valid[0] = False
-    ctrl = HandRetargetController("left", "dex:orca_right")
+    ctrl = HandRetargeter("left", "dex:orca_right")
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=j, xr_valid=valid, tracked=True)))
     assert np.all(np.isfinite(cmd.joint_angles))

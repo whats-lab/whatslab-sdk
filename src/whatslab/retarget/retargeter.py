@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import List, Optional
 
 import numpy as np
@@ -28,15 +27,7 @@ def engine_of(config_name) -> str:
     )
 
 
-def geort_config_path(name: str) -> str:
-    if name.endswith((".yaml", ".yml")):
-        return name
-    from whatslab.paths import configs_root
-
-    return os.path.join(configs_root(), "geort", f"{name}.yaml")
-
-
-class HandRetargetController:
+class HandRetargeter:
 
     def __init__(
         self,
@@ -48,17 +39,13 @@ class HandRetargetController:
         self.engine_name = engine_of(config_name)
         name = config_name[len(self.engine_name):]
         if self.engine_name == DEX_PREFIX:
-            from .dex_retargeter import XRHandRetargeter
+            from .dex import DexEngine
 
-            self._engine = XRHandRetargeter(name, side=hand_type, urdf_root=urdf_root, **kwargs)
-            self._run = self._engine.compute
+            self._engine = DexEngine(name, side=hand_type, urdf_root=urdf_root, **kwargs)
         else:
-            from .geort import GeortHandSolver
+            from .geort import GeortEngine
 
-            self._engine = GeortHandSolver.from_config(
-                geort_config_path(name), human_side=hand_type, **kwargs
-            )
-            self._run = self._engine.solve
+            self._engine = GeortEngine.from_config(name, side=hand_type, **kwargs)
         lim = self._engine.joint_limits
         self._last = np.clip(np.zeros(len(self._engine.joint_names)), lim[:, 0], lim[:, 1])
         self._tracking = False
@@ -84,7 +71,7 @@ class HandRetargetController:
         return self._engine.model.side
 
     def _solve(self, hand: HandPose) -> np.ndarray:
-        return self._run(masked_keypoints(hand.xr_joints, hand.xr_valid))
+        return self._engine.solve(masked_keypoints(hand.xr_joints, hand.xr_valid))
 
     def compute(self, sample: InputSample) -> HandCommand:
         hand = sample.hand

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from whatslab.core.types import HandPose, InputSample
-from whatslab.retarget.controller import HandRetargetController, engine_of
+from whatslab.retarget.retargeter import HandRetargeter, engine_of
 
 
 @pytest.mark.parametrize("name,engine", [("dex:orca", "dex:"), ("geort:orca_right", "geort:")])
@@ -26,7 +26,7 @@ def test_retarget_package_import_is_light():
     saved = {m: sys.modules.pop(m) for m in ours()}
     try:
         importlib.import_module("whatslab.retarget")
-        assert "whatslab.retarget.dex_retargeter" not in sys.modules
+        assert "whatslab.retarget.dex" not in sys.modules
     finally:
         for m in ours():
             del sys.modules[m]
@@ -36,7 +36,7 @@ def test_retarget_package_import_is_light():
 def _geort_model_or_skip():
     import os
 
-    from whatslab.retarget.geort.solver import DEFAULT_MODEL, MODEL_ENV
+    from whatslab.retarget.geort.engine import DEFAULT_MODEL, MODEL_ENV
     path = os.path.expanduser(os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
     if not os.path.isfile(path):
         pytest.skip("GeoRT 모델 없음")
@@ -52,9 +52,9 @@ def _hand():
     return j
 
 
-def test_geort_controller_through_dispatcher():
+def test_geort_through_retargeter():
     _geort_model_or_skip()
-    ctrl = HandRetargetController("right", "geort:orca_right")
+    ctrl = HandRetargeter("right", "geort:orca_right")
     assert len(ctrl.joint_names) == 16
     cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True))
     assert cmd.joint_angles.shape == (16,) and np.all(np.isfinite(cmd.joint_angles))
@@ -64,5 +64,5 @@ def test_geort_controller_through_dispatcher():
 
 def test_geort_ignores_urdf_root():
     _geort_model_or_skip()
-    ctrl = HandRetargetController("right", "geort:orca_right", urdf_root="/tmp")
+    ctrl = HandRetargeter("right", "geort:orca_right", urdf_root="/tmp")
     assert len(ctrl.joint_names) == 16

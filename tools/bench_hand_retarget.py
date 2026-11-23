@@ -9,7 +9,7 @@ import numpy as np
 import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
-from whatslab.retarget import XRHandRetargeter, mirror_xr_joints
+from whatslab.retarget import DexEngine, mirror_xr_joints
 from whatslab.retarget.xr_input import palm_frame, xr_wrist_positions
 
 XR_TIP = (5, 10, 15, 20, 25)
@@ -57,7 +57,7 @@ def load_sequences(paths):
 
 
 class RobotProbe:
-    def __init__(self, eng: XRHandRetargeter):
+    def __init__(self, eng: DexEngine):
         self.eng = eng
         self.model = pin.buildModelFromUrdf(eng.urdf_path)
         self.data = self.model.createData()
@@ -124,7 +124,7 @@ def bone_angles(h_pts, r_bones, rot_h, rot_r):
 def run_config(name, seqs, mirror, overrides, pinch_mm):
     acc = {k: [] for k in ("open", "pinch", "pinch_err", "bone", "dq", "limit", "ms")}
     n_frames = 0
-    eng = XRHandRetargeter(name, **overrides)
+    eng = DexEngine(name, **overrides)
     probe = RobotProbe(eng)
     lo, hi = eng.joint_limits[:, 0], eng.joint_limits[:, 1]
     band = LIMIT_FRAC * (hi - lo)
@@ -150,7 +150,7 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
         prev = None
         for i, x in enumerate(xr):
             t0 = time.perf_counter()
-            q = eng.compute(x)
+            q = eng.solve(x)
             acc["ms"].append((time.perf_counter() - t0) * 1e3)
             n_frames += 1
             if prev is not None:
@@ -173,8 +173,8 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
 
 def two_hand_latency(name_l, name_r, seqs, overrides):
     eng = {
-        "left": XRHandRetargeter(name_l, **overrides),
-        "right": XRHandRetargeter(name_r, **overrides),
+        "left": DexEngine(name_l, **overrides),
+        "right": DexEngine(name_r, **overrides),
     }
     pairs = {}
     for sq in seqs:
@@ -188,8 +188,8 @@ def two_hand_latency(name_l, name_r, seqs, overrides):
             e.reset()
         for xl, xrr in zip(p["left"], p["right"]):
             t0 = time.perf_counter()
-            eng["left"].compute(xl)
-            eng["right"].compute(xrr)
+            eng["left"].solve(xl)
+            eng["right"].solve(xrr)
             ms.append((time.perf_counter() - t0) * 1e3)
     return np.array(ms)
 

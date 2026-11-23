@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 from whatslab.hand import HandModel
-from whatslab.retarget.controller import DEX_PREFIX
+from whatslab.retarget.retargeter import DEX_PREFIX
 
 
 def main():

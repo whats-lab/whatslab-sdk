@@ -2,26 +2,27 @@ import numpy as np
 import pytest
 
 from whatslab.core.types import HandPose, InputSample
-from whatslab.retarget.controller import HandRetargetController, geort_config_path
 from whatslab.retarget.geort import (
     GeortConfigError,
-    GeortHandSolver,
+    GeortEngine,
     GeortInputError,
+    config_path,
     load_prompt_model,
     read_config,
 )
 from whatslab.retarget.geort.keypoints import canonical_points, mediapipe21
+from whatslab.retarget.retargeter import HandRetargeter
 from whatslab.retarget.xr_input import masked_keypoints
 
 ORCA = "orca_right"
 
 
 def _ctrl(tmp_path, model, side="right", **over):
-    return HandRetargetController(side, f"geort:{_cfg(tmp_path, model, **over)}")
+    return HandRetargeter(side, f"geort:{_cfg(tmp_path, model, **over)}")
 
 
 def _solver(tmp_path, model, side="right", **over):
-    return GeortHandSolver.from_config(_cfg(tmp_path, model, **over), human_side=side)
+    return GeortEngine.from_config(_cfg(tmp_path, model, **over), side=side)
 
 
 def _q(solver, joints, valid=None):
@@ -46,7 +47,7 @@ def identity_joints(spread: float = 0.0) -> np.ndarray:
 def geort_model():
     import os
 
-    from whatslab.retarget.geort.solver import DEFAULT_MODEL, MODEL_ENV
+    from whatslab.retarget.geort.engine import DEFAULT_MODEL, MODEL_ENV
     path = os.path.expanduser(os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
     if not os.path.isfile(path):
         pytest.skip(f"GeoRT 모델 없음: {path} (${MODEL_ENV} 로 지정)")
@@ -92,7 +93,7 @@ def test_model_reproduces_bake_self_check(geort_model):
         assert np.allclose(emb.forward(emb.check_points), emb.check_qpos, atol=1e-5), name
 
 
-def test_controller_solves_within_limits(tmp_path, geort_model):
+def test_retargeter_solves_within_limits(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model)
     assert len(ctrl.joint_names) == 16
     cmd = ctrl.compute(_sample(identity_joints(0.002)))
@@ -104,7 +105,7 @@ def test_controller_solves_within_limits(tmp_path, geort_model):
     assert ctrl.last_error is None
 
 
-def test_controller_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
+def test_retargeter_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model)
     first = ctrl.compute(_sample(identity_joints(0.002))).joint_angles
     assert np.array_equal(
@@ -119,7 +120,7 @@ def test_controller_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
         _q(_solver(tmp_path, geort_model), identity_joints(), valid)
 
 
-def test_controller_raises_non_input_errors(tmp_path, geort_model):
+def test_retargeter_raises_non_input_errors(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model)
     with pytest.raises(ValueError) as info:
         ctrl.compute(_sample(np.zeros((25, 8))))
@@ -191,7 +192,7 @@ def test_bundled_configs_match_dexhand_urdf(config, urdf, geort_model):
     path = os.path.join(dexhand.get_share(), urdf)
     if not os.path.isfile(path):
         pytest.skip(f"URDF 없음: {path}")
-    ctrl = GeortHandSolver.from_config(config)
+    ctrl = GeortEngine.from_config(config)
     joints = {
         j.get("name")
         for j in ET.parse(path).getroot().findall("joint")
@@ -235,13 +236,13 @@ def test_bare_geort_name_uses_packaged_config_not_cwd(tmp_path, monkeypatch):
     (tmp_path / "geort").mkdir()
     (tmp_path / "geort" / "orca_right.yaml").write_text("name: other\nside: right\n")
     monkeypatch.chdir(tmp_path)
-    path = geort_config_path("orca_right")
+    path = str(config_path("orca_right"))
     assert not path.startswith(str(tmp_path)) and path.endswith("geort/orca_right.yaml")
     assert read_config(path).name == ORCA
 
 
 def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):
-    from whatslab.retarget.geort import solver
+    from whatslab.retarget.geort import engine as solver
 
     solver._cached_prompt_model.cache_clear()
     calls = []

@@ -23,17 +23,17 @@ _REMEDY_TRACKING = "장갑 착용 상태와 손 추적 상태를 확인하세요
 _REMEDY_FILE = "GeoRT 설정 YAML(name, side, model)과 모델 파일 경로를 확인하세요."
 
 
-class GeortHandSolver:
+class GeortEngine:
 
     def __init__(
         self,
         model: Embodiment,
-        human_side: str = "right",
+        side: str = "right",
         low_pass_alpha: float = 1.0,
     ) -> None:
-        if human_side not in SIDES:
+        if side not in SIDES:
             raise GeortConfigError(
-                "GEORT_CONFIG_INVALID", f"human_side {human_side!r}는 left|right 여야 합니다"
+                "GEORT_CONFIG_INVALID", f"side {side!r}는 left|right 여야 합니다"
             )
         if not 0.0 < low_pass_alpha <= 1.0:
             raise GeortConfigError(
@@ -44,20 +44,20 @@ class GeortHandSolver:
         self._model = model
         self._alpha = low_pass_alpha
         self._last: Optional[np.ndarray] = None
-        self._mirror = human_side != model.side
+        self._mirror = side != model.side
         self._limits = np.column_stack([model.lower, model.upper])
         self._limits.setflags(write=False)
 
     @classmethod
     def from_config(
         cls,
-        config_path: "str | os.PathLike[str]",
-        human_side: str = "right",
+        config: "str | os.PathLike[str]",
+        side: str = "right",
         low_pass_alpha: Optional[float] = None,
-    ) -> "GeortHandSolver":
-        cfg = read_config(config_path)
+    ) -> "GeortEngine":
+        cfg = read_config(config)
         alpha = cfg.low_pass_alpha if low_pass_alpha is None else float(low_pass_alpha)
-        return cls(load_embodiment(cfg), human_side, alpha)
+        return cls(load_embodiment(cfg), side, alpha)
 
     @property
     def joint_names(self) -> Tuple[str, ...]:
@@ -78,7 +78,7 @@ class GeortHandSolver:
         kp = np.asarray(keypoints, dtype=np.float64)
         if kp.shape != KEYPOINT_SHAPE:
             raise ValueError(
-                f"geort solver expects keypoints of shape {KEYPOINT_SHAPE} "
+                f"geort engine expects keypoints of shape {KEYPOINT_SHAPE} "
                 f"(openxr26 layout), got {kp.shape}"
             )
         if not np.all(
@@ -131,18 +131,20 @@ def _model_path(raw: Optional[str], base: Path) -> Path:
     return Path(os.environ.get(MODEL_ENV) or DEFAULT_MODEL).expanduser().resolve()
 
 
-def resolve_config_path(path: "str | os.PathLike[str]") -> Path:
+def config_path(config: "str | os.PathLike[str]") -> Path:
     from whatslab.paths import configs_root
 
-    p = Path(path).expanduser()
+    if not str(config).endswith((".yaml", ".yml")):
+        return Path(configs_root()) / "geort" / f"{config}.yaml"
+    p = Path(config).expanduser()
     if p.is_absolute() or p.exists():
         return p
     alt = Path(configs_root()) / p
     return alt if alt.exists() else p
 
 
-def read_config(config_path: "str | os.PathLike[str]") -> GeortConfig:
-    path = resolve_config_path(config_path)
+def read_config(config: "str | os.PathLike[str]") -> GeortConfig:
+    path = config_path(config)
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise _invalid(path, "최상위가 키-값 목록이 아닙니다")

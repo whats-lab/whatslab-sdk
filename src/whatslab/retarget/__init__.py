@@ -1,15 +1,15 @@
 _LAZY = {
-    "HandRetargetController": ".controller",
-    "engine_of": ".controller",
-    "XRHandRetargeter": ".dex_retargeter",
-    "DexHandConfig": ".dex_retargeter",
-    "hand_config_names": ".dex_retargeter",
+    "HandRetargeter": ".retargeter",
+    "engine_of": ".retargeter",
+    "DexEngine": ".dex",
+    "DexHandConfig": ".dex",
+    "hand_config_names": ".dex",
     "mirror_xr_joints": ".xr_input",
     "xr_to_mano": ".xr_input",
-    "GeortHandSolver": ".geort",
+    "GeortEngine": ".geort",
 }
 
-__all__ = sorted(n for n, m in _LAZY.items() if m != ".dex_retargeter")
+__all__ = sorted(n for n, m in _LAZY.items() if m != ".dex")
 
 
 def __getattr__(name):

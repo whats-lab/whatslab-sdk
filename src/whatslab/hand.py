@@ -4,7 +4,7 @@ import time
 from typing import Dict, Optional
 
 from whatslab.core.interfaces import Receiver
-from whatslab.retarget import HandRetargetController
+from whatslab.retarget import HandRetargeter
 
 
 class HandModel:
@@ -20,10 +20,9 @@ class HandModel:
             hand_source = AirGloveReceiver(**(hand_kwargs or {}))
         self.side = side
         self.hand_source = hand_source
-        self.retarget = HandRetargetController(side, hand_config, urdf_root=urdf_root, **kwargs)
+        self.retarget = HandRetargeter(side, hand_config, urdf_root=urdf_root, **kwargs)
         self.safety = None
         self.q: Dict[str, float] = {}
-        self._tracked = False
         self._t_prev: Optional[float] = None
 
     def start(self) -> None:
@@ -34,14 +33,9 @@ class HandModel:
 
     def get_q(self) -> Dict[str, Dict[str, float]]:
         sample = self.hand_source.get(self.side)
-        q: Dict[str, float] = {}
-        if sample.hand is not None and sample.hand.tracked:
-            cmd = self.retarget.compute(sample)
-            q = {n: float(v) for n, v in zip(cmd.joint_names, cmd.joint_angles)}
-            self._tracked = True
-        elif self._tracked:
-            self._tracked = False
-            self.retarget.reset()
+        cmd = self.retarget.compute(sample)
+        tracked = sample.hand is not None and sample.hand.tracked
+        q = dict(zip(cmd.joint_names, map(float, cmd.joint_angles))) if tracked else {}
         if self.safety is not None:
             now = time.monotonic()
             dt = None if self._t_prev is None else now - self._t_prev

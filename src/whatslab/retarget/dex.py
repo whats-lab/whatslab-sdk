@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation
 from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
-from .controller import DEX_PREFIX
+from .retargeter import DEX_PREFIX
 from .xr_input import HandInputError, mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
@@ -104,7 +104,7 @@ class DexHandConfig:
             return DexHandConfig.from_dict(yaml.safe_load(f) or {}, path=p)
 
 
-class XRHandRetargeter:
+class DexEngine:
     def __init__(
         self,
         config,
@@ -122,7 +122,7 @@ class XRHandRetargeter:
         unknown = set(overrides) - _DEX_KEYS
         if unknown:
             raise TypeError(
-                f"XRHandRetargeter 가 모르는 인자: {sorted(unknown)} — "
+                f"DexEngine 가 모르는 인자: {sorted(unknown)} — "
                 f"dex-retargeting RetargetingConfig 필드만 덮어쓸 수 있다"
             )
         self.urdf_path = os.path.join(urdf_root or models_root(), cfg.urdf)
@@ -225,7 +225,7 @@ class XRHandRetargeter:
             return self._wrist_root + self.scaling_factor * keypoints[self._human_idx]
         return keypoints[self._human_idx[1]] - keypoints[self._human_idx[0]]
 
-    def compute(self, xr_joints) -> np.ndarray:
+    def solve(self, xr_joints) -> np.ndarray:
         kp = self.human_keypoints(xr_joints)
         if not np.all(np.isfinite(kp)):
             raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")
@@ -257,7 +257,7 @@ class XRHandRetargeter:
 
 __all__ = [
     "DexHandConfig",
-    "XRHandRetargeter",
+    "DexEngine",
     "hand_config_names",
     "resolve_hand_config",
 ]
