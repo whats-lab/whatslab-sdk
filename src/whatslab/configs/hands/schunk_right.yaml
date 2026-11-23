@@ -1,13 +1,8 @@
-# Schunk SVH right — 글러브(OpenXR 26관절) → DexPilot (dex-retargeting 0.4.6).
-# 키 설명은 docs/API.md "손 리타게팅 config (configs/hands)".
-# 손목·손끝 링크는 dex-retargeting configs/teleop/schunk_svh_hand_right_dexpilot.yml 그대로.
 name: schunk_right
 side: right
 urdf: schunk_hand/schunk_svh_hand_right.urdf
 palm_links: {index: right_hand_l, middle: right_hand_k, pinky: right_hand_i}
 human_hand_length: 0.19
-# 연동 관절(mimic)은 target 에서 뺀다 — dex-retargeting 이 mimic 으로 채운다(구동 9축).
-# SLSQP 평가 상한(틱당). 프레임 무관 지표는 무제한과 같고 2손 p99 지연을 8ms 안으로 둔다.
 max_evals: 20
 retargeting:
   type: DexPilot

@@ -10,50 +10,32 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [{ name = "WHATs LAB Corp" }]
-# 공개 source-available SDK — git clone 후 pip install 로 배포한다 (PyPI 미업로드).
-# "Private :: Do Not Upload" 는 실수로 PyPI upload 시 거부되게 하는 안전장치(공개여도 유지).
 classifiers = [
     "Private :: Do Not Upload",
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    # numpy 상한 없음: numpy 1 소비자(Isaac Sim 5.1 — dex_vla 등)는 자기 쪽에서
-    # numpy<2 · dex-retargeting<0.5 를 고정한다. robotPlatform(ROS 2 Jazzy venv)은 numpy 2.
     "numpy>=1.24",
     "scipy>=1.10",
-    "pyyaml",          # 손 리타게팅 설정(configs/hands, configs/geort) 로더
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
-# 전 extra 가 순수 pip 설치 가능하다.
-# airglove-client = Spine 3.0.0(OpenXR 26관절) 수신 — AirGloveReceiver 가 감싼다.
-# v0.4.0 = Spine 프로토콜 3(메시지 번호 헤더, /pair/N).
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
-# 글러브 OpenXR 26관절 → 로봇 손. 엔진 두 가지:
-#  - geort(GeoRT 소프트 프롬프트): 추론(`whatslab.retarget.geort`)은 numpy 만 쓴다(모델 npz 는 별도).
-#  - dex(dex-retargeting DexPilot, XRHandRetargeter): 아래 hand extra.
-#    0.4.6 은 numpy<2 전용, 0.5.0 부터 numpy>=2 — 소비자의 numpy 에 맞는 쪽이 설치된다.
-#    torch 를 최상단 import 하고 nlopt<2.8, pin>=2.7, Python<3.13 을 끌어온다.
-# pin·dexhand-description 은 dex 엔진(URDF 기구학·메쉬)용.
 hand     = ["pin", "dex-retargeting>=0.4.6",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
-viz      = ["viser", "trimesh", "pin"]           # 로봇 손 URDF 3D 시각화 (viser, pinocchio FK)
-webxr    = ["websockets>=13"]                   # Quest 맨손(헤드셋 브라우저) 수신 서버
+viz      = ["viser", "trimesh", "pin"]
+webxr    = ["websockets>=13"]
 all      = ["whatslab-sdk[receiver,hand,viz,webxr]"]
 dev      = ["pytest"]
 
 [tool.setuptools]
-# 자산은 아래 package-data 로만 명시적으로 담는다 (MANIFEST 자동수집 비활성).
 include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# whatslab 은 PEP 420 네임스페이스 패키지 (src/whatslab 에 __init__.py 없음)
 include = ["whatslab*"]
 
-# 런타임 자산 — wheel/sdist 에 동봉해 non-editable `pip install .` 로도 동작.
-# configs/(~28K) 는 필수. models/(~27M URDF·메쉬) 는 out-of-box 용 — 패키지 밖에
-# 별도 자산 트리를 두려면 WHATSLAB_MODELS_ROOT 로 override (whatslab.paths 참조).
 [tool.setuptools.package-data]
 whatslab = ["configs/**", "receiver/webxr/static/*.html", "retarget/geort/assets/*.npz"]
 
@@ -63,8 +45,6 @@ whatslab = ["**/__pycache__/**", "**/*.py[cod]"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-# PEP 8 검사(ruff): pycodestyle(E·W), 이름 규칙(N, pep8-naming), import 순서(I), pyflakes(F).
-# 줄 길이는 PEP 8 이 팀 합의로 허용하는 최대 99자.
 [tool.ruff]
 line-length = 99
 target-version = "py39"

@@ -1,4 +1,3 @@
-# sdist 에 런타임 자산 + 문서 포함 (wheel 은 pyproject package-data 가 담당).
 graft src/whatslab/configs
 graft src/whatslab/retarget/geort/assets
 include README.md

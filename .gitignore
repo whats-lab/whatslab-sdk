@@ -12,22 +12,17 @@ venv/
 .vscode/
 .idea/
 
-# 바이너리 배포물(zip·apk)은 저장소에 넣지 않는다
 *.zip
 *.apk
 .ruff_cache
 .superpowers
 
-# 텔레옵 진단 덤프 (--dump-targets)
 run*.npz
 
-# Vive 트래커 스모크 테스트 — openvr 의존이 선언돼 있지 않다
 examples/vive_smoke.py
 
-# 리타게팅 비교 렌더 (진단용)
 hand_retarget_compare*.png
 hand_retarget_compare*.mp4
 
-# 저장소에 두지 않는 내부 문서·도구 (로컬에는 남는다)
 CLAUDE.md
 tools/bench_arm_ik.py
