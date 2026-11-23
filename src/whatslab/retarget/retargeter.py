@@ -31,7 +31,7 @@ class HandRetargeter:
 
     def __init__(
         self,
-        hand_type: str,
+        side: str,
         config_name: str = "dex:orca",
         urdf_root=None,
         **kwargs,
@@ -41,11 +41,11 @@ class HandRetargeter:
         if self.engine_name == DEX_PREFIX:
             from .dex import DexEngine
 
-            self._engine = DexEngine(name, side=hand_type, urdf_root=urdf_root, **kwargs)
+            self._engine = DexEngine(name, side=side, urdf_root=urdf_root, **kwargs)
         else:
             from .geort import GeortEngine
 
-            self._engine = GeortEngine.from_config(name, side=hand_type, **kwargs)
+            self._engine = GeortEngine.from_config(name, side=side, **kwargs)
         lim = self._engine.joint_limits
         self._last = np.clip(np.zeros(len(self._engine.joint_names)), lim[:, 0], lim[:, 1])
         self._tracking = False
