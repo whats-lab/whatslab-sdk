@@ -257,11 +257,6 @@ def test_dex_respects_xr_valid():
     assert ctrl.last_error is None
 
 
-def test_robot_side_is_config_side_for_dex():
-    _require_urdf("orca_right")
-    assert HandRetargeter("dex:orca_right", side="left").robot_side == "right"
-
-
 def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
     _require_urdf("orca_right")
     j = synthetic_right_hand(0.3).copy()

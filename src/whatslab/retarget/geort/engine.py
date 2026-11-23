@@ -14,7 +14,7 @@ from whatslab.paths import configs_root
 
 from .errors import GeortConfigError, GeortInputError
 from .preprocess import POSITION
-from .prompt import KIND_ROBOT, Embodiment, PromptModel, load_prompt_model
+from .prompt import Embodiment, PromptModel, load_prompt_model
 
 KEYPOINT_SHAPE = (XR_JOINT_COUNT, XR_JOINT_FIELDS)
 DEFAULT_MODEL = str(Path(__file__).resolve().parent / "assets" / "geort_prompt.npz")
@@ -173,7 +173,7 @@ def _load_prompt_model_cached(path: Path) -> PromptModel:
 def load_embodiment(cfg: GeortConfig) -> Embodiment:
     model = _load_prompt_model_cached(cfg.model_path)
     embodiment = model.embodiments.get(cfg.name)
-    if embodiment is None or embodiment.kind != KIND_ROBOT or model.side != cfg.side:
+    if embodiment is None or model.side != cfg.side:
         raise GeortConfigError(
             "GEORT_MODEL_MISMATCH",
             f"GeoRT 프롬프트 모델 {cfg.model_path.name}에 {cfg.side} 손 "

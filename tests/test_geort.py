@@ -128,10 +128,6 @@ def test_retargeter_raises_non_input_errors(tmp_path, geort_model):
     assert ctrl.last_error is None
 
 
-def test_robot_side_is_model_side_for_mirrored_input(tmp_path, geort_model):
-    assert _ctrl(tmp_path, geort_model, side="left").robot_side == "right"
-
-
 def test_left_hand_is_mirrored_onto_right_model(tmp_path, geort_model):
     right = _solver(tmp_path, geort_model, "right")
     left = _solver(tmp_path, geort_model, "left")

@@ -138,7 +138,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 못 풀면(`HandInputError` — geort 의 `GeortInputError` 도 이것이다. 다른 예외는 그대로 올라온다) 직전 명령 유지(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `robot_side` = 엔진이 내는 관절각의 로봇 손 side(dex 는 설정 side, geort 는 모델 side — 오른손 모델은 왼손 사람 입력에도 `"right"`). `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_error` 는 지금 프레임 기준(추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
+| `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 못 풀면(`HandInputError` — geort 의 `GeortInputError` 도 이것이다. 다른 예외는 그대로 올라온다) 직전 명령 유지(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_error` 는 지금 프레임 기준(추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
 | `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints)`, `reset()`. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
 | `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `scaling_factor`, `reset()`. 손당 프레임 p50 1~2ms, p99 약 4ms. |
@@ -214,7 +214,7 @@ dexhand-description 에 없는 URDF 기준이다.
 
 공유 상수는 `whatslab.core.constants` 가 단일 출처다 — `SIDES`, `FINGER_COUNT`, OpenXR 26관절
 (`XR_JOINT_NAMES`·`XR_JOINT_COUNT`·`XR_JOINT_FIELDS`·`XR_WRIST`), 사람 손 21점(`OPENXR26_TO_HAND21`,
-`HAND21_WRIST`·`HAND21_*_MCP`·`HAND21_TIPS`), `OPENXR_TO_HAND21_AXES`. 한 모듈만 쓰는 상수는 그 모듈에 두고,
+`HAND21_WRIST`·`HAND21_*_MCP`), `OPENXR_TO_HAND21_AXES`. 한 모듈만 쓰는 상수는 그 모듈에 두고,
 두 곳 이상이 쓰면 여기로 옮긴다.
 
 | 심볼 | 설명 |

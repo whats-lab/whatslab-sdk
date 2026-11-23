@@ -82,12 +82,6 @@ class HandRetargeter:
         self._tracking = False
         self.last_error = None
 
-    @property
-    def robot_side(self) -> str:
-        if self.engine_name == DEX_PREFIX:
-            return self._engine.config.side
-        return self._engine.model.side
-
     def _solve(self, hand: HandPose) -> np.ndarray:
         return self._engine.solve(masked_keypoints(hand.xr_joints, hand.xr_valid))
 

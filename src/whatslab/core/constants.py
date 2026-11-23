@@ -6,7 +6,6 @@ import numpy as np
 
 SIDES: Final[Tuple[str, str]] = ("left", "right")
 FINGER_COUNT: Final = 5
-FINGER_NAMES: Final[Tuple[str, ...]] = ("thumb", "index", "middle", "ring", "pinky")
 
 XR_JOINT_NAMES: Final[Tuple[str, ...]] = (
     "palm",
@@ -69,7 +68,6 @@ HAND21_INDEX_MCP: Final = 5
 HAND21_MIDDLE_MCP: Final = 9
 HAND21_RING_MCP: Final = 13
 HAND21_LITTLE_MCP: Final = 17
-HAND21_TIPS: Final[Tuple[int, ...]] = (4, 8, 12, 16, 20)
 
 
 def readonly_array(a) -> np.ndarray:

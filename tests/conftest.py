@@ -2,8 +2,6 @@ import socket
 
 import pytest
 
-from whatslab.core.constants import FINGER_NAMES
-
 
 def require_sensor_urdf(*configs, sides=("left", "right")):
     pin = pytest.importorskip("pinocchio")
@@ -19,7 +17,7 @@ def require_sensor_urdf(*configs, sides=("left", "right")):
                 pytest.skip(f"{name}/{side}: URDF 없음")
             m = pin.buildModelFromUrdf(urdf)
             want = [f"{side}_sensor_dorsum"] + [
-                f"{side}_sensor_{f}_distal" for f in FINGER_NAMES]
+                f"{side}_sensor_{f}_distal" for f in ("thumb", "index", "middle", "ring", "pinky")]
             missing = [n for n in want
                        if not m.existFrame(n, pin.FrameType.BODY)]
             if missing:

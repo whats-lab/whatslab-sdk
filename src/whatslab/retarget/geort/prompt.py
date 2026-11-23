@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 
 import numpy as np
@@ -12,8 +11,6 @@ from .preprocess import FRAME_V2, PALM_MCPS, InputFrame
 
 PROMPT_FORMAT = "geort-prompt-v1"
 KIND_ROBOT = "robot"
-KIND_HUMAN = "human"
-KINDS = (KIND_ROBOT, KIND_HUMAN)
 POINT_DIM = 3
 INPUT_DIM = (HAND21_COUNT - 1) * POINT_DIM
 
@@ -86,20 +83,16 @@ class Backbone:
 @dataclasses.dataclass(frozen=True)
 class Embodiment:
     name: str
-    kind: str
     side: str
     joint_names: tuple[str, ...]
     lower: np.ndarray
     upper: np.ndarray
-    out_mean: np.ndarray
-    out_scale: np.ndarray
     prompt: np.ndarray
     head: Linear
     backbone: Backbone
     frame: InputFrame
     check_points: np.ndarray
     check_qpos: np.ndarray
-    meta: dict[str, object]
     cond: tuple[np.ndarray, ...] = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
@@ -110,8 +103,6 @@ class Embodiment:
 
     def forward(self, points: np.ndarray) -> np.ndarray:
         y = self.raw(points)
-        if self.kind == KIND_HUMAN:
-            return y * self.out_scale + self.out_mean
         return (np.tanh(y) * 0.5 + 0.5) * (self.upper - self.lower) + self.lower
 
 
@@ -120,7 +111,6 @@ class PromptModel:
     name: str
     side: str
     embodiments: dict[str, Embodiment]
-    meta: dict[str, object]
 
 
 def _text(data: np.lib.npyio.NpzFile, key: str) -> str:
@@ -207,52 +197,30 @@ def _embodiment(
     backbone: Backbone,
     frame: InputFrame,
     check_points: np.ndarray,
-    meta: dict[str, object],
 ) -> Embodiment:
     p = f"e_{name}_"
-    kind = _text(data, f"{p}kind")
-    if kind not in KINDS:
-        raise ValueError(f"{name}의 종류 {kind}을(를) 알 수 없습니다")
     head = _head(data, p, backbone)
     prompt = _array(data, f"{p}prompt")
     if prompt.shape != backbone.prompt_shape():
         raise ValueError(f"{name}의 프롬프트 크기가 백본과 맞지 않습니다")
     dof = head.bias.size
-    if kind == KIND_ROBOT:
-        names = tuple(str(n) for n in data[f"{p}joint_names"])
-        lower, upper = _array(data, f"{p}lower"), _array(data, f"{p}upper")
-        if (
-            len(names) != dof
-            or lower.shape != (dof,)
-            or upper.shape != (dof,)
-            or np.any(upper <= lower)
-        ):
-            raise ValueError(
-                f"{name}의 관절 한계가 관절 수와 맞지 않거나 상한이 하한보다 작습니다"
-            )
-        out_mean = out_scale = np.zeros(0)
-    else:
-        names = tuple(f"p{i}.{a}" for i in range(1, HAND21_COUNT) for a in "xyz")
-        lower = upper = np.zeros(0)
-        out_mean, out_scale = _array(data, f"{p}out_mean"), _array(data, f"{p}out_scale")
-        if dof != INPUT_DIM or out_mean.shape != (dof,) or out_scale.shape != (dof,):
-            raise ValueError(f"{name}의 사람 손 출력은 {INPUT_DIM}개여야 합니다")
+    names = tuple(str(n) for n in data[f"{p}joint_names"])
+    lower, upper = _array(data, f"{p}lower"), _array(data, f"{p}upper")
+    shapes_ok = len(names) == dof and lower.shape == (dof,) and upper.shape == (dof,)
+    if not shapes_ok or np.any(upper <= lower):
+        raise ValueError(f"{name}의 관절 한계가 관절 수와 맞지 않거나 상한이 하한보다 작습니다")
     return Embodiment(
         name,
-        kind,
         side,
         names,
         lower,
         upper,
-        out_mean,
-        out_scale,
         prompt,
         head,
         backbone,
         frame,
         check_points,
         _array(data, f"check_{name}"),
-        meta,
     )
 
 
@@ -263,14 +231,15 @@ def load_prompt_model(path: Path) -> PromptModel:
         if fmt != PROMPT_FORMAT:
             raise ValueError(f"format {fmt}을(를) 지원하지 않습니다 ({PROMPT_FORMAT})")
         frame = _frame(data)
-        names = [str(n) for n in data["embodiments"]]
+        names = [
+            str(n) for n in data["embodiments"] if _text(data, f"e_{n}_kind") == KIND_ROBOT
+        ]
         backbone = _backbone(data)
         side = _text(data, "side")
-        meta = json.loads(_text(data, "meta_json"))
         check_points = _array(data, "check_points")
         embodiments = {
-            n: _embodiment(data, n, side, backbone, frame, check_points, meta) for n in names
+            n: _embodiment(data, n, side, backbone, frame, check_points) for n in names
         }
-        model = PromptModel(_text(data, "name"), side, embodiments, meta)
+        model = PromptModel(_text(data, "name"), side, embodiments)
     return model
 

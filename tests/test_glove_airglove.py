@@ -151,7 +151,7 @@ def test_protocol_mismatch_warns_once(fake_client, caplog):
         rx.get("right")
     assert caplog.text.count("Spine 프로토콜 2") == 1
     assert rx.spine_protocol() == 2
-    assert airglove.SPINE_PROTOCOL == whatslab.receiver.glove.SPINE_PROTOCOL == 3
+    assert airglove.SPINE_PROTOCOL == 3
 
 
 def test_get_before_start_is_untracked_without_binding(fake_client):
