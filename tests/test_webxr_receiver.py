@@ -154,17 +154,21 @@ def test_page_recovers_from_stalled_socket():
 
 
 def test_tls_cert_covers_preferred_ip(tmp_path):
-    import subprocess
+    import ipaddress
+
+    from cryptography import x509
 
     from whatslab.receiver.webxr.tls import preferred_ip
     cert, key = _cert(tmp_path)
     assert os.path.isfile(cert) and os.path.isfile(key)
     assert oct(os.stat(key).st_mode & 0o777) == "0o600"
-    txt = subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-text"],
-                         capture_output=True, text=True).stdout
-    assert "DNS:localhost" in txt
+    parsed = x509.load_pem_x509_certificate(pathlib.Path(cert).read_bytes())
+    san = parsed.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    assert "localhost" in san.get_values_for_type(x509.DNSName)
+    ips = san.get_values_for_type(x509.IPAddress)
+    assert ipaddress.ip_address("127.0.0.1") in ips
     ip = preferred_ip()
-    assert ip.startswith("127.") or f"IP Address:{ip}" in txt
+    assert ip.startswith("127.") or ipaddress.ip_address(ip) in ips
 
 
 def test_tls_cert_is_cached(tmp_path):
