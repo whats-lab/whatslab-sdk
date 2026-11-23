@@ -19,10 +19,18 @@ def test_unknown_engine_rejected(name):
 def test_solvers_package_import_is_light():
     import importlib
     import sys
-    for m in [m for m in sys.modules if m.startswith("whatslab.solvers")]:
-        del sys.modules[m]
-    importlib.import_module("whatslab.solvers.hand")
-    assert "whatslab.solvers.hand.dex_retargeter" not in sys.modules
+
+    def ours():
+        return [m for m in sys.modules if m.startswith("whatslab.solvers")]
+
+    saved = {m: sys.modules.pop(m) for m in ours()}
+    try:
+        importlib.import_module("whatslab.solvers.hand")
+        assert "whatslab.solvers.hand.dex_retargeter" not in sys.modules
+    finally:  # 원래 모듈로 되돌린다 — 다시 import 한 예외 클래스가 두 벌로 남지 않게
+        for m in ours():
+            del sys.modules[m]
+        sys.modules.update(saved)
 
 
 def _geort_model_or_skip():

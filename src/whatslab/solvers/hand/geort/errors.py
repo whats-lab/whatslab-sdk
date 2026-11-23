@@ -1,6 +1,8 @@
 """GeoRT 오류 — 기계용 code 와 사람용 cause·remedy 를 담는다."""
 from __future__ import annotations
 
+from ..xr_input import HandInputError
+
 
 class GeortError(ValueError):
     """GeoRT 소프트 프롬프트 리타게팅 오류. `code` 는 기계용, `cause`·`remedy` 는 사람용."""
@@ -16,5 +18,5 @@ class GeortConfigError(GeortError):
     """설정 파일·모델 파일이 없거나 잘못됐다."""
 
 
-class GeortInputError(GeortError):
+class GeortInputError(GeortError, HandInputError):
     """이번 프레임의 손 입력으로는 풀 수 없다 (호출자는 직전 값을 유지하면 된다)."""

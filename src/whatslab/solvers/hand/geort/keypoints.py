@@ -36,31 +36,6 @@ def mediapipe21(joints: np.ndarray) -> np.ndarray:
     return xr[..., _INDEX, POSITION]
 
 
-def palm_axes(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """21점의 손바닥 좌표축(열: x·y·z)과 원점(손목). 축을 만들 수 없으면 NaN."""
-    z = points[..., HAND21_MIDDLE_MCP, :] - points[..., HAND21_WRIST, :]
-    across = points[..., HAND21_INDEX_MCP, :] - points[..., HAND21_RING_MCP, :]
-    z_norm = np.linalg.norm(z, axis=-1, keepdims=True)
-    z = z / np.where(z_norm > MIN_AXIS_NORM, z_norm, np.nan)
-    across_norm = np.linalg.norm(across, axis=-1, keepdims=True)
-    across = across / np.where(across_norm > MIN_AXIS_NORM, across_norm, np.nan)
-    x = np.cross(across, z)
-    x_norm = np.linalg.norm(x, axis=-1, keepdims=True)
-    x = x / np.where(x_norm > MIN_AXIS_NORM, x_norm, np.nan)
-    y = np.cross(z, x)
-    return np.stack([x, y, z], axis=-1), points[..., HAND21_WRIST, :]
-
-
-def human_keypoints(joints: np.ndarray, mirror: bool = False) -> np.ndarray:
-    """OpenXR 26관절 → 손바닥 좌표계 21점(손목 원점)."""
-    points = mediapipe21(joints)
-    rotation, origin = palm_axes(points)
-    local = np.einsum("...pi,...ij->...pj", points - origin[..., None, :], rotation)
-    if mirror:
-        local = local * MIRROR_X
-    return local
-
-
 def hand_size(points: np.ndarray) -> np.ndarray:
     """손목–MCP 네 점 거리의 평균(손 크기)."""
     rel = points[..., _MCPS, :] - points[..., HAND21_WRIST, None, :]

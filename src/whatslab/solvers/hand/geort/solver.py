@@ -1,4 +1,4 @@
-"""GeoRT 소프트 프롬프트 손 리타게팅 — robotPlatform `plugins/hand_solvers/geort` 의 이식.
+"""GeoRT 소프트 프롬프트 손 리타게팅.
 
 입력은 OpenXR 26관절 × [qx qy qz qw px py pz radius] (손목 기준, m) — `HandPose.xr_joints`
 그대로이고, 위치만 쓴다.
@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import logging
 import os
 from pathlib import Path
-from typing import Mapping, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import yaml
@@ -22,9 +21,6 @@ from .errors import GeortConfigError, GeortInputError
 from .keypoints import POSITION
 from .prompt import KIND_ROBOT, Embodiment, PromptModel, load_prompt_model
 
-_log = logging.getLogger(__name__)
-
-OPENXR26_LAYOUT = "openxr26"
 KEYPOINT_SHAPE = (XR_JOINT_COUNT, XR_JOINT_FIELDS)
 # 패키지에 동봉한 학습 모델(orca_right·hx5_right·allegro_right·dg5f_s_right 프롬프트).
 DEFAULT_MODEL = str(Path(__file__).resolve().parent / "assets" / "geort_prompt.npz")
@@ -33,60 +29,14 @@ MODEL_ENV = "WHATSLAB_GEORT_MODEL"
 _REMEDY_TRACKING = "장갑 착용 상태와 손 추적 상태를 확인하세요."
 _REMEDY_FILE = "GeoRT 설정 YAML(name, side, model)과 모델 파일 경로를 확인하세요."
 
-Limits = Mapping[str, Tuple[float, float]]
-
-
-def solver_limits(model: Embodiment, robot_limits: Optional[Limits]) -> np.ndarray:
-    """모델 학습 범위와 로봇 URDF 범위의 교집합 (n, 2).
-
-    robot_limits 를 줬는데 관절 이름이 하나도 안 맞으면 안전 클램프가 조용히 꺼지므로 오류,
-    일부만 맞으면 빠진 관절을 경고한다.
-    """
-    limits = np.column_stack([model.lower, model.upper])
-    if not robot_limits:
-        return limits
-    missing = [n for n in model.joint_names if n not in robot_limits]
-    if len(missing) == len(model.joint_names):
-        raise GeortConfigError(
-            "GEORT_LIMITS_UNMATCHED",
-            f"GeoRT 모델 '{model.name}'의 관절 이름이 로봇 관절 범위에 하나도 없습니다 "
-            f"(모델: {', '.join(model.joint_names[:3])}…, "
-            f"로봇: {', '.join(list(robot_limits)[:3])}…)",
-            "GeoRT 모델이 이 로봇 손 URDF 용인지 확인하세요(좌우 포함 — 오른손 로봇 손 모델은 "
-            "왼손 로봇 손을 구동할 수 없다).",
-        )
-    if missing:
-        _log.warning(
-            "GeoRT 모델 '%s'의 관절 %s 은(는) 로봇 URDF 에 없어 학습 범위로만 자른다",
-            model.name,
-            ", ".join(missing),
-        )
-    for i, name in enumerate(model.joint_names):
-        if name not in robot_limits:
-            continue
-        r_lo, r_hi = robot_limits[name]
-        lo, hi = max(limits[i, 0], float(r_lo)), min(limits[i, 1], float(r_hi))
-        if lo > hi:
-            raise GeortConfigError(
-                "GEORT_LIMITS_DISJOINT",
-                f"관절 '{name}'의 GeoRT 범위 [{limits[i, 0]:.3f}, {limits[i, 1]:.3f}]와 "
-                f"로봇 범위 [{r_lo:.3f}, {r_hi:.3f}] rad가 겹치지 않습니다",
-                "GeoRT 모델이 이 로봇용인지 확인하세요.",
-            )
-        limits[i] = (lo, hi)
-    return limits
-
 
 class GeortHandSolver:
     """keypoints(26×8) → 로봇 손 관절각. 모델이 오른손용이면 왼손 입력은 좌우 반전해 푼다."""
-
-    input_layout = OPENXR26_LAYOUT
 
     def __init__(
         self,
         model: Embodiment,
         human_side: str = "right",
-        robot_limits: Optional[Limits] = None,
         low_pass_alpha: float = 1.0,
     ) -> None:
         if human_side not in SIDES:
@@ -102,10 +52,8 @@ class GeortHandSolver:
         self._model = model
         self._alpha = low_pass_alpha
         self._last: Optional[np.ndarray] = None
-        self._human_side = human_side
         self._mirror = human_side != model.side
-        self._human_ids = model.human_ids
-        self._limits = solver_limits(model, robot_limits)
+        self._limits = np.column_stack([model.lower, model.upper])
         self._limits.setflags(write=False)
 
     @classmethod
@@ -113,7 +61,6 @@ class GeortHandSolver:
         cls,
         config_path: "str | os.PathLike[str]",
         human_side: str = "right",
-        robot_limits: Optional[Limits] = None,
         low_pass_alpha: Optional[float] = None,
     ) -> "GeortHandSolver":
         """GeoRT 설정 YAML(name/side/model/low_pass_alpha)로 만든다.
@@ -122,7 +69,7 @@ class GeortHandSolver:
         """
         cfg = read_config(config_path)
         alpha = cfg.low_pass_alpha if low_pass_alpha is None else float(low_pass_alpha)
-        return cls(load_embodiment(cfg), human_side, robot_limits, alpha)
+        return cls(load_embodiment(cfg), human_side, alpha)
 
     @property
     def joint_names(self) -> Tuple[str, ...]:
@@ -130,24 +77,14 @@ class GeortHandSolver:
         return self._model.joint_names
 
     @property
-    def hand_side(self) -> str:
-        """입력 사람 손 side."""
-        return self._human_side
-
-    @property
     def joint_limits(self) -> np.ndarray:
-        """출력을 자르는 관절 범위 (n, 2)."""
+        """출력을 자르는 관절 범위 (n, 2) — 모델 학습 범위."""
         return self._limits
 
     @property
     def model(self) -> Embodiment:
         """쓰는 프롬프트 모델의 손."""
         return self._model
-
-    @property
-    def low_pass_alpha(self) -> float:
-        """출력 저역통과 계수(1 이면 끔)."""
-        return self._alpha
 
     def reset(self) -> None:
         """저역통과 상태를 비운다."""
@@ -169,7 +106,7 @@ class GeortHandSolver:
                 "손 추적 위치에 유한하지 않은 값이 있어 리타게팅하지 않았습니다",
                 _REMEDY_TRACKING,
             )
-        points = self._model.frame.keypoints(kp, mirror=self._mirror)[self._human_ids]
+        points = self._model.frame.keypoints(kp, mirror=self._mirror)
         if not np.all(np.isfinite(points)):
             raise GeortInputError(
                 "GEORT_SOLVE_FAILED",
@@ -297,10 +234,3 @@ def load_embodiment(cfg: GeortConfig) -> Embodiment:
         )
     return embodiment
 
-
-def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.ndarray:
-    """무효 관절의 위치를 NaN 으로 — 원점(항등)으로 남은 관절이 솔버에 들어가지 않게 한다."""
-    kp = np.array(keypoints, dtype=np.float64, copy=True)
-    if valid is not None:
-        kp[~np.asarray(valid, dtype=bool), POSITION] = np.nan
-    return kp

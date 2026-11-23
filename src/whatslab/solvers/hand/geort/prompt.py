@@ -1,4 +1,4 @@
-"""GeoRT 소프트 프롬프트 모델(.npz) 읽기·검사와 numpy 순전파."""
+"""GeoRT 소프트 프롬프트 모델(.npz, 형식 geort-prompt-v1) 읽기·검사와 numpy 순전파."""
 from __future__ import annotations
 
 import dataclasses
@@ -8,26 +8,19 @@ from pathlib import Path
 
 import numpy as np
 
-from whatslab.core.constants import FINGER_COUNT, HAND21_COUNT
+from whatslab.core.constants import HAND21_COUNT
 
 from .errors import GeortConfigError
 from .keypoints import FRAME_V2, PALM_MCPS, InputFrame
 
+# 모델 구조 형식(MLP + 손별 soft prompt). 손 입력 형식은 keypoints.FRAME_V2 로 따로 검사한다.
 PROMPT_FORMAT = "geort-prompt-v1"
-TOKEN_FORMAT = "geort-prompt-v2"
-PROMPT_FORMATS = (PROMPT_FORMAT, TOKEN_FORMAT)
 KIND_ROBOT = "robot"
 KIND_HUMAN = "human"
 KINDS = (KIND_ROBOT, KIND_HUMAN)
 POINT_DIM = 3
 INPUT_DIM = (HAND21_COUNT - 1) * POINT_DIM
-ALL_POINTS = np.arange(HAND21_COUNT, dtype=np.intp)
-CHAIN_POINTS = 4
-CHAIN_DIM = CHAIN_POINTS * POINT_DIM
-ROOT_DIM = FINGER_COUNT * POINT_DIM
-INPUT_TOKENS = FINGER_COUNT + 1
-_REMEDY = ("robotPlatform 의 tools/bake_geort_prompt.py 로 모델을 다시 만들거나 "
-           "설정 파일의 model 경로를 확인하세요.")
+_REMEDY = "설정 파일의 model 경로나 WHATSLAB_GEORT_MODEL 을 확인하세요."
 
 
 def silu(x: np.ndarray) -> np.ndarray:
@@ -43,12 +36,6 @@ def layer_norm(x: np.ndarray, weight: np.ndarray, bias: np.ndarray, eps: float) 
     return centered / np.sqrt(var + eps) * weight + bias
 
 
-def softmax(x: np.ndarray) -> np.ndarray:
-    """마지막 축 softmax (수치 안정형)."""
-    e = np.exp(x - x.max(axis=-1, keepdims=True))
-    return e / e.sum(axis=-1, keepdims=True)
-
-
 @dataclasses.dataclass(frozen=True)
 class Linear:
     """완전연결층 ``x @ Wᵀ + b``."""
@@ -59,17 +46,6 @@ class Linear:
         return x @ self.weight.T + self.bias
 
 
-@dataclasses.dataclass(frozen=True)
-class TokenHead:
-    """출력마다 지정한 토큰 하나를 읽는 출력층."""
-    weight: np.ndarray
-    bias: np.ndarray
-    token: np.ndarray
-
-    def __call__(self, h: np.ndarray) -> np.ndarray:
-        return (h[..., self.token, :] * self.weight).sum(axis=-1) + self.bias
-
-
 def normalized(points: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
     """손목을 뺀 20점을 펴서 입력 평균·표준편차로 정규화한다."""
     return (points[..., 1:, :].reshape(points.shape[:-2] + (INPUT_DIM,)) - mean) / std
@@ -77,7 +53,7 @@ def normalized(points: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndar
 
 @dataclasses.dataclass(frozen=True)
 class Backbone:
-    """MLP 인코더 + FiLM 조건 디코더 백본(geort-prompt-v1)."""
+    """MLP 인코더 + FiLM 조건 디코더 백본. 손마다 다른 soft prompt 로 조건을 건다."""
     in_mean: np.ndarray
     in_std: np.ndarray
     encoder: tuple[Linear, ...]
@@ -112,9 +88,7 @@ class Backbone:
         film = self.film(prompt).reshape(len(self.decoder), 2, self.width)
         return shift, 1.0 + film[:, 0], film[:, 1]
 
-    def raw(
-        self, points: np.ndarray, cond: tuple[np.ndarray, ...], head: Linear | TokenHead
-    ) -> np.ndarray:
+    def raw(self, points: np.ndarray, cond: tuple[np.ndarray, ...], head: Linear) -> np.ndarray:
         """조건을 건 디코더 출력(출력층 적용, 범위 변환 전)."""
         shift, gamma, beta = cond
         h = silu(self.encode(points) @ self.dec_in.weight.T + shift)
@@ -122,111 +96,6 @@ class Backbone:
             weight, bias = self.norms[k]
             h = h + silu(layer_norm(layer(h), weight, bias, self.ln_eps) * gamma[k] + beta[k])
         return head(h)
-
-
-def normalize(x: np.ndarray, eps: float) -> np.ndarray:
-    """마지막 축 정규화(affine 없음 — 가중치는 다음 층에 접어 넣었다)."""
-    centered = x - x.mean(axis=-1, keepdims=True)
-    return centered / np.sqrt((centered * centered).mean(axis=-1, keepdims=True) + eps)
-
-
-@dataclasses.dataclass(frozen=True)
-class TokenBlock:
-    """LayerNorm 을 접어 넣은 트랜스포머 블록 가중치."""
-    qkv_w: np.ndarray
-    qkv_b: np.ndarray
-    out_w: np.ndarray
-    out_b: np.ndarray
-    fc1_w: np.ndarray
-    fc1_b: np.ndarray
-    fc2_w: np.ndarray
-    fc2_b: np.ndarray
-
-
-Norm = tuple[np.ndarray, np.ndarray]
-
-
-def token_block(
-    ln1: Norm, qkv: Linear, proj: Linear, ln2: Norm, fc1: Linear, fc2: Linear, heads: int
-) -> TokenBlock:
-    """트랜스포머 블록 가중치를 LayerNorm·스케일을 접어 추론용으로 만든다."""
-    width = proj.bias.size
-    size = width // heads
-    scale = np.repeat([1.0 / np.sqrt(size), 1.0, 1.0], width)
-    weight = qkv.weight * ln1[0] * scale[:, None]
-    bias = (qkv.bias + qkv.weight @ ln1[1]) * scale
-    qkv_w = weight.reshape(3 * heads, size, width).transpose(0, 2, 1)
-    out_w = proj.weight.T.reshape(heads, size, width)
-    fc1_w = np.ascontiguousarray((fc1.weight * ln2[0]).T)
-    return TokenBlock(
-        np.ascontiguousarray(qkv_w),
-        bias.reshape(3 * heads, 1, size),
-        np.ascontiguousarray(out_w),
-        proj.bias,
-        fc1_w,
-        fc1.bias + fc1.weight @ ln2[1],
-        np.ascontiguousarray(fc2.weight.T),
-        fc2.bias,
-    )
-
-
-@dataclasses.dataclass(frozen=True)
-class TokenBackbone:
-    """손가락 토큰 트랜스포머 백본(geort-prompt-v2)."""
-    in_mean: np.ndarray
-    in_std: np.ndarray
-    finger_w: np.ndarray
-    finger_b: np.ndarray
-    palm: Linear
-    blocks: tuple[TokenBlock, ...]
-    final: Norm
-    heads: int
-    ln_eps: float
-    prompt_tokens: int
-
-    @property
-    def width(self) -> int:
-        """토큰 폭."""
-        return self.finger_b.shape[1]
-
-    def prompt_shape(self) -> tuple[int, ...]:
-        """이 백본이 받는 프롬프트 모양 (토큰 수, 폭)."""
-        return (self.prompt_tokens, self.width)
-
-    def condition(self, prompt: np.ndarray) -> tuple[np.ndarray, ...]:
-        """프롬프트 토큰을 그대로 조건으로 쓴다."""
-        return (prompt,)
-
-    def attend(self, block: TokenBlock, h: np.ndarray) -> np.ndarray:
-        """블록 하나(셀프 어텐션 + MLP, pre-norm 잔차)를 적용한다."""
-        qkv = normalize(h, self.ln_eps)[..., None, :, :] @ block.qkv_w + block.qkv_b
-        n = self.heads
-        q, k, v = qkv[..., :n, :, :], qkv[..., n : 2 * n, :, :], qkv[..., 2 * n :, :, :]
-        weights = softmax(q @ np.swapaxes(k, -1, -2))
-        h = h + ((weights @ v) @ block.out_w).sum(axis=-3) + block.out_b
-        return (
-            h
-            + silu(normalize(h, self.ln_eps) @ block.fc1_w + block.fc1_b) @ block.fc2_w
-            + block.fc2_b
-        )
-
-    def raw(
-        self, points: np.ndarray, cond: tuple[np.ndarray, ...], head: Linear | TokenHead
-    ) -> np.ndarray:
-        """손바닥·손가락·프롬프트 토큰을 블록에 통과시킨 출력(범위 변환 전)."""
-        x = normalized(points, self.in_mean, self.in_std)
-        lead = x.shape[:-1]
-        fingers = (x.reshape(lead + (FINGER_COUNT, 1, CHAIN_DIM)) @ self.finger_w)[
-            ..., 0, :
-        ] + self.finger_b
-        roots = x.reshape(lead + (FINGER_COUNT, CHAIN_POINTS, POINT_DIM))[..., 0, :].reshape(
-            lead + (ROOT_DIM,)
-        )
-        prompt = np.broadcast_to(cond[0], lead + cond[0].shape)
-        h = np.concatenate([self.palm(roots)[..., None, :], fingers, prompt], axis=-2)
-        for block in self.blocks:
-            h = self.attend(block, h)
-        return head(normalize(h, self.ln_eps))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -241,8 +110,8 @@ class Embodiment:
     out_mean: np.ndarray
     out_scale: np.ndarray
     prompt: np.ndarray
-    head: Linear | TokenHead
-    backbone: Backbone | TokenBackbone
+    head: Linear
+    backbone: Backbone
     frame: InputFrame
     check_points: np.ndarray
     check_qpos: np.ndarray
@@ -251,11 +120,6 @@ class Embodiment:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "cond", self.backbone.condition(self.prompt))
-
-    @property
-    def human_ids(self) -> np.ndarray:
-        """입력으로 쓰는 사람 손 21점 인덱스."""
-        return ALL_POINTS
 
     def raw(self, points: np.ndarray) -> np.ndarray:
         """백본·출력층 원출력."""
@@ -277,10 +141,6 @@ class PromptModel:
     embodiments: dict[str, Embodiment]
     meta: dict[str, object]
 
-    def embodiment(self, name: str) -> Embodiment:
-        """이름으로 손 하나를 꺼낸다."""
-        return self.embodiments[name]
-
 
 def _text(data: np.lib.npyio.NpzFile, key: str) -> str:
     return str(data[key].item())
@@ -296,13 +156,6 @@ def _linear(data: np.lib.npyio.NpzFile, key: str) -> Linear:
     if weight.ndim != 2 or bias.shape != (weight.shape[0],):
         raise ValueError(f"{key} 층 모양이 맞지 않습니다")
     return Linear(weight, bias)
-
-
-def _norm(data: np.lib.npyio.NpzFile, key: str, width: int) -> tuple[np.ndarray, np.ndarray]:
-    weight, bias = _array(data, f"{key}_w"), _array(data, f"{key}_b")
-    if weight.shape != (width,) or bias.shape != (width,):
-        raise ValueError(f"{key} 정규화 크기가 {width}가 아닙니다")
-    return weight, bias
 
 
 def _frame(data: np.lib.npyio.NpzFile) -> InputFrame:
@@ -359,72 +212,18 @@ def _backbone(data: np.lib.npyio.NpzFile) -> Backbone:
     )
 
 
-def _token_block(data: np.lib.npyio.NpzFile, k: int, width: int, heads: int) -> TokenBlock:
-    p = f"blk{k}_"
-    qkv, proj, fc1, fc2 = (_linear(data, f"{p}{n}") for n in ("qkv", "proj", "fc1", "fc2"))
-    hidden = fc1.bias.size
-    if (
-        qkv.weight.shape != (3 * width, width)
-        or proj.weight.shape != (width, width)
-        or fc1.weight.shape != (hidden, width)
-        or fc2.weight.shape != (width, hidden)
-    ):
-        raise ValueError(f"블록 {k}의 층 크기가 폭 {width}와 맞지 않습니다")
-    ln1, ln2 = _norm(data, f"{p}ln1", width), _norm(data, f"{p}ln2", width)
-    return token_block(ln1, qkv, proj, ln2, fc1, fc2, heads)
-
-
-def _token_backbone(data: np.lib.npyio.NpzFile, prompt_tokens: int) -> TokenBackbone:
-    finger_w, finger_b = _array(data, "finger_w"), _array(data, "finger_b")
-    if finger_w.ndim != 3 or finger_w.shape[0] != FINGER_COUNT or finger_w.shape[2] != CHAIN_DIM:
-        raise ValueError(f"손가락 토큰 입력은 ({FINGER_COUNT}, 폭, {CHAIN_DIM})이어야 합니다")
-    width = finger_w.shape[1]
-    heads = int(data["head_count"])
-    if finger_b.shape != (FINGER_COUNT, width) or heads < 1 or width % heads:
-        raise ValueError("손가락 토큰 치우침이나 머리 수가 폭과 맞지 않습니다")
-    palm = _linear(data, "palm")
-    if palm.weight.shape != (width, ROOT_DIM):
-        raise ValueError(f"손바닥 토큰 입력은 {ROOT_DIM}개여야 합니다")
-    blocks = tuple(_token_block(data, k, width, heads) for k in range(int(data["block_count"])))
-    if not blocks:
-        raise ValueError("트랜스포머 블록이 없습니다")
-    in_mean, in_std = _input_norm(data)
-    return TokenBackbone(
-        in_mean,
-        in_std,
-        np.ascontiguousarray(finger_w.transpose(0, 2, 1)),
-        finger_b,
-        palm,
-        blocks,
-        _norm(data, "lnf", width),
-        heads,
-        float(data["ln_eps"]),
-        prompt_tokens,
-    )
-
-
-def _head(
-    data: np.lib.npyio.NpzFile, p: str, backbone: Backbone | TokenBackbone
-) -> Linear | TokenHead:
+def _head(data: np.lib.npyio.NpzFile, p: str, backbone: Backbone) -> Linear:
     head = _linear(data, f"{p}head")
     if head.weight.shape[1] != backbone.width:
         raise ValueError(f"{p}head 입력 크기가 백본 폭 {backbone.width}와 맞지 않습니다")
-    if isinstance(backbone, Backbone):
-        return head
-    token = np.asarray(data[f"{p}token"])
-    if token.shape != head.bias.shape or not np.issubdtype(token.dtype, np.integer):
-        raise ValueError(f"{p}token은 출력마다 정수 하나여야 합니다")
-    if np.any(token < 0) or np.any(token >= INPUT_TOKENS):
-        raise ValueError(f"{p}token은 0~{INPUT_TOKENS - 1}이어야 합니다")
-    gain, shift = backbone.final
-    return TokenHead(head.weight * gain, head.bias + head.weight @ shift, token.astype(np.intp))
+    return head
 
 
 def _embodiment(
     data: np.lib.npyio.NpzFile,
     name: str,
     side: str,
-    backbone: Backbone | TokenBackbone,
+    backbone: Backbone,
     frame: InputFrame,
     check_points: np.ndarray,
     meta: dict[str, object],
@@ -476,30 +275,17 @@ def _embodiment(
     )
 
 
-def _any_backbone(
-    data: np.lib.npyio.NpzFile, fmt: str, names: list[str]
-) -> Backbone | TokenBackbone:
-    if fmt == PROMPT_FORMAT:
-        return _backbone(data)
-    shapes = {np.shape(data[f"e_{n}_prompt"]) for n in names}
-    if len(shapes) != 1 or len(next(iter(shapes))) != 2:
-        raise ValueError("프롬프트 토큰 모양이 손마다 같은 (토큰 수, 폭)이어야 합니다")
-    return _token_backbone(data, next(iter(shapes))[0])
-
-
 def load_prompt_model(path: Path) -> PromptModel:
     """GeoRT 프롬프트 모델(.npz)을 읽고 검사한다. 실패하면 GeortConfigError."""
     path = path.expanduser()
     try:
         with np.load(path, allow_pickle=False) as data:
             fmt = _text(data, "format")
-            if fmt not in PROMPT_FORMATS:
-                raise ValueError(
-                    f"format {fmt}을(를) 지원하지 않습니다 ({', '.join(PROMPT_FORMATS)})"
-                )
+            if fmt != PROMPT_FORMAT:
+                raise ValueError(f"format {fmt}을(를) 지원하지 않습니다 ({PROMPT_FORMAT})")
             frame = _frame(data)
             names = [str(n) for n in data["embodiments"]]
-            backbone = _any_backbone(data, fmt, names)
+            backbone = _backbone(data)
             side = _text(data, "side")
             meta = json.loads(_text(data, "meta_json"))
             check_points = _array(data, "check_points")
@@ -525,16 +311,3 @@ def load_prompt_model(path: Path) -> PromptModel:
         ) from e
     return model
 
-
-def model_format(path: Path) -> str:
-    """모델 파일의 ``format`` 문자열. 읽을 수 없으면 빈 문자열."""
-    try:
-        with np.load(path.expanduser(), allow_pickle=False) as data:
-            return _text(data, "format")
-    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
-        return ""
-
-
-def is_prompt_model(path: Path) -> bool:
-    """GeoRT 프롬프트 모델(v1·v2) 파일인지."""
-    return model_format(path) in PROMPT_FORMATS

@@ -8,10 +8,10 @@ from whatslab.solvers.hand.geort import (
     GeortHandSolver,
     GeortInputError,
     load_prompt_model,
-    masked_keypoints,
     read_config,
 )
 from whatslab.solvers.hand.geort.keypoints import canonical_points, mediapipe21
+from whatslab.solvers.hand.xr_input import masked_keypoints
 
 ORCA = "orca_right"
 
@@ -236,17 +236,6 @@ def test_first_command_is_inside_joint_limits(tmp_path, geort_model):
     assert np.all(held >= lim[:, 0]) and np.all(held <= lim[:, 1])
 
 
-def test_robot_limits_narrow_geort_output(tmp_path, geort_model):
-    free = _ctrl(tmp_path, geort_model)
-    names = free.joint_names
-    tight = {n: (0.01, 0.02) for n in names}
-    ctrl = HandRetargetController(
-        "right", f"geort:{_cfg(tmp_path, geort_model)}", robot_limits=tight
-    )
-    q = ctrl.compute(_sample(identity_joints(0.002))).joint_angles
-    assert np.all(q >= 0.01 - 1e-12) and np.all(q <= 0.02 + 1e-12)
-
-
 def test_bare_geort_name_uses_packaged_config_not_cwd(tmp_path, monkeypatch):
     (tmp_path / "geort").mkdir()
     (tmp_path / "geort" / "orca_right.yaml").write_text("name: other\nside: right\n")
@@ -254,23 +243,6 @@ def test_bare_geort_name_uses_packaged_config_not_cwd(tmp_path, monkeypatch):
     path = geort_config_path("orca_right")
     assert not path.startswith(str(tmp_path)) and path.endswith("geort/orca_right.yaml")
     assert read_config(path).name == ORCA
-
-
-def test_robot_limits_with_no_matching_joint_is_error(tmp_path, geort_model):
-    other = {"some_other_hand_joint": (0.0, 1.0)}
-    with pytest.raises(GeortConfigError) as e:
-        HandRetargetController("right", f"geort:{_cfg(tmp_path, geort_model)}", robot_limits=other)
-    assert e.value.code == "GEORT_LIMITS_UNMATCHED"
-
-
-def test_robot_limits_partial_match_warns(tmp_path, geort_model, caplog):
-    free = _ctrl(tmp_path, geort_model)
-    partial = {free.joint_names[0]: (-10.0, 10.0)}
-    with caplog.at_level("WARNING"):
-        HandRetargetController(
-            "right", f"geort:{_cfg(tmp_path, geort_model)}", robot_limits=partial
-        )
-    assert free.joint_names[1] in caplog.text
 
 
 def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):

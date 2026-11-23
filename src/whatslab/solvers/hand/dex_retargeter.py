@@ -26,14 +26,6 @@ _DEFAULT_HUMAN_HAND_LENGTH = 0.19
 logging.getLogger("dex_retargeting.yourdfpy").setLevel(logging.ERROR)
 
 
-def is_dex_config(name) -> bool:
-    """`dex:` 접두사가 붙었는지.
-
-    접두사 없는 손 이름·경로도 받는 resolve_hand_config 용이다. 엔진 판별은 engine_of.
-    """
-    return isinstance(name, str) and name.startswith(DEX_PREFIX)
-
-
 def hand_config_names() -> List[str]:
     d = os.path.join(configs_root(), HANDS_DIR)
     if not os.path.isdir(d):
@@ -42,7 +34,7 @@ def hand_config_names() -> List[str]:
 
 
 def resolve_hand_config(name: str, side: Optional[str] = None) -> str:
-    if is_dex_config(name):
+    if name.startswith(DEX_PREFIX):
         name = name[len(DEX_PREFIX):]
     p = os.path.expanduser(name)
     if os.path.isfile(p):
@@ -189,7 +181,6 @@ class XRHandRetargeter:
             if opt.target_link_human_indices is None
             else np.asarray(opt.target_link_human_indices, dtype=int)
         )
-        self._last_mano: Optional[np.ndarray] = None
 
     @staticmethod
     def _frame_positions(model, q):
@@ -221,10 +212,6 @@ class XRHandRetargeter:
     def joint_limits(self) -> np.ndarray:
         return np.array(self._seq.joint_limits, dtype=float)
 
-    @property
-    def mano_to_root(self) -> Optional[np.ndarray]:
-        return None if self._rot_fixed is None else self._rot_fixed.copy()
-
     def human_keypoints(self, xr_joints) -> np.ndarray:
         xr = mirror_xr_joints(xr_joints) if self.mirror else xr_joints
         mano = xr_to_mano(xr)
@@ -244,16 +231,11 @@ class XRHandRetargeter:
         kp = self.human_keypoints(xr_joints)
         if not np.all(np.isfinite(kp)):
             raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")
-        self._last_mano = kp
         q = self._seq.retarget(self.reference(kp), fixed_qpos=self._fixed_qpos)
         q = np.asarray(q, dtype=float)[self._idx_target]
         if not np.all(np.isfinite(q)):
             raise HandInputError("dex-retargeting 해가 유한하지 않다")
         return q
-
-    @property
-    def last_keypoints(self) -> Optional[np.ndarray]:
-        return None if self._last_mano is None else self._last_mano.copy()
 
     def full_qpos(self, q: np.ndarray) -> np.ndarray:
         out = np.zeros(self._seq.optimizer.robot.dof)
@@ -273,13 +255,11 @@ class XRHandRetargeter:
         proj = getattr(self._seq.optimizer, "projected", None)
         if proj is not None:
             proj[:] = False
-        self._last_mano = None
 
 
 __all__ = [
     "DexHandConfig",
     "XRHandRetargeter",
     "hand_config_names",
-    "is_dex_config",
     "resolve_hand_config",
 ]

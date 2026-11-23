@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Mapping, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 
 from whatslab.core.types import HandCommand, HandPose, InputSample
+
+from .xr_input import HandInputError, masked_keypoints
 
 _log = logging.getLogger(__name__)
 
@@ -50,16 +52,14 @@ class HandRetargetController:
     - ``geort:<설정>`` → `GeortHandSolver` (GeoRT 소프트 프롬프트,
       configs/geort/<설정>.yaml 또는 경로)
 
-    공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 풀 수 없으면(dex 의
-    `HandInputError`, geort 의 `GeortInputError` — 그 밖의 예외는 올린다) 직전 명령을
+    공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 풀 수 없으면(`HandInputError` —
+    geort 의 `GeortInputError` 도 이것이다. 그 밖의 예외는 올린다) 직전 명령을
     유지하고(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진
     상태(low-pass·warm start)를 한 번 비운다. 첫 입력 전 명령은 0 을 관절범위로 자른 값이다.
     `HandModel` 은 추적이 없는 틱에 compute 를 부르지 않고 손 관절을 q 에서 뺀다 — 직전 명령
     유지는 직접 부르는 쪽에 적용된다.
 
-    ``robot_limits`` ({관절: (lo, hi)}) 는 geort 출력을 실제 로봇 범위로 더 좁힌다(dex 는 URDF
-    범위를 직접 쓰므로 무시). ``urdf_root`` 는 dex 만 쓰고 geort 에서는 무시한다. 두 인자 모두
-    엔진과 관계없이 넘겨도 된다.
+    ``urdf_root`` 는 dex 만 쓰고 geort 에서는 무시한다(엔진과 관계없이 넘겨도 된다).
     """
 
     def __init__(
@@ -67,7 +67,6 @@ class HandRetargetController:
         hand_type: str,
         config_name: str = "dex:orca",
         urdf_root=None,
-        robot_limits: Optional[Mapping[str, Tuple[float, float]]] = None,
         **kwargs,
     ):
         self.engine_name = engine_of(config_name)
@@ -75,22 +74,15 @@ class HandRetargetController:
         if self.engine_name == DEX_PREFIX:
             from .dex_retargeter import XRHandRetargeter
 
-            if robot_limits is not None:
-                _log.debug("dex 엔진은 손 URDF 범위를 직접 쓴다 — robot_limits 무시")
-            from .xr_input import HandInputError
-
             self._engine = XRHandRetargeter(name, side=hand_type, urdf_root=urdf_root, **kwargs)
-            self._frame_errors: Tuple[type, ...] = (HandInputError,)
+            self._run = self._engine.compute
         else:
-            from .geort import GeortHandSolver, GeortInputError
+            from .geort import GeortHandSolver
 
-            if urdf_root is not None:
-                _log.debug("geort 엔진은 urdf_root 를 쓰지 않는다 — 무시 (%s)", urdf_root)
             self._engine = GeortHandSolver.from_config(
-                geort_config_path(name), human_side=hand_type, robot_limits=robot_limits, **kwargs
+                geort_config_path(name), human_side=hand_type, **kwargs
             )
-            # 이번 프레임만 못 푸는 입력 오류 — 그 밖의 예외(모양 오류 등 버그)는 그대로 올린다.
-            self._frame_errors = (GeortInputError,)
+            self._run = self._engine.solve
         lim = self._engine.joint_limits
         self._last = np.clip(np.zeros(len(self._engine.joint_names)), lim[:, 0], lim[:, 1])
         self._tracking = False
@@ -123,14 +115,9 @@ class HandRetargetController:
         return self._engine.model.side
 
     def _solve(self, hand: HandPose) -> np.ndarray:
-        from .geort import masked_keypoints
-
-        # 무효 관절(원점·항등으로 남은 값)은 두 엔진 모두 NaN 으로 가려 넣는다 — 쓰는 관절이
-        # 무효면 엔진이 이번 프레임 입력 오류(HandInputError·GeortInputError)를 낸다.
-        joints = masked_keypoints(hand.xr_joints, hand.xr_valid)
-        if self.engine_name == DEX_PREFIX:
-            return self._engine.compute(joints)
-        return self._engine.solve(joints)
+        # 무효 관절(원점·항등으로 남은 값)은 NaN 으로 가려 넣는다 — 쓰는 관절이 무효면 엔진이
+        # 이번 프레임 입력 오류(HandInputError)를 낸다.
+        return self._run(masked_keypoints(hand.xr_joints, hand.xr_valid))
 
     def compute(self, sample: InputSample) -> HandCommand:
         hand = sample.hand
@@ -143,7 +130,7 @@ class HandRetargetController:
                 self._last = np.asarray(self._solve(hand), dtype=float)
                 self._tracking = True
                 self.last_error = None
-            except self._frame_errors as e:
+            except HandInputError as e:
                 first = self.last_error is None
                 if first:
                     _log.warning("손 리타게팅 입력을 풀 수 없어 직전 명령을 유지한다: %s", e)
