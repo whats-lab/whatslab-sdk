@@ -12,7 +12,7 @@ import yaml
 from whatslab.core.constants import OPENXR26_TO_HAND21, SIDES, XR_JOINT_COUNT, XR_JOINT_FIELDS
 
 from .errors import GeortConfigError, GeortInputError
-from .keypoints import POSITION
+from .preprocess import POSITION
 from .prompt import KIND_ROBOT, Embodiment, PromptModel, load_prompt_model
 
 KEYPOINT_SHAPE = (XR_JOINT_COUNT, XR_JOINT_FIELDS)

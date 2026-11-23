@@ -161,10 +161,9 @@ whatslab/
 │   ├── glove/        AirGloveReceiver (airglove-client, 연결 상태·알람)
 │   └── webxr/        WebXRHandReceiver, websockets 서버, TLS 인증서, 헤드셋 페이지
 ├── retarget/
-│   ├── retargeter.py HandRetargeter: 엔진 선택, 추적 끊김 처리
-│   ├── dex.py        DexEngine (dex-retargeting DexPilot)
-│   ├── xr_input.py   입력 검증, 거울상, OpenXR → MANO
-│   └── geort/        GeortEngine, 소프트 프롬프트 모델 추론, 동봉 모델
+│   ├── retargeter.py HandRetargeter: 엔진 선택, 추적 끊김 처리, HandInputError
+│   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, 손바닥 좌표계, 거울상
+│   └── geort/        engine.py GeortEngine · preprocess.py Kabsch 입력 좌표계 · prompt.py 모델 · 동봉 npz
 ├── hand.py           HandModel: 수신 → 리타게팅 → (선택) SafetyFilter
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)

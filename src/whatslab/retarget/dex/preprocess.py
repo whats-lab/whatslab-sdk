@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -16,12 +16,10 @@ from whatslab.core.constants import (
     XR_WRIST,
 )
 
+from ..retargeter import HandInputError
+
 MANO_PALM: Tuple[int, ...] = (HAND21_WRIST, HAND21_INDEX_MCP, HAND21_MIDDLE_MCP, HAND21_LITTLE_MCP)
 _MIRROR = np.diag([-1.0, 1.0, 1.0])
-
-
-class HandInputError(ValueError):
-    pass
 
 
 def _as_xr(xr_joints) -> np.ndarray:
@@ -84,10 +82,3 @@ def mirror_xr_joints(xr_joints) -> np.ndarray:
     out[:, :4] = Rotation.from_matrix(_MIRROR @ local @ _MIRROR).as_quat()
     out[:, 4:7] = ((a[:, 4:7] - a[XR_WRIST, 4:7]) @ rot_w) @ _MIRROR
     return out
-
-
-def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.ndarray:
-    kp = np.array(keypoints, dtype=np.float64, copy=True)
-    if valid is not None:
-        kp[~np.asarray(valid, dtype=bool), 4:7] = np.nan
-    return kp

@@ -170,10 +170,9 @@ whatslab/
 │   ├── glove/        AirGloveReceiver (airglove-client, connection status and alarms)
 │   └── webxr/        WebXRHandReceiver, its websockets server, TLS certificate, headset page
 ├── retarget/
-│   ├── retargeter.py HandRetargeter: engine selection and tracking-loss handling
-│   ├── dex.py        DexEngine (dex-retargeting DexPilot)
-│   ├── xr_input.py   input validation, mirroring, OpenXR → MANO
-│   └── geort/        GeortEngine, soft-prompt model inference, bundled model
+│   ├── retargeter.py HandRetargeter: engine selection, tracking-loss handling, HandInputError
+│   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, palm frame, mirroring
+│   └── geort/        engine.py GeortEngine · preprocess.py Kabsch input frame · prompt.py model · bundled npz
 ├── hand.py           HandModel: receiver → retargeter → optional SafetyFilter
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)

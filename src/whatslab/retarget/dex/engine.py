@@ -16,8 +16,8 @@ from scipy.spatial.transform import Rotation
 from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
-from .retargeter import DEX_PREFIX
-from .xr_input import HandInputError, mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
+from ..retargeter import DEX_PREFIX, HandInputError
+from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
 _DEX_KEYS = frozenset(f.name for f in fields(RetargetingConfig))

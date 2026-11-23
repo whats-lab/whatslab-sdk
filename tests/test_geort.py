@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget import masked_keypoints
 from whatslab.retarget.geort import (
     GeortConfigError,
     GeortEngine,
@@ -10,9 +11,8 @@ from whatslab.retarget.geort import (
     load_prompt_model,
     read_config,
 )
-from whatslab.retarget.geort.keypoints import canonical_points, mediapipe21
+from whatslab.retarget.geort.preprocess import canonical_points, mediapipe21
 from whatslab.retarget.retargeter import HandRetargeter
-from whatslab.retarget.xr_input import masked_keypoints
 
 ORCA = "orca_right"
 

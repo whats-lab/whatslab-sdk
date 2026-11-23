@@ -1,11 +1,13 @@
 _LAZY = {
     "HandRetargeter": ".retargeter",
+    "HandInputError": ".retargeter",
     "engine_of": ".retargeter",
+    "masked_keypoints": ".retargeter",
     "DexEngine": ".dex",
     "DexHandConfig": ".dex",
     "hand_config_names": ".dex",
-    "mirror_xr_joints": ".xr_input",
-    "xr_to_mano": ".xr_input",
+    "mirror_xr_joints": ".dex",
+    "xr_to_mano": ".dex",
     "GeortEngine": ".geort",
 }
 

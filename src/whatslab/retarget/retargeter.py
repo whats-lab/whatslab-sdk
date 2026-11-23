@@ -7,13 +7,22 @@ import numpy as np
 
 from whatslab.core.types import HandCommand, HandPose, InputSample
 
-from .xr_input import HandInputError, masked_keypoints
-
 _log = logging.getLogger(__name__)
 
 DEX_PREFIX = "dex:"
 GEORT_PREFIX = "geort:"
 ENGINES = (DEX_PREFIX, GEORT_PREFIX)
+
+
+class HandInputError(ValueError):
+    pass
+
+
+def masked_keypoints(keypoints: np.ndarray, valid: Optional[np.ndarray]) -> np.ndarray:
+    kp = np.array(keypoints, dtype=np.float64, copy=True)
+    if valid is not None:
+        kp[~np.asarray(valid, dtype=bool), 4:7] = np.nan
+    return kp
 
 
 def engine_of(config_name) -> str:

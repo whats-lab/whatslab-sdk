@@ -45,7 +45,8 @@ receiver, retarget ← hand.py
 | `solve(xr_joints) -> q`, `joint_names`, `joint_limits`, `reset()` | 접두어(`dex:`, `geort:`)로 엔진 선택 |
 | 풀 수 없는 입력이면 `HandInputError` 계열 예외 | 추적 끊김 시 `reset()`, 풀 수 없는 입력이면 직전 명령 유지 |
 
-새 엔진을 넣을 때 추적 끊김·직전 값 유지 로직을 엔진 안에 다시 만들지 않는다.
+엔진마다 입력 전처리(OpenXR 26관절 → 그 엔진의 입력)는 `<엔진>/preprocess.py` 에 둔다. 새 엔진을 넣을 때
+추적 끊김·직전 값 유지 로직을 엔진 안에 다시 만들지 않는다.
 
 ## 코드 규칙
 

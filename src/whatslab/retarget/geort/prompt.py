@@ -8,7 +8,7 @@ import numpy as np
 
 from whatslab.core.constants import HAND21_COUNT
 
-from .keypoints import FRAME_V2, PALM_MCPS, InputFrame
+from .preprocess import FRAME_V2, PALM_MCPS, InputFrame
 
 PROMPT_FORMAT = "geort-prompt-v1"
 KIND_ROBOT = "robot"

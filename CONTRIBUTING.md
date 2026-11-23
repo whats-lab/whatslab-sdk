@@ -46,7 +46,8 @@ receiver, retarget ← hand.py
 | `solve(xr_joints) -> q`, `joint_names`, `joint_limits`, `reset()` | picking the engine from the prefix (`dex:`, `geort:`) |
 | raises a `HandInputError` subclass for input it cannot solve | `reset()` on tracking loss; holding the last command on unsolvable input |
 
-A new engine must not re-implement tracking-loss handling or last-value holding.
+Each engine keeps its own input preprocessing in `<engine>/preprocess.py` (OpenXR 26 joints → that
+engine's input). A new engine must not re-implement tracking-loss handling or last-value holding.
 
 ## Code rules
 

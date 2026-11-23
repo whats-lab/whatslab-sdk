@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..xr_input import HandInputError
+from ..retargeter import HandInputError
 
 
 class GeortError(ValueError):

@@ -18,8 +18,7 @@ from whatslab.retarget import (  # noqa: E402
     mirror_xr_joints,
     xr_to_mano,
 )
-from whatslab.retarget.dex import resolve_hand_config  # noqa: E402
-from whatslab.retarget.xr_input import mano_palm_frame, xr_wrist_positions  # noqa: E402
+from whatslab.retarget.dex import mano_palm_frame, resolve_hand_config, xr_wrist_positions  # noqa: E402
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
@@ -223,7 +222,7 @@ def test_retargeter_rejects_onnx_kwargs():
 
 def test_degenerate_input_holds_last_command():
     _require_urdf("orca_right")
-    from whatslab.retarget.xr_input import HandInputError
+    from whatslab.retarget import HandInputError
 
     ctrl = HandRetargeter("right", "dex:orca")
     good = synthetic_right_hand(0.3)
@@ -237,7 +236,7 @@ def test_degenerate_input_holds_last_command():
 
 def test_dex_respects_xr_valid():
     _require_urdf("orca_right")
-    from whatslab.retarget.xr_input import HandInputError
+    from whatslab.retarget import HandInputError
 
     ctrl = HandRetargeter("right", "dex:orca")
     good = synthetic_right_hand(0.3)
