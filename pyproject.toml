@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "whatslab-sdk"
-version = "0.5.0"
+version = "1.0.0"
 description = "WHATs LAB hand SDK — glove / hand-tracking input and robot-hand retargeting (ROS-independent)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v0.4.0#subdirectory=python"]
+receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v1.0.0#subdirectory=python"]
 hand     = ["pin", "dex-retargeting>=0.4.6", "torch", "six",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]

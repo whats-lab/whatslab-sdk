@@ -85,7 +85,7 @@ pip install -e '.[all]'   # 개발용 editable
 
 | extra | 설치되는 것 | 용도 |
 |---|---|---|
-| `receiver` | `airglove-client`(git 태그 v0.4.0) | AirGlove(Spine) 입력 |
+| `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
@@ -106,7 +106,7 @@ Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `dex-retargeting<0.5` 를 �
 | Quest 핸드트래킹 | 헤드셋 브라우저(WebXR). 앱 설치도 Spine 도 필요 없습니다 |
 
 `AirGloveReceiver` 는 [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)(`airglove-client`
-0.4.0)를 감쌉니다. whatslab 0.5.0 부터 Spine 2.x 는 지원하지 않으며, Spine 2.x 에는 whatslab 0.4.x 를 쓰세요.
+1.0.0)를 감쌉니다. whatslab 1.0.0 부터 Spine 2.x 는 지원하지 않으며, Spine 2.x 에는 whatslab 0.4.x 를 쓰세요.
 Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC 에서 글러브를 받을 수 있는 프로세스는
 하나뿐입니다. 손마다 `HandPose.xr_joints`(OpenXR 26관절, 손목 기준 `(26, 8)` 배열)를 줍니다.
 손목 자세는 주지 않습니다 — Spine 이 보내는 손목 값은 손목 자세가 아니라 캘리브레이션되지 않은 IMU 쿼터니언입니다. 필드 세부는 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.

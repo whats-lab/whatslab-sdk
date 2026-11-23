@@ -90,7 +90,7 @@ pip install -e '.[all]'   # editable, for development
 
 | Extra | Brings in | Needed for |
 |---|---|---|
-| `receiver` | `airglove-client` (git tag v0.4.0) | AirGlove (Spine) input |
+| `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
 | `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
@@ -112,7 +112,7 @@ Python < 3.13. numpy has no upper bound: numpy-1 environments (Isaac Sim 5.1, fo
 | Quest hand tracking | the headset's browser (WebXR); no app to install, no Spine |
 
 `AirGloveReceiver` wraps [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client)
-(`airglove-client` 0.4.0). Spine 2.x is not supported since whatslab 0.5.0; use whatslab 0.4.x
+(`airglove-client` 1.0.0). Spine 2.x is not supported since whatslab 1.0.0; use whatslab 0.4.x
 for it. Spine sends to one client per machine (UDP 4040), so only one process on the Spine PC
 can receive the glove. Per hand it delivers `HandPose.xr_joints`, the 26 OpenXR joints as a
 `(26, 8)` array relative to the wrist. No wrist pose is given: what Spine
