@@ -1,3 +1,5 @@
+<p align="center"><a href="CONTRIBUTING.md">English</a> | <b>한국어</b></p>
+
 # 기여 가이드
 
 whatslab-sdk 에 코드를 넣기 전에 읽을 규칙과 그 이유. 설치·사용법은 [README](README.ko.md),
@@ -75,7 +77,7 @@ pytest -q
 ## 커밋과 릴리스
 
 - 커밋 제목: `종류(범위): 무엇을` — 종류는 `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
-  API 를 깨면 `!` 를 붙인다(`refactor!: …`). 본문은 한국어로, 왜 바꿨는지를 쓴다.
+  API 를 깨면 `!` 를 붙인다(`refactor!: …`). 본문에는 왜 바꿨는지를 쓴다.
 - CHANGELOG 는 두지 않는다. 변경 기록은 커밋과 PR 이 맡는다.
 - 버전은 `pyproject.toml` 의 `version` 하나이고, 릴리스는 `vX.Y.Z` 태그다. 소비자는 태그로 고정한다.
 - PyPI 에 올리지 않는다(`Private :: Do Not Upload` 분류자가 막는다).

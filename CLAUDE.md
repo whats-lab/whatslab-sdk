@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-이 저장소의 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md) 다. 작업 전에 읽고 그대로 따른다.
+이 저장소의 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)(한국어판 [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)) 다. 작업 전에 읽고 그대로 따른다.
 사실(설치, 지원 손, 공개 API)은 [README](README.ko.md) 와 [API.md](docs/API.md) 가 기준이다 — 여기에 옮겨 적지 않는다.
 
 Claude 에게만 해당하는 것:
