@@ -16,6 +16,7 @@
 | 팔 | AgileX nero, CAN 으로 연결 (`can0`) |
 | 손 | ORCA hand, USB 시리얼 |
 | 입력 | Quest 컨트롤러·맨손 — 브라우저 WebXR |
+| 손 입력(`--arm controller`, 기본) | AirGlove + Spine 3.0.0 (같은 PC, UDP 4040) |
 
 손·팔이 없어도 **시각화까지는 돈다**(3단계). 하드웨어는 5단계부터 필요하다.
 
@@ -55,8 +56,8 @@ ORCA_SRC=~/src/orca_core ORCA_REF=v0.3.0 PY=.venv/bin/python ./scripts/install_r
 $PY -m pytest -q -rs
 ```
 
-`144 passed / 3 skipped` 가 정상이다. skip 3개는 `lerobot` 미설치로, 이 라이브러리는
-런타임 의존이 아니다(`whatslab.data` 는 lerobot 없이 v2.1 을 쓴다).
+실패 없이 끝나면 정상이다. skip 은 선택 의존성(`lerobot`, 일부 URDF 등)이 없어서 나는 것이다 —
+`lerobot` 은 런타임 의존이 아니다(`whatslab.data` 는 lerobot 없이 v2.1 을 쓴다).
 
 > 설치 중 뜨는 `orca-core requires numpy>=2.2.6, but you have 1.26.4` 경고는
 > **의도된 것**이다. 위 2번 이유 그대로다.
@@ -65,8 +66,8 @@ $PY -m pytest -q -rs
 
 ## 2. 입력 경로
 
-Quest 입력은 **헤드셋 브라우저 WebXR** 하나다(전용 앱·APK 없음, 0.5.0). 준비는 인증서 한 번뿐이다
-(`scripts/make_webxr_cert.sh`). `--arm controller`(기본) 는 컨트롤러로 팔, AirGlove 로 손,
+Quest 입력은 **헤드셋 브라우저 WebXR** 하나다(전용 앱·APK 없음). HTTPS 인증서는 수신기가 시작할 때
+`~/.cache/whatslab/webxr/` 에 알아서 만든다(IP 가 바뀌면 재발급). `--arm controller`(기본) 는 컨트롤러로 팔, AirGlove 로 손,
 `--arm wrist` 는 맨손 핸드트래킹으로 팔(손목)과 손(관절 26개)을 함께 움직인다.
 
 ---
@@ -77,7 +78,6 @@ Quest 입력은 **헤드셋 브라우저 WebXR** 하나다(전용 앱·APK 없�
 움직이지 않는다.
 
 ```bash
-./scripts/make_webxr_cert.sh                        # 최초 1회
 $PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz
 ```
 
@@ -94,12 +94,10 @@ $PY examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz
 3. 패스스루로 주변이 보이고 컨트롤러 위치가 그려지면 연결된 것이다.
 4. 터미널의 `[q] arm=[...] target=on` 에서 `target=on` 이면 목표가 들어오고 있다.
 
-IP 가 여러 개면 로그가 후보를 같이 찍는다. 그래도 안 붙으면 그 IP 를 SAN 에 넣어
-인증서를 다시 만든다.
-
-```bash
-./scripts/make_webxr_cert.sh -i 192.168.0.42 -f
-```
+IP 가 여러 개면 로그가 후보를 같이 찍는다. 이 머신의 IPv4 는 모두 인증서에 들어가 있으므로, 안 붙으면
+헤드셋이 그 IP 와 같은 네트워크에 있는지부터 본다. `scripts/make_webxr_cert.sh -i <IP>` 로 넣은 추가 IP 는
+다음 실행 때 수신기가 인증서를 자동으로 다시 만들면서 빠진다 — 직접 만든 인증서를 쓰려면 코드에서
+`certfile=`/`keyfile=` 을 넘긴다(`quest_arm.py` 에는 이 옵션이 없다).
 
 유선(`adb reverse`)으로 쓸 거면 `--webxr-no-tls` 를 주고 `localhost` 로 붙는다.
 
@@ -118,7 +116,7 @@ reach 결과는 rig yaml 의 `calibration.input_reach` 에 자동 기록된다(�
 그 줄만 바뀌는 게 정상이다). yaw 는 저장되지 않으므로 **매번 해야 한다**.
 
 캘리브가 이상하면 `--no-calib` 로 끄고 A/B 한다. 자세한 것은
-[GUIDE.md §2](GUIDE.md).
+[GUIDE.md §2](GUIDE.md#2-캘리브레이션).
 
 ---
 
@@ -211,7 +209,7 @@ ls -l /dev/serial/by-id/            # 어느 장치가 어느 ACM 인지
 ### 60Hz 를 못 맞춘다
 
 종료 시 `[rate] 60Hz 를 못 맞춘 프레임 N개` 가 찍힌다. 원인 분리는
-[GUIDE.md §4](GUIDE.md) 를 본다.
+[GUIDE.md §4](GUIDE.md#4-진단) 를 본다.
 
 ### 팔이 엉뚱한 곳으로 간다
 

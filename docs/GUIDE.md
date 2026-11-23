@@ -60,7 +60,8 @@ solver:
 ```
 
 양팔 로봇(OpenArm v2.0)은 URDF 하나에 rig 를 팔마다 두고 반대 팔을 `lock_joints` 로 잠근다:
-`TeleopModel({"left": "rigs/openarm_v20_left.yaml", "right": "rigs/openarm_v20_right.yaml"})`.
+`GloveModel({"left": "rigs/openarm_v20_left.yaml", "right": "rigs/openarm_v20_right.yaml"})`
+(`TeleopModel` 은 추상 클래스라 직접 만들 수 없다 — 프리셋이나 서브클래스를 쓴다).
 
 ### 도달 범위 기록
 
@@ -114,16 +115,15 @@ solver:
   iters_per_call: 20     # diff 백엔드의 틱당 반복
   reach_max: 0.9204      # verify_rig.py 가 기록
   max_joint_velocity: 5.0    # SafetyFilter rate-limit (rad/s)
-  joint_weights:         # 관절 비용 — 싼 관절이 먼저 쓰인다
-    joint1: 2.5
-    joint2: 2.5
-    joint3: 2.5
-    joint4: 2.5
-  k_posture: 0.05        # 자세를 관절범위 중앙으로 되돌리는 힘 (0 이면 코너에 박힌다)
-  k_limit: 1.0           # 관절 한계 근처에서 밀어내는 힘
+  k_limit: 0.3           # 관절 한계 근처에서 밀어내는 힘 (코드 기본도 0.3)
+  posture:               # 널스페이스가 돌아갈 자세(rad). 적지 않은 관절은 0
+    joint2: 0.53
+    joint4: 1.478
+  # k_posture: 0.05      # 자세로 되돌리는 힘(기본). 0 이면 코너에 박힌다
+  # joint_weights: {joint1: 2.5}   # 관절 비용(기본 1.0). 쓰지 않는 것을 권한다(1장)
 calibration:
   enabled: true
-  input_reach: 0.8314
+  input_reach: 0.6685
 ```
 
 ### 여분 자유도를 어디에 쓸지
@@ -133,10 +133,10 @@ calibration:
 
 - `k_posture > 0` **필수**. 이게 0 이면 추종은 되는데 관절이 서서히 코너로 밀려가
   결국 방위를 못 맞춘다. `k_limit`(한계 0.10rad 안에서만 작동)은 이미 늦다.
-- `q_neutral` 은 **관절범위 중앙**이다(0 이 아니다). 비대칭 범위 관절
-  (예: `[-57.9°, 122.6°]`)에서 0 은 중앙이 아니다.
-- `joint_weights` 로 선호를 준다. 팔을 무겁게 하면 손목이 먼저 쓰인다. 커플링을
-  유지하므로 손목이 포화하면 팔이 이어받는다.
+- 되돌아갈 자세는 rig `posture` 다(적지 않은 관절은 0). `posture` 가 없으면 **관절범위 중앙**
+  (`q_neutral`)이다 — 비대칭 범위 관절(예: `[-57.9°, 122.6°]`)에서 0 은 중앙이 아니다.
+- `joint_weights` 로 관절마다 비용을 달리할 수도 있다(팔을 무겁게 하면 손목이 먼저 쓰인다). 다만
+  특정 관절만 몰아 쓰게 돼 자세가 부자연스러워지므로 기본은 비용을 같게 두고 `posture` 로 푼다(1장).
 
 ### 관절을 잠글 때
 

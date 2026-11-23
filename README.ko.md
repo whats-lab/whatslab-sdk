@@ -35,7 +35,7 @@ ROS 에 의존하지 않아 어디서든 같은 프로세스 안에서 동작합
 **프레임워크에 묶이지 않음**
 - 순수 파이썬이고 ROS 의존이 없어, MuJoCo·Isaac Sim·ROS 2 어디서든 같은 프로세스 안에서 씁니다
 - 부품만 제공하고 파이프라인은 사용하는 쪽이 가집니다
-- 의존 방향이 한쪽으로 정해져 있습니다 (`receiver → core`, `teleop → core·robot·solvers`)
+- 의존 방향이 한쪽으로 정해져 있습니다 (`receiver → core`, `robot → core·solvers`, `teleop → core·robot·solvers`)
 
 **리타게팅 중심**
 - 손: 입력은 OpenXR 26관절 손(`HandPose.xr_joints`) 하나이고(AirGlove 또는 Quest 핸드트래킹), 엔진은
@@ -80,7 +80,7 @@ ROS 에 의존하지 않아 어디서든 같은 프로세스 안에서 동작합
 | ROBOTIS HX5-D20 (오른손) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 모델에는 Allegro·DG-5F-S 프롬프트도 들어 있지만, 아직 dexhand-description 에 없는 URDF 를 기준으로
-학습했습니다. 학습(bake)은 robotPlatform(`tools/bake_geort_prompt.py`)에서 합니다.
+학습했습니다. 학습 도구는 이 SDK 에 포함하지 않습니다.
 
 ## 설치
 
@@ -122,7 +122,7 @@ python examples/quest_arm.py --rig rigs/nero_orca_right.yaml --viz --robot
 거기에도 넣을 수 없습니다. 모든 태그가 `numpy>=2.2.6` 을 선언해 numpy 1 환경과 충돌하고(실제 코드는 numpy
 1.26 에서 동작합니다), wheel 에 손 설정(`models/<버전>/<모델>/config.yaml`)이 빠져 있기 때문입니다. 그래서
 스크립트가 소스를 클론해 editable 로 설치합니다. 손 모델은 `orca_core` 기본값을 쓰고, 다른 모델은
-`--hand-model` 로 지정합니다.
+`examples/quest_arm.py --hand-model` 로 지정합니다.
 
 ## 호환성
 

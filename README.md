@@ -37,7 +37,7 @@ never re-maps axes.
 **Framework-agnostic**
 - Pure Python with no ROS dependency; used in-process from MuJoCo, Isaac Sim or ROS 2
 - Provides composable parts; you own the pipeline
-- Strict dependency direction (`receiver → core`, `teleop → core·robot·solvers`)
+- Strict dependency direction (`receiver → core`, `robot → core·solvers`, `teleop → core·robot·solvers`)
 
 **Retargeting-first**
 - Hand: one input, the OpenXR 26-joint hand (`HandPose.xr_joints`), from the AirGlove or
@@ -83,7 +83,7 @@ it. On a rig, the output is also clipped to the robot hand's URDF joint limits.
 | ROBOTIS HX5-D20 (right) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are not in
-dexhand-description yet. Training (`bake`) is done in robotPlatform (`tools/bake_geort_prompt.py`).
+dexhand-description yet. Training tools are not part of this SDK.
 
 ## Installation
 
@@ -126,7 +126,7 @@ examples use it. `orca_core` (ORCA hand) cannot be listed there: every tag decla
 `numpy>=2.2.6`, which conflicts with numpy-1 environments (the code itself runs on numpy
 1.26), and its wheel leaves out the hand configs (`models/<version>/<model>/config.yaml`).
 The script therefore clones its source and installs it editable. The hand model defaults to
-`orca_core`'s choice; pass `--hand-model` for a different one.
+`orca_core`'s choice; pass `examples/quest_arm.py --hand-model` for a different one.
 
 ## Compatibility
 
