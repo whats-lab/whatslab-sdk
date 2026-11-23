@@ -13,8 +13,6 @@ from airglove_client import JOINT_NAMES, AirGloveError, Client, Side
 from whatslab.core.constants import FINGER_COUNT, OPENXR26_TO_HAND21, XR_JOINT_NAMES
 from whatslab.core.types import HandPose, InputSample
 
-from ..base import Y_UP_RH_TO_CANONICAL, to_canonical_quat
-
 _log = logging.getLogger(__name__)
 
 GLOVE_OSC_PORT = 4040          # Spine → 이 클라이언트 (PC 당 하나)
@@ -33,10 +31,6 @@ MIN_LIBRARY_VERSION = (0, 4)
 
 _SIDES = {"left": Side.LEFT, "right": Side.RIGHT}
 _HAND21 = list(OPENXR26_TO_HAND21)
-
-
-def openxr_quat_to_canonical(quat) -> np.ndarray:
-    return to_canonical_quat(Y_UP_RH_TO_CANONICAL, quat)
 
 
 def haptic_levels(values) -> list:
@@ -70,15 +64,6 @@ class GloveFrame:
     side: str
     xr_joints: np.ndarray
     valid: np.ndarray
-    seq: int
-    sender_time_us: int
-    age_s: float
-
-
-@dataclass(frozen=True)
-class GloveWrist:
-    side: str
-    orientation_raw: np.ndarray
     seq: int
     sender_time_us: int
     age_s: float
@@ -130,14 +115,7 @@ class AirGloveReceiver:
                 spine_port=self._client_port,
             )
             if self._pair != DEFAULT_PAIR:
-                set_pair = getattr(client, "set_pair", None)
-                if set_pair is None:
-                    client.close()
-                    raise AirGloveError(
-                        f"이 airglove_client 는 set_pair 가 없어 pair {self._pair} 를 "
-                        "쓸 수 없다(0.4.0 이상 필요)"
-                    )
-                set_pair(self._pair)
+                client.set_pair(self._pair)
             self._client = client
             self._protocol_checked = False
 
@@ -173,18 +151,6 @@ class AirGloveReceiver:
             reported = self._client.spine_protocol()
         return None if reported is None else int(reported[0])
 
-    def raw_wrist(self, side: str) -> Optional[np.ndarray]:
-        key = _SIDES[side]
-        with self._lock:
-            if self._client is None:
-                return None
-            frame = self._client.wrist(key)
-        if frame is None or (
-            self._stale_timeout > 0 and float(frame.age_s) >= self._stale_timeout
-        ):
-            return None
-        return np.asarray(frame.orientation, dtype=float).copy()
-
     def frame(self, side: str) -> Optional[GloveFrame]:
         frame = self._read(side)
         if frame is None:
@@ -193,22 +159,6 @@ class AirGloveReceiver:
             side=side,
             xr_joints=_xr_joints(frame),
             valid=np.asarray(frame.valid, dtype=bool).copy(),
-            seq=int(frame.seq),
-            sender_time_us=int(frame.sender_time_us),
-            age_s=float(frame.age_s),
-        )
-
-    def wrist_frame(self, side: str) -> Optional[GloveWrist]:
-        key = _SIDES[side]
-        with self._lock:
-            if self._client is None:
-                return None
-            frame = self._client.wrist(key)
-        if frame is None:
-            return None
-        return GloveWrist(
-            side=side,
-            orientation_raw=np.asarray(frame.orientation, dtype=float).copy(),
             seq=int(frame.seq),
             sender_time_us=int(frame.sender_time_us),
             age_s=float(frame.age_s),
@@ -230,20 +180,13 @@ class AirGloveReceiver:
         return not (self._stale_timeout > 0 and age_s >= self._stale_timeout)
 
     def get(self, side: str) -> InputSample:
-        frame = self._read(side)
-        if frame is None:
+        f = self.frame(side)
+        if f is None:
             return InputSample(tracked=False, timestamp=0.0)
-        ts = time.monotonic() - float(frame.age_s)
+        ts = time.monotonic() - f.age_s
         # 리타게팅이 쓰는 21점만 본다 — 안 쓰는 palm·중수골이 무효여도 추적 중이다.
-        valid = np.asarray(frame.valid, dtype=bool)
-        tracked = self._fresh(float(frame.age_s)) and bool(np.all(valid[_HAND21]))
-        hand = HandPose(
-            wrist=None,
-            xr_joints=_xr_joints(frame),
-            xr_valid=np.asarray(frame.valid, dtype=bool).copy(),
-            tracked=tracked,
-            timestamp=ts,
-        )
+        tracked = self._fresh(f.age_s) and bool(np.all(f.valid[_HAND21]))
+        hand = HandPose(xr_joints=f.xr_joints, xr_valid=f.valid, tracked=tracked, timestamp=ts)
         return InputSample(hand=hand, tracked=tracked, timestamp=ts)
 
     def connected(self, side: str) -> bool:

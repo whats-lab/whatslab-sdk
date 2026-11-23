@@ -76,8 +76,7 @@ print(m.hand_source.url)      # https://192.168.0.x:8443/
 
 HTTPS 인증서는 수신기가 시작할 때 `~/.cache/whatslab/webxr/` 에 알아서 만든다(IP 가 바뀌면 재발급).
 이 머신의 IPv4 는 모두 인증서에 들어가 있으므로, 안 붙으면 헤드셋이 같은 네트워크에 있는지부터 본다.
-`scripts/make_webxr_cert.sh -i <IP>` 로 넣은 추가 IP 는 다음 실행 때 자동 재발급되면서 빠진다 — 직접 만든
-인증서는 `WebXRHandReceiver(certfile=…, keyfile=…)` 로 넘긴다. 유선은 `tls=False` + `adb reverse tcp:8443 tcp:8443`.
+직접 만든 인증서는 `WebXRHandReceiver(certfile=…, keyfile=…)` 로 넘긴다. 유선은 `tls=False` + `adb reverse tcp:8443 tcp:8443`.
 
 ---
 

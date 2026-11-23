@@ -11,7 +11,7 @@ import ssl
 import struct
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from .tls import ensure_cert, preferred_ip
 
@@ -23,16 +23,11 @@ _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 IDLE_PING_S = 5.0
 IDLE_DROP_S = 20.0
 
-OP_CONT = 0x0
 OP_TEXT = 0x1
 OP_BINARY = 0x2
 OP_CLOSE = 0x8
 OP_PING = 0x9
 OP_PONG = 0xA
-
-_registry: Dict[int, "WebXRServer"] = {}
-_registry_lock = threading.Lock()
-
 
 class ProtocolError(RuntimeError):
     pass
@@ -121,67 +116,29 @@ def unmask(payload: bytes, mask: bytes) -> bytes:
 
 
 class WebXRServer:
+    """정적 WebXR 페이지와 WebSocket 을 한 포트에서 연다. 받은 JSON 메시지를 handler 에 넘긴다."""
 
-    def __init__(self, port: int, listen_ip: str = "0.0.0.0",
+    def __init__(self, handler: Callable[[dict], None], port: int, listen_ip: str = "0.0.0.0",
                  tls: bool = True, certfile: str = None, keyfile: str = None):
+        self._handler = handler
         self._port = port
         self._listen_ip = listen_ip
         self._tls = tls or bool(certfile)
         self._certfile = certfile
         self._keyfile = keyfile
         self._ssl_ctx: Optional[ssl.SSLContext] = None
-        self._handlers: List[Callable[[dict], None]] = []
         self._lock = threading.Lock()
-        self._refcount = 0
         self._sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()  # 실행마다 새로 — 옛 연결이 새 실행에 섞이지 않게
         self._clients = 0
         self._frames = 0
         self._bad = 0
-        self._handler_errors = 0  # 파싱은 됐지만 수신기가 처리에 실패한 횟수(_bad 와 따로)
-        self._failed_handlers: List[Callable[[dict], None]] = []
-
-    @classmethod
-    def get(cls, port: int, listen_ip: str = "0.0.0.0", tls: bool = True,
-            certfile: str = None, keyfile: str = None) -> "WebXRServer":
-        """포트의 공유 서버. port=0 은 공유하지 않는 새 서버다(서버를 함께 쓰려면 고정 포트).
-
-        한 포트의 서버는 프로세스에서 하나이고 설정도 하나다 — 같은 포트를 다른 설정으로 달라고
-        하면 ValueError.
-        """
-        srv = cls(port, listen_ip, tls, certfile, keyfile)
-        if port == 0:
-            return srv
-        with _registry_lock:
-            have = _registry.setdefault(port, srv)
-        if have._settings != srv._settings:
-            raise ValueError(
-                f"포트 {port} 의 WebXR 서버가 이미 다른 설정 {have._settings} 으로 있다 — "
-                f"요청 {srv._settings}. 같은 포트의 수신기는 listen_ip·tls·인증서가 같아야 한다")
-        return have
-
-    @property
-    def _settings(self) -> Tuple[str, bool, Optional[str], Optional[str]]:
-        return self._listen_ip, self._tls, self._certfile, self._keyfile
+        self._handler_errors = 0  # 파싱은 됐지만 handler 가 처리에 실패한 횟수(_bad 와 따로)
 
     @property
     def scheme(self) -> str:
         return "https" if self._tls else "http"
-
-    def add_handler(self, fn: Callable[[dict], None]) -> None:
-        """메시지 하나를 모든 핸들러에 넘긴다 — 같은 포트의 수신기들이 함께 받는다."""
-        with self._lock:
-            if fn not in self._handlers:
-                self._handlers.append(fn)
-
-    def remove_handler(self, fn: Callable[[dict], None]) -> None:
-        """핸들러를 뺀다. 없으면 무시한다."""
-        with self._lock:
-            if fn in self._handlers:
-                self._handlers.remove(fn)
-            if fn in self._failed_handlers:  # 버린 수신기를 붙잡지 않고, 다시 붙으면 다시 경고한다
-                self._failed_handlers.remove(fn)
 
     @property
     def port(self) -> int:
@@ -199,13 +156,13 @@ class WebXRServer:
 
     @property
     def handler_errors(self) -> int:
-        """파싱된 메시지를 수신기 핸들러가 처리하다 예외를 낸 횟수."""
+        """파싱된 메시지를 handler 가 처리하다 예외를 낸 횟수."""
         return self._handler_errors
 
     def start(self) -> None:
+        """서버를 연다. 이미 열려 있으면 아무것도 안 한다."""
         with self._lock:
             if self._sock is not None:
-                self._refcount += 1
                 return
             self._stop = threading.Event()
             if self._tls and self._ssl_ctx is None:
@@ -229,7 +186,6 @@ class WebXRServer:
             sock.listen(4)
             sock.settimeout(0.5)
             self._sock = sock
-            self._refcount += 1  # bind 가 성공한 뒤에만 센다 — 실패한 start 가 참조를 남기지 않게
             # port=0 은 처음 bind 한 포트를 계속 쓴다 — 다시 시작해도 페이지가 붙은 포트 그대로.
             self._port = sock.getsockname()[1]
             self._thread = threading.Thread(
@@ -245,10 +201,9 @@ class WebXRServer:
             )
 
     def stop(self) -> None:
+        """서버를 닫는다. 열려 있지 않으면 아무것도 안 한다."""
         with self._lock:
-            if self._refcount > 0:
-                self._refcount -= 1
-            if self._refcount > 0 or self._sock is None:
+            if self._sock is None:
                 return
             self._stop.set()
             thread = self._thread
@@ -377,24 +332,18 @@ class WebXRServer:
             self._bad += 1
             return
         self._frames += 1
-        with self._lock:
-            handlers = list(self._handlers)
-        for fn in handlers:  # 한 수신기의 예외가 다른 수신기·연결을 끊지 않게 한다
-            try:
-                fn(msg)
-            except Exception:
-                # 72–90 Hz 라 트레이스백은 핸들러마다 한 번만(연결 스레드끼리 잠금 아래에서 센다).
-                with self._lock:
-                    self._handler_errors += 1
-                    first = fn in self._handlers and fn not in self._failed_handlers
-                    if first:
-                        self._failed_handlers.append(fn)
-                if first:
-                    _log.warning(
-                        "WebXR 메시지 처리 실패 (%s) — 이후 같은 실패는 handler_errors 로만 센다",
-                        getattr(fn, "__qualname__", fn),
-                        exc_info=True,
-                    )
+        try:
+            self._handler(msg)
+        except Exception:
+            # 72–90 Hz 라 트레이스백은 한 번만 남긴다(연결 스레드끼리 잠금 아래에서 센다).
+            with self._lock:
+                self._handler_errors += 1
+                first = self._handler_errors == 1
+            if first:
+                _log.warning(
+                    "WebXR 메시지 처리 실패 — 이후 같은 실패는 handler_errors 로만 센다",
+                    exc_info=True,
+                )
 
     def _serve_static(self, conn: socket.socket, request: str) -> None:
         parts = request.split()

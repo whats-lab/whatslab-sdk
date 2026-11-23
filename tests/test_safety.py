@@ -94,13 +94,14 @@ def test_step_negative_dt_is_clamped_to_zero():
 def test_hand_model_passes_measured_dt_to_filter():
     import time
 
+    from whatslab.core.types import InputSample
     from whatslab.teleop import HandModel
 
     class _Source:
         def start(self): ...
         def stop(self): ...
         def get(self, side):
-            return None
+            return InputSample()
 
     m = HandModel("geort:orca_right", hand_source=_Source())
     seen = []

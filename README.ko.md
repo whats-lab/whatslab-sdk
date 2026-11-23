@@ -15,7 +15,8 @@ Quest 핸드트래킹)을 로봇 손 관절각으로 바꾸는 순수 Python 라
 
 ROS 에 의존하지 않아 MuJoCo, Isaac Sim, ROS 2 어디서든 프로세스 안에서 씁니다. 범위는 손입니다 — 입력 수신,
 손 리타게팅, 관절 안전 필터, 시각화. **팔 IK, 손목 추적, 팔 제어는 들어 있지 않습니다.**
-글러브는 손목 기준 손 관절을 주고, 손목을 어디에 둘지는 사용하는 쪽의 트래커와 팔 제어기가 정합니다.
+SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이 별도 트래커(Vive, Quest 컨트롤러, 모션캡처 등)에서
+받아 팔 제어기에 넘깁니다.
 
 ## 목차
 
@@ -100,8 +101,7 @@ numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. 모�
 0.4.0)를 감쌉니다. whatslab 0.5.0 부터 Spine 2.x 는 지원하지 않으며, Spine 2.x 에는 whatslab 0.4.x 를 쓰세요.
 Spine 은 PC 당 클라이언트 하나(UDP 4040)에만 보내므로 Spine PC 에서 글러브를 받을 수 있는 프로세스는
 하나뿐입니다. 손마다 `HandPose.xr_joints`(OpenXR 26관절, 손목 기준 `(26, 8)` 배열)를 줍니다.
-`HandPose.wrist` 는 항상 `None` 입니다 — Spine 은 손목 자세가 아니라 캘리브레이션되지 않은 IMU 쿼터니언만
-보냅니다. 필드 세부는 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.
+손목 자세는 주지 않습니다 — Spine 이 보내는 손목 값은 손목 자세가 아니라 캘리브레이션되지 않은 IMU 쿼터니언입니다. 필드 세부는 [API.md](docs/API.md) 「OpenXR 글러브」에 있습니다.
 
 글러브 원시 데이터만 필요하거나, 다른 언어(C/C++, C#, Unity, Unreal)를 쓰거나, 리타게팅을 직접 하려면
 [AirGlove-Client](https://github.com/whats-lab/AirGlove-Client) 를 바로 쓰세요. ROS 2 는
@@ -144,8 +144,6 @@ python tools/bench_hand_retarget.py --help                               # 리�
 
 - [**빠른 시작**](docs/QUICKSTART.md) — 클론부터 로봇 손이 글러브를 따라오기까지, 자주 걸리는 것
 - [**API 레퍼런스**](docs/API.md) — 하위 패키지별 공개 심볼과 시그니처
-- [**변경 이력**](CHANGELOG.md) — 버전 기록. **0.5.0 은 호환되지 않는 변경을 포함합니다**
-  (손 전용, Spine 3.0.0 전용, `AirGloveReceiver`, `dex:`/`geort:` 리타게팅, Quest 는 WebXR).
 
 ## 감사의 말
 

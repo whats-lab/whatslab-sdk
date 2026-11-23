@@ -14,15 +14,15 @@
          white-space: pre-wrap; color: #9c9; }
   .bad { color: #f77; }
 </style>
-<h1>whatslab WebXR 컨트롤러 송신</h1>
+<h1>whatslab WebXR 손 송신</h1>
 <button id="go">VR 시작</button>
 <div id="log">대기 중</div>
 <script>
 const logEl = document.getElementById("log");
 const goEl = document.getElementById("go");
-let ws = null, session = null, refSpace = null, viewerSpace = null;
+let ws = null, session = null, refSpace = null;
 let gl = null, glLayer = null, prog = null, uMVP = null, aPos = null, aColor = null;
-let cubeBuf = null, axisBuf = null, gridBuf = null, gridCount = 0;
+let gridBuf = null, gridCount = 0;
 let sent = 0, dropped = 0, lastReport = 0, passthrough = false;
 let stalledSince = 0, reconnects = 0, reconnectAt = 0;
 // BUFFER_MAX: 양손 메시지 ≈4 KB — 짧은 Wi-Fi 지연(수십 ms)에 프레임을 버리지 않을 만큼(≈16 프레임)
@@ -82,25 +82,6 @@ function mul(a, b) {
 }
 
 /* ── 지오메트리 ──────────────────────────────────────────────────────── */
-function cubeData(h, col) {
-  const v = [[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];
-  const f = [[0,1,2,0,2,3],[5,4,7,5,7,6],[4,0,3,4,3,7],[1,5,6,1,6,2],[3,2,6,3,6,7],[4,5,1,4,1,0]];
-  const shade = [1.0, 0.55, 0.75, 0.75, 0.9, 0.45];
-  const out = [];
-  f.forEach((face, i) => face.forEach(idx => {
-    out.push(...v[idx], col[0] * shade[i], col[1] * shade[i], col[2] * shade[i]);
-  }));
-  return new Float32Array(out);
-}
-
-function axisData(len) {
-  return new Float32Array([
-    0,0,0, 1,0.2,0.2,  len,0,0, 1,0.2,0.2,
-    0,0,0, 0.2,1,0.2,  0,len,0, 0.2,1,0.2,
-    0,0,0, 0.3,0.5,1,  0,0,-len, 0.3,0.5,1,
-  ]);
-}
-
 function gridData(half, step, y) {
   const out = [];
   for (let x = -half; x <= half + 1e-6; x += step) {
@@ -143,8 +124,6 @@ function initGL() {
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
     return b;
   };
-  cubeBuf = upload(cubeData(0.025, [0.1, 1.0, 0.5]));
-  axisBuf = upload(axisData(0.12));
   gridBuf = upload(gridData(2.0, 0.5, 0.0));
   gl.enable(gl.DEPTH_TEST);
 }
@@ -183,53 +162,29 @@ function onFrame(t, frame) {
   gl.clearColor(0, 0, 0, passthrough ? 0 : 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  const grips = [];
   const hands = {};
   for (const src of session.inputSources) {
-    if (src.handedness !== "left" && src.handedness !== "right") continue;
-    if (src.hand) {
-      const joints = readHand(frame, src.hand);
-      if (joints) hands[src.handedness] = joints;
-      continue;                      // 손 추적 중인 입력은 컨트롤러로 보내지 않는다
-    }
-    if (!src.gripSpace) continue;
-    const pose = frame.getPose(src.gripSpace, refSpace);
-    if (pose) grips.push({ side: src.handedness, pose: pose });
+    if ((src.handedness !== "left" && src.handedness !== "right") || !src.hand) continue;
+    const joints = readHand(frame, src.hand);
+    if (joints) hands[src.handedness] = joints;
   }
 
-  if (viewer) {
+  if (viewer && !passthrough) {      // VR 일 때만 바닥 그리드(방향 참고용)
     for (const view of viewer.views) {
       const vp = glLayer.getViewport(view);
       gl.viewport(vp.x, vp.y, vp.width, vp.height);
-      const pv = mul(view.projectionMatrix, view.transform.inverse.matrix);
-      if (!passthrough) draw(gridBuf, gl.LINES, gridCount, pv);
-      for (const g of grips) {
-        const mvp = mul(pv, g.pose.transform.matrix);
-        draw(cubeBuf, gl.TRIANGLES, 36, mvp);
-        draw(axisBuf, gl.LINES, 6, mvp);
-      }
+      draw(gridBuf, gl.LINES, gridCount, mul(view.projectionMatrix, view.transform.inverse.matrix));
     }
   }
 
-  if (!socketReady(t)) return;
-
-  const msg = { t: t };
-  if (viewer) {
-    const p = viewer.transform.position, o = viewer.transform.orientation;
-    msg.hmd = { pos: [p.x, p.y, p.z], quat: [o.x, o.y, o.z, o.w] };
-  }
-  for (const g of grips) {
-    const p = g.pose.transform.position, o = g.pose.transform.orientation;
-    msg[g.side] = { pos: [p.x, p.y, p.z], quat: [o.x, o.y, o.z, o.w] };
-  }
-  if (Object.keys(hands).length) msg.hands = hands;
-  ws.send(JSON.stringify(msg));
+  if (!Object.keys(hands).length || !socketReady(t)) return;
+  ws.send(JSON.stringify({ t: t, hands: hands }));
   sent++;
 
   if (t - lastReport > 500) {
     lastReport = t;
     log(`전송 ${sent}  드롭 ${dropped}  재연결 ${reconnects}  ` +
-        `컨트롤러 ${grips.length}  손 ${Object.keys(hands).length}` + (passthrough ? "  [패스스루]" : "  [VR]"));
+        `손 ${Object.keys(hands).length}` + (passthrough ? "  [패스스루]" : "  [VR]"));
   }
 }
 
@@ -273,10 +228,9 @@ async function start() {
   await session.updateRenderState({ baseLayer: glLayer });
 
   refSpace = await session.requestReferenceSpace("local-floor");
-  viewerSpace = await session.requestReferenceSpace("viewer");
   connect();
-  log(passthrough ? "패스스루 세션 — 컨트롤러에 초록 큐브가 보이면 정상(손은 컨트롤러를 내려놓으면 추적된다)"
-                  : "VR 세션(패스스루 불가) — 바닥 그리드 + 컨트롤러 큐브");
+  log(passthrough ? "패스스루 세션 — 컨트롤러를 내려놓으면 손이 추적된다"
+                  : "VR 세션(패스스루 불가) — 컨트롤러를 내려놓으면 손이 추적된다");
   session.requestAnimationFrame(onFrame);
 }
 

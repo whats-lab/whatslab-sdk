@@ -5,7 +5,6 @@ import importlib
 _EXPORTS = {
     "AirGloveReceiver": ".glove",
     "GloveFrame": ".glove",
-    "GloveWrist": ".glove",
     "WebXRHandReceiver": ".webxr",
 }
 

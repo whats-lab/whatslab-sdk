@@ -40,7 +40,7 @@ class HandModel:
     def get_q(self) -> Dict[str, Dict[str, float]]:
         sample = self.hand_source.get(self.side)
         q: Dict[str, float] = {}
-        if sample is not None and sample.hand is not None and sample.hand.tracked:
+        if sample.hand is not None and sample.hand.tracked:
             cmd = self.retarget.compute(sample)
             q = {n: float(v) for n, v in zip(cmd.joint_names, cmd.joint_angles)}
             self._tracked = True

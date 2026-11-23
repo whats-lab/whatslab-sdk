@@ -21,8 +21,6 @@ def get_server(port: int = 8080):
     srv = _servers.get(port)
     if srv is None:
         srv = viser.ViserServer(port=port)
-        srv.scene.add_frame("/canonical", show_axes=True,
-                            axes_length=0.2, axes_radius=0.006)
         _servers[port] = srv
         print(f"[viz] viser: http://localhost:{srv.get_port()}")
     return srv
@@ -138,10 +136,6 @@ class URDFScene:
             if segs:
                 self.bones.points = np.asarray(segs)
 
-    def frame_pose(self, frame_name: str) -> np.ndarray:
-        pin.updateFramePlacements(self.model, self.data)
-        return self.data.oMf[self.model.getFrameId(frame_name)].homogeneous
-
 
 class HandViz:
 
@@ -162,10 +156,9 @@ class HandViz:
         if self.root_pose is not None:
             self._scene.set_root(np.asarray(self.root_pose, dtype=float))
 
-    def update(self, q, timestamp: Optional[float] = None) -> None:
+    def update(self, q) -> None:
         if self._scene is None:
             self.start()
-        _ = timestamp
         named = dict(zip(self.joint_names, np.asarray(q, dtype=float).ravel()))
         self._scene.fk(self._scene.q_from_named(named))
 

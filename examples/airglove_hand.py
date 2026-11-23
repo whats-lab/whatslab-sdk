@@ -70,7 +70,7 @@ def main():
                     dq_max = max(dq_max, float(np.abs(qv - q_prev).max()))
                 q_prev = qv
             if viz_robot is not None and tracked:
-                viz_robot.update(ctrl.engine.full_qpos(qv) if dex else qv, timestamp=now)
+                viz_robot.update(ctrl.engine.full_qpos(qv) if dex else qv)
             if now - last_log > 0.2:
                 last_log = now
                 if not tracked:

@@ -8,19 +8,17 @@ import time
 
 import numpy as np
 import pytest
-from airglove_client import AirGloveError, Client, DeviceStatus, HandFrame, Side, WristFrame
+from airglove_client import AirGloveError, Client, DeviceStatus, HandFrame, Side
 from scipy.spatial.transform import Rotation
 
 import whatslab.receiver
 import whatslab.receiver.glove
 from whatslab.core.constants import XR_JOINT_COUNT, XR_JOINT_FIELDS, XR_JOINT_NAMES, XR_WRIST
 from whatslab.core.interfaces import Receiver
-from whatslab.receiver.base import Y_UP_RH_TO_CANONICAL, to_canonical_pose
 from whatslab.receiver.glove import airglove
 from whatslab.receiver.glove.airglove import (
     AirGloveReceiver,
     haptic_levels,
-    openxr_quat_to_canonical,
 )
 from whatslab.teleop import HandModel
 
@@ -136,14 +134,6 @@ def test_pair_is_forwarded_and_validated(fake_client):
         AirGloveReceiver(pair=0)
 
 
-def test_pair_without_library_support_fails_and_closes(fake_client, monkeypatch):
-    monkeypatch.delattr(_FakeClient, "set_pair")
-    rx = AirGloveReceiver(pair=2)
-    with pytest.raises(AirGloveError):
-        rx.start()
-    assert fake_client.instances[-1].closed and not rx.running
-
-
 def test_old_library_warns(fake_client, monkeypatch, caplog):
     monkeypatch.setattr(_FakeClient, "version", staticmethod(lambda: "0.3.0"))
     with caplog.at_level("WARNING", logger=airglove.__name__):
@@ -201,36 +191,6 @@ def test_stale_or_invalid_frame_is_untracked(fake_client):
     assert rx.get("right").tracked is True
 
 
-def test_raw_dorsum_wrist_is_not_used_as_hand_wrist(fake_client):
-    rx, c = _started()
-    raw = np.array([0.1, 0.2, 0.3, -0.927], np.float32)
-    c.wrists[Side.LEFT] = WristFrame(raw, 3, 1, 0.01)
-    assert rx.get("left").hand is None
-    c.hands[Side.LEFT] = _frame()
-    s = rx.get("left")
-    assert s.tracked is True and s.hand.wrist is None
-    assert np.allclose(rx.raw_wrist("left"), raw)
-    c.wrists[Side.LEFT] = WristFrame(raw, 4, 1, 5.0)
-    assert rx.raw_wrist("left") is None
-    assert rx.raw_wrist("right") is None
-
-
-def test_glove_wrist_matches_webxr_conversion():
-    for seed in range(20):
-        q = Rotation.random(random_state=seed).as_quat()
-        _, w = to_canonical_pose(Y_UP_RH_TO_CANONICAL, np.zeros(3), q)
-        g = openxr_quat_to_canonical(q)
-        assert (Rotation.from_quat(w).inv() * Rotation.from_quat(g)).magnitude() < 1e-9
-
-
-def test_openxr_axes_land_on_canonical_axes():
-    up = openxr_quat_to_canonical(Rotation.identity().as_quat())
-    assert np.allclose(Rotation.from_quat(up).as_matrix(), np.eye(3))
-    yaw = Rotation.from_rotvec([0.0, 0.4, 0.0]).as_quat()
-    rot = Rotation.from_quat(openxr_quat_to_canonical(yaw))
-    assert np.allclose(rot.as_rotvec(), [0.0, 0.0, 0.4])
-
-
 def test_haptic_levels_mapping():
     assert haptic_levels([0, 1, 2, 3, 4]) == [0, 1, 2, 3, 3]
     assert haptic_levels([-1, 0.4, 0.6, 2.5, float("nan")]) == [0, 0, 1, 2, 0]
@@ -261,7 +221,7 @@ def test_connected_uses_device_status_then_fresh_frame(fake_client):
 
 def test_frame_exposes_receive_metadata_without_stale_filtering(fake_client):
     rx = AirGloveReceiver()
-    assert rx.frame("right") is None and rx.wrist_frame("right") is None
+    assert rx.frame("right") is None
     assert rx.alarms() == [] and rx.stats() == {} and rx.device_status() is None
     rx.start()
     c = fake_client.instances[-1]
@@ -274,15 +234,6 @@ def test_frame_exposes_receive_metadata_without_stale_filtering(fake_client):
     np.testing.assert_allclose(f.xr_joints[:, :4], raw.orientations)
     np.testing.assert_allclose(f.xr_joints[:, 4:7], raw.positions)
     np.testing.assert_allclose(f.xr_joints[:, 7], raw.radii)
-
-
-def test_wrist_frame_passes_raw_dorsum_quaternion(fake_client):
-    rx, c = _started()
-    q = np.array([0.1, 0.2, 0.3, -0.9], dtype=np.float32)
-    c.wrists[Side.LEFT] = WristFrame(q, 4, 99, 0.02)
-    w = rx.wrist_frame("left")
-    assert (w.side, w.seq, w.sender_time_us, w.age_s) == ("left", 4, 99, pytest.approx(0.02))
-    np.testing.assert_allclose(w.orientation_raw, q)
 
 
 def test_status_alarms_and_stats_pass_through(fake_client):
@@ -394,11 +345,6 @@ def test_end_to_end_against_spine_replayer():
             assert np.allclose(np.linalg.norm(xj[:, 0:4], axis=1), 1.0, atol=1e-4)
             tip = XR_JOINT_NAMES.index("middle_tip")
             assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
-            assert s.hand.wrist is None
-            assert _wait(lambda side=side: rx.raw_wrist(side) is not None, 2.0)
-            raw = rx.raw_wrist(side)
-            assert raw is not None and raw.shape == (4,) and np.all(np.isfinite(raw))
-            assert 0.9 < np.linalg.norm(raw) < 1.1
         assert _wait(lambda: rx.spine_protocol() == 3, 3.0)
         assert _wait(lambda: rx.connected("right") and rx.connected("left"), 3.0)
         assert rx.send_haptic("right", [0, 2, 9]) is True

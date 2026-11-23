@@ -7,12 +7,10 @@ from .airglove import (
     SPINE_PROTOCOL,
     AirGloveReceiver,
     GloveFrame,
-    GloveWrist,
     haptic_levels,
-    openxr_quat_to_canonical,
 )
 
 __all__ = ["GLOVE_OSC_PORT", "GLOVE_CLIENT_PORT", "GLOVE_TARGET_IP",
-           "AirGloveReceiver", "GloveFrame", "GloveWrist",
+           "AirGloveReceiver", "GloveFrame",
            "HAPTIC_LEVEL_MAX",
-           "OPENXR_STALE_TIMEOUT", "SPINE_PROTOCOL", "haptic_levels", "openxr_quat_to_canonical"]
+           "OPENXR_STALE_TIMEOUT", "SPINE_PROTOCOL", "haptic_levels"]

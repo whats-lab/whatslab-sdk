@@ -16,8 +16,8 @@ human hand (the AirGlove data glove, or Quest hand tracking) into robot-hand joi
 whatslab does not depend on ROS and runs in-process anywhere (MuJoCo, Isaac Sim, ROS 2).
 Its scope is the hand: input receivers, hand retargeting, a joint safety filter and
 visualization. **Arm IK, wrist tracking and arm control are not part
-of it** — the glove gives hand joints relative to the wrist, and placing the wrist is the job of
-your own tracker and arm controller.
+of it** — the SDK gives hand joints relative to the wrist; get the wrist pose from your own tracker
+(Vive, Quest controller, motion capture) and pass it to your arm controller.
 
 ## Table of contents
 
@@ -107,8 +107,8 @@ Python < 3.13. URDFs and meshes come from
 (`airglove-client` 0.4.0). Spine 2.x is not supported since whatslab 0.5.0; use whatslab 0.4.x
 for it. Spine sends to one client per machine (UDP 4040), so only one process on the Spine PC
 can receive the glove. Per hand it delivers `HandPose.xr_joints`, the 26 OpenXR joints as a
-`(26, 8)` array relative to the wrist. `HandPose.wrist` is always `None`: Spine sends only an
-uncalibrated IMU quaternion, not a wrist pose. Field-level details are in
+`(26, 8)` array relative to the wrist. No wrist pose is given: what Spine
+sends for the wrist is an uncalibrated IMU quaternion, not a wrist pose. Field-level details are in
 [API.md](docs/API.md) (OpenXR glove).
 
 Only need the raw glove data, another language (C/C++, C#, Unity, Unreal) or your own
@@ -154,8 +154,6 @@ Run the tests with `pip install -e '.[all,dev]' && pytest`.
 - [**Quickstart**](docs/QUICKSTART.md) (Korean) — from clone to a robot hand following the glove,
   and what usually goes wrong
 - [**API reference**](docs/API.md) (Korean) — public symbols per subpackage, with signatures
-- [**Changelog**](CHANGELOG.md) (Korean) — version history. **0.5.0 contains breaking changes**
-  (hand only, Spine 3.0.0 only, `AirGloveReceiver`, `dex:`/`geort:` retargeting, Quest via WebXR).
 
 ## Acknowledgments
 

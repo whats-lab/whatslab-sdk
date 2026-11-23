@@ -3,7 +3,6 @@ import socket
 import pytest
 
 from whatslab.core.constants import FINGER_NAMES
-from whatslab.receiver.webxr import ws_server
 
 
 def require_sensor_urdf(*configs, sides=("left", "right")):
@@ -34,11 +33,3 @@ def free_port():
         probe.bind(("0.0.0.0", 0))
         return probe.getsockname()[1]
 
-
-@pytest.fixture(autouse=True)
-def _stop_leaked_webxr_servers():
-    """실패한 테스트가 고정 포트 서버를 켠 채 남겨도 다음 테스트에 번지지 않게 한다."""
-    yield
-    for srv in list(ws_server._registry.values()):
-        while srv.is_running:
-            srv.stop()
