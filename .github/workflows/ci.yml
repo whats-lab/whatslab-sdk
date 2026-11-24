@@ -26,5 +26,5 @@ jobs:
           python-version: ${{ matrix.python }}
           activate-environment: true
       - name: Install
-        run: uv pip install -e '.[all,dev]'
+        run: uv pip install -e '.[all,train,dev]'
       - run: pytest -q

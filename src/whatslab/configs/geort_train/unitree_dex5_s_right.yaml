@@ -1,0 +1,65 @@
+name: unitree_dex5_s_right
+urdf: unitree_dex5_s/unitree_dex5_s.urdf
+wrist: {link: right_palm_link, offset: [0.02, 0.0, 0.0]}
+palm: {index: right_index-finger_roll1_link, middle: right_middle-finger_roll1_link, ring: right_ring-finger_roll1_link}
+fingers:
+- name: thumb
+  link: right_thumb_yaw3_link
+  offset: [0.0015, 0.025, 0.0117]
+  joints: [right_thumb_pitch_joint, right_thumb_roll_joint, right_thumb_yaw1_joint, right_thumb_yaw2_joint, right_thumb_yaw3_joint]
+- name: index
+  link: right_index-finger_roll3_link
+  offset: [0.0103, 0.026, -0.0015]
+  joints: [right_index-finger_roll1_joint, right_index-finger_yaw_joint, right_index-finger_roll2_joint, right_index-finger_roll3_joint]
+- name: middle
+  link: right_middle-finger_roll3_link
+  offset: [0.0103, 0.026, -0.0015]
+  joints: [right_middle-finger_roll1_joint, right_middle-finger_yaw_joint, right_middle-finger_roll2_joint, right_middle-finger_roll3_joint]
+- name: ring
+  link: right_ring-finger_roll3_link
+  offset: [0.0103, 0.026, -0.0015]
+  joints: [right_ring-finger_roll1_joint, right_ring-finger_yaw_joint, right_ring-finger_roll2_joint, right_ring-finger_roll3_joint]
+- name: little
+  link: right_little-finger_roll3_link
+  offset: [0.0103, 0.026, -0.0015]
+  joints: [right_little-finger_pitch_joint, right_little-finger_roll1_joint, right_little-finger_yaw_joint, right_little-finger_roll2_joint,
+    right_little-finger_roll3_joint]
+limits_deg:
+  right_thumb_yaw2_joint: [-90.0, 0.0]
+  right_thumb_yaw3_joint: [-90.0, 0.0]
+  right_index-finger_roll1_joint: [0.0, 95.0]
+  right_index-finger_roll2_joint: [-90.0, 0.0]
+  right_index-finger_roll3_joint: [-90.0, 0.0]
+  right_middle-finger_roll1_joint: [0.0, 95.0]
+  right_middle-finger_roll2_joint: [-90.0, 0.0]
+  right_middle-finger_roll3_joint: [-90.0, 0.0]
+  right_ring-finger_roll1_joint: [0.0, 95.0]
+  right_ring-finger_roll2_joint: [-90.0, 0.0]
+  right_ring-finger_roll3_joint: [-90.0, 0.0]
+  right_little-finger_roll1_joint: [-95.0, 0.0]
+  right_little-finger_roll2_joint: [-90.0, 0.0]
+  right_little-finger_roll3_joint: [-90.0, 0.0]
+posture:
+  right_thumb_yaw2_joint: {thumb.mcp: -1.0}
+  right_thumb_yaw3_joint: {thumb.ip: -1.0}
+  right_index-finger_roll1_joint: {index.mcp: 1.0}
+  right_index-finger_roll2_joint: {index.pip: -1.0}
+  right_index-finger_roll3_joint: {index.dip: -1.0}
+  right_middle-finger_roll1_joint: {middle.mcp: 1.0}
+  right_middle-finger_roll2_joint: {middle.pip: -1.0}
+  right_middle-finger_roll3_joint: {middle.dip: -1.0}
+  right_ring-finger_roll1_joint: {ring.mcp: 1.0}
+  right_ring-finger_roll2_joint: {ring.pip: -1.0}
+  right_ring-finger_roll3_joint: {ring.dip: -1.0}
+  right_little-finger_pitch_joint: {little.mcp+: -0.25, little.pip+: -0.25, little.dip+: -0.25}
+  right_little-finger_roll1_joint: {little.mcp: -1.0}
+  right_little-finger_roll2_joint: {little.pip: -1.0}
+  right_little-finger_roll3_joint: {little.dip: -1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_yaw2_link, right_thumb_yaw3_link]
+    - [right_palm_link]
+  - - [right_thumb_yaw3_link]
+    - [right_index-finger_yaw_link, right_index-finger_roll2_link, right_index-finger_roll3_link, right_middle-finger_yaw_link,
+      right_middle-finger_roll2_link]

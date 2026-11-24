@@ -1,0 +1,53 @@
+name: unitree_dex2_5_right
+urdf: unitree_dex2_5/unitree_dex2_5_right.urdf
+wrist: {link: right_0_link}
+palm: {index: right_21_link, middle: right_31_link, ring: right_41_link}
+fingers:
+- name: thumb
+  link: right_12_link
+  offset: [0.0188, 0.0291, 0.0]
+  joints: [right_11_joint, right_12_joint]
+- name: index
+  link: right_22_link
+  offset: [0.0291, 0.0188, 0.0]
+  joints: [right_21_joint, right_22_joint]
+- name: middle
+  link: right_32_link
+  offset: [0.0291, 0.0188, 0.0]
+  joints: [right_31_joint, right_32_joint]
+- name: ring
+  link: right_42_link
+  offset: [0.0291, 0.0188, 0.0]
+  joints: [right_41_joint, right_42_joint]
+- name: little
+  link: right_52_link
+  offset: [0.0291, 0.0188, 0.0]
+  joints: [right_51_joint, right_52_joint]
+limits_deg:
+  right_21_joint: [0.0, 90.0]
+  right_22_joint: [0.0, 90.0]
+  right_31_joint: [0.0, 90.0]
+  right_32_joint: [0.0, 90.0]
+  right_41_joint: [0.0, 90.0]
+  right_42_joint: [0.0, 90.0]
+  right_51_joint: [0.0, 90.0]
+  right_52_joint: [0.0, 90.0]
+posture:
+  right_11_joint: {thumb.mcp: -1.0}
+  right_12_joint: {thumb.ip: -1.0}
+  right_21_joint: {index.mcp: 1.0}
+  right_22_joint: {index.pip: 0.5, index.dip: 0.5}
+  right_31_joint: {middle.mcp: 1.0}
+  right_32_joint: {middle.pip: 0.5, middle.dip: 0.5}
+  right_41_joint: {ring.mcp: 1.0}
+  right_42_joint: {ring.pip: 0.5, ring.dip: 0.5}
+  right_51_joint: {little.mcp: 1.0}
+  right_52_joint: {little.pip: 0.5, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_11_link, right_12_link]
+    - [right_0_link]
+  - - [right_12_link]
+    - [right_21_link, right_22_link, right_31_link, right_32_link]
+abd_scale: 0.0

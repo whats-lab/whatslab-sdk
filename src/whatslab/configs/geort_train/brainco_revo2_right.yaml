@@ -1,0 +1,39 @@
+name: brainco_revo2_right
+urdf: brainco_revo2/brainco_revo2_right.urdf
+wrist: {link: right_base_link}
+palm: {index: right_index_proximal_link, middle: right_middle_proximal_link, ring: right_ring_proximal_link}
+fingers:
+- name: thumb
+  link: right_thumb_tip_link
+  joints: [right_thumb_metacarpal_joint, right_thumb_proximal_joint]
+- name: index
+  link: right_index_tip_link
+  joints: [right_index_proximal_joint]
+- name: middle
+  link: right_middle_tip_link
+  joints: [right_middle_proximal_joint]
+- name: ring
+  link: right_ring_tip_link
+  joints: [right_ring_proximal_joint]
+- name: little
+  link: right_pinky_tip_link
+  joints: [right_pinky_proximal_joint]
+limits_deg:
+  right_index_proximal_joint: [0.0, 90.0]
+  right_middle_proximal_joint: [0.0, 90.0]
+  right_ring_proximal_joint: [0.0, 90.0]
+  right_pinky_proximal_joint: [0.0, 90.0]
+posture:
+  right_thumb_proximal_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  right_index_proximal_joint: {index.mcp: 0.5, index.pip: 0.5}
+  right_middle_proximal_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  right_ring_proximal_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  right_pinky_proximal_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_proximal_link, right_thumb_distal_link]
+    - [right_base_link]
+  - - [right_thumb_distal_link]
+    - [right_index_proximal_link, right_index_distal_link, right_middle_proximal_link]
+abd_scale: 0.0

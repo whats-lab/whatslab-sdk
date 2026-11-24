@@ -140,7 +140,12 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | ROBOTIS HX5-D20 (오른손) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 모델에는 Allegro·DG-5F-S 프롬프트도 들어 있지만, 아직 dexhand-description 에 없는 URDF 를 기준으로
-학습했습니다. 학습 도구는 이 SDK 에 포함하지 않습니다.
+학습했습니다.
+
+학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4·3손가락 오른손 56개)로
+학습 데이터를 만들고 아무 GPU 호스트에서 학습·내보내기를 합니다([API.md](docs/API.md)). 학습 코드와 동봉 모델은
+[facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT)(CC BY-NC 4.0)를 바탕으로 하며 **비상업 용도로만**
+쓸 수 있습니다. 사람 손 동작 데이터는 포함하지 않습니다.
 
 ## 설치
 
@@ -159,6 +164,7 @@ pip install -e '.[all]'   # 개발용 editable
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
 | `hand` | `dexhand-description` | DexPilot 엔진(URDF 자산) |
 | `viz` | `viser`, `trimesh`, `pycollada` | 로봇 손 시각화 |
+| `train` | `torch`, `trimesh`, `dexhand-description` | GeoRT 모델 학습(`whatslab-geort-train`) |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. DexPilot 엔진은 dex-retargeting 최적화기를 numpy 로 옮긴
 자체 구현이고 URDF 기구학도 numpy 자체 구현(`whatslab.kinematics`)이라 torch·dex-retargeting·pinocchio 가 필요 없습니다.
@@ -235,11 +241,12 @@ whatslab/
 │   ├── retargeter.py HandRetargeter, Engine Protocol
 │   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, 손바닥 좌표계, 거울상
 │   └── geort/        engine.py GeortEngine · preprocess.py Kabsch 입력 좌표계 · prompt.py 모델 · 동봉 npz
+│       └── train/    학습 CLI (torch, 추론은 import 안 함) · GeoRT chamfer + 라이선스
 ├── hand.py           HandModel: 수신 → 리타게팅 → (선택) SafetyFilter
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 106개), geort/ (2개)
+└── configs/          hands/ (DexPilot, 106개), geort/ (2개), geort_train/ (56개)
 ```
 
 ## 예제와 도구
@@ -265,7 +272,8 @@ whatslab 은 훌륭한 오픈소스 위에 만들었습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(테스트의 기준 기구학),
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT — DexPilot 엔진의
 최적화기는 이것을 numpy 로 옮긴 것이다. [THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE) 참고),
-[GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅, 소프트 프롬프트 모델 학습의 바탕),
+[GeoRT](https://github.com/facebookresearch/GeoRT)(기하 기반 손 리타게팅, CC BY-NC 4.0 — 소프트 프롬프트 학습 코드·모델의 바탕,
+`chamfer_distance` 를 옮겨 왔다. [THIRD_PARTY_LICENSE_GeoRT.txt](src/whatslab/retarget/geort/train/THIRD_PARTY_LICENSE_GeoRT.txt) 참고),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화).
 
 ## 라이선스

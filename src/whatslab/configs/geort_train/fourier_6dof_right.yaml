@@ -1,0 +1,39 @@
+name: fourier_6dof_right
+urdf: fourier_hand_6dof/fourier_hand_6dof_right.urdf
+wrist: {link: R_hand_base_link}
+palm: {index: R_index_proximal_link, middle: R_middle_proximal_link, ring: R_ring_proximal_link}
+fingers:
+- name: thumb
+  link: R_thumb_tip_link
+  joints: [R_thumb_proximal_yaw_joint, R_thumb_proximal_pitch_joint]
+- name: index
+  link: R_index_tip_link
+  joints: [R_index_proximal_joint]
+- name: middle
+  link: R_middle_tip_link
+  joints: [R_middle_proximal_joint]
+- name: ring
+  link: R_ring_tip_link
+  joints: [R_ring_proximal_joint]
+- name: little
+  link: R_pinky_tip_link
+  joints: [R_pinky_proximal_joint]
+limits_deg:
+  R_index_proximal_joint: [-90.0, 0.0]
+  R_middle_proximal_joint: [-90.0, 0.0]
+  R_ring_proximal_joint: [-90.0, 0.0]
+  R_pinky_proximal_joint: [-90.0, 0.0]
+posture:
+  R_thumb_proximal_pitch_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  R_index_proximal_joint: {index.mcp: -0.5, index.pip: -0.5}
+  R_middle_proximal_joint: {middle.mcp: -0.5, middle.pip: -0.5}
+  R_ring_proximal_joint: {ring.mcp: -0.5, ring.pip: -0.5}
+  R_pinky_proximal_joint: {little.mcp: -0.5, little.pip: -0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [R_thumb_proximal_pitch_link, R_thumb_distal_link]
+    - [R_hand_base_link]
+  - - [R_thumb_distal_link]
+    - [R_index_proximal_link, R_index_intermediate_link, R_middle_proximal_link]
+abd_scale: 0.0

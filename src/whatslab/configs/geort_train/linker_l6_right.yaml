@@ -1,0 +1,39 @@
+name: linker_l6_right
+urdf: linkerhand_l6/linkerhand_l6_right.urdf
+wrist: {link: rh_hand_base_link}
+palm: {index: rh_index_proximal, middle: rh_middle_proximal, ring: rh_ring_proximal}
+fingers:
+- name: thumb
+  link: rh_thumb_tip
+  joints: [rh_thumb_cmc_roll, rh_thumb_cmc_pitch]
+- name: index
+  link: rh_index_tip
+  joints: [rh_index_mcp_pitch]
+- name: middle
+  link: rh_middle_tip
+  joints: [rh_middle_mcp_pitch]
+- name: ring
+  link: rh_ring_tip
+  joints: [rh_ring_mcp_pitch]
+- name: little
+  link: rh_pinky_tip
+  joints: [rh_pinky_mcp_pitch]
+limits_deg:
+  rh_index_mcp_pitch: [0.0, 90.0]
+  rh_middle_mcp_pitch: [0.0, 90.0]
+  rh_ring_mcp_pitch: [0.0, 90.0]
+  rh_pinky_mcp_pitch: [0.0, 90.0]
+posture:
+  rh_thumb_cmc_pitch: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  rh_index_mcp_pitch: {index.mcp: 0.5, index.pip: 0.5}
+  rh_middle_mcp_pitch: {middle.mcp: 0.5, middle.pip: 0.5}
+  rh_ring_mcp_pitch: {ring.mcp: 0.5, ring.pip: 0.5}
+  rh_pinky_mcp_pitch: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [rh_thumb_distal, rh_thumb_metacarpals]
+    - [rh_hand_base_link]
+  - - [rh_thumb_distal]
+    - [rh_index_proximal, rh_index_distal, rh_middle_proximal, rh_middle_distal]
+abd_scale: 0.0

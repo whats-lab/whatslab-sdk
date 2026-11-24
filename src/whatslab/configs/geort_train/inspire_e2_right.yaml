@@ -1,0 +1,46 @@
+name: inspire_e2_right
+urdf: inspire_rh56e2/inspire_rh56e2_right.urdf
+wrist:
+  link: base_link
+  offset: [0.0, -0.0298, 0.0032]
+palm: {index: right_index_1, middle: right_middle_1, ring: right_ring_1}
+fingers:
+- name: thumb
+  link: right_thumb_4
+  offset: [-0.0193, 0.0252, 0.0071]
+  joints: [right_thumb_1_joint, right_thumb_2_joint]
+- name: index
+  link: right_index_2
+  offset: [0.0097, 0.0491, 0.0062]
+  joints: [right_index_1_joint]
+- name: middle
+  link: right_middle_2
+  offset: [0.0108, 0.0526, 0.0062]
+  joints: [right_middle_1_joint]
+- name: ring
+  link: right_ring_2
+  offset: [0.0097, 0.0491, 0.0062]
+  joints: [right_ring_1_joint]
+- name: little
+  link: right_little_2
+  offset: [0.0075, 0.0391, 0.0062]
+  joints: [right_little_1_joint]
+limits_deg:
+  right_index_1_joint: [0.0, 90.0]
+  right_middle_1_joint: [0.0, 90.0]
+  right_ring_1_joint: [0.0, 90.0]
+  right_little_1_joint: [0.0, 90.0]
+posture:
+  right_thumb_2_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  right_index_1_joint: {index.mcp: 0.5, index.pip: 0.5}
+  right_middle_1_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  right_ring_1_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  right_little_1_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_3, right_thumb_4]
+    - [right_plam_1, right_plam_2]
+  - - [right_thumb_4]
+    - [right_index_1, right_index_2, right_middle_1]
+abd_scale: 0.0

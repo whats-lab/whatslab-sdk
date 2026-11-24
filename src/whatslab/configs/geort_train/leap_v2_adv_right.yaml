@@ -1,0 +1,67 @@
+name: leap_v2_adv_right
+urdf: leap_hand_v2_adv/leap_hand_v2_adv_right.urdf
+wrist: {link: no_finger_frame_mirror, offset: [0.013, 0.075, -0.128]}
+palm:
+  index: finger_v2_with_motor
+  middle: finger_v2_with_motor_2
+  ring: finger_v2_with_motor_3
+  shift: [0.0, 0.0, -0.019]
+fingers:
+- name: thumb
+  link: realtip_5
+  joints: [palm_thumb, thumb_mcpf, thumb_mcps, thumb_ip]
+- name: index
+  link: realtip
+  joints: [index_mcps, index_mcpf, index_pip, index_dip]
+- name: middle
+  link: realtip_2
+  joints: [middle_mcps, middle_mcpf, middle_pip, middle_dip]
+- name: ring
+  link: realtip_3
+  joints: [ring_mcps, ring_mcpf, ring_pip, ring_dip]
+- name: little
+  link: realtip_4
+  joints: [pinky_mcps, pinky_mcpf, pinky_pip, pinky_dip]
+limits_deg:
+  thumb_mcps: [-30.0, 30.0]
+  thumb_ip: [0.0, 90.0]
+  index_mcps: [-20.0, 20.0]
+  index_mcpf: [0.0, 90.0]
+  index_pip: [0.0, 90.0]
+  index_dip: [0.0, 90.0]
+  middle_mcps: [-20.0, 20.0]
+  middle_mcpf: [0.0, 90.0]
+  middle_pip: [0.0, 90.0]
+  middle_dip: [0.0, 90.0]
+  ring_mcps: [-20.0, 20.0]
+  ring_mcpf: [0.0, 90.0]
+  ring_pip: [0.0, 90.0]
+  ring_dip: [0.0, 90.0]
+  pinky_mcps: [-25.0, 25.0]
+  pinky_mcpf: [0.0, 90.0]
+  pinky_pip: [0.0, 90.0]
+  pinky_dip: [0.0, 90.0]
+posture:
+  thumb_mcpf: {thumb.mcp: 1.0}
+  thumb_ip: {thumb.ip: 1.0}
+  index_mcpf: {index.mcp: 1.0}
+  index_pip: {index.pip: 1.0}
+  index_dip: {index.dip: 1.0}
+  middle_mcpf: {middle.mcp: 1.0}
+  middle_pip: {middle.pip: 1.0}
+  middle_dip: {middle.dip: 1.0}
+  ring_mcpf: {ring.mcp: 1.0}
+  ring_pip: {ring.pip: 1.0}
+  ring_dip: {ring.dip: 1.0}
+  pinky_mcpf: {little.mcp: 1.0}
+  pinky_pip: {little.pip: 1.0}
+  pinky_dip: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_with_motor, thumb_tip_hard]
+    - [no_finger_frame_mirror]
+  - - [thumb_with_motor]
+    - [finger_v2_with_motor, pip_dip_soft_parts, dip_tip_soft_upward_cut, finger_v2_with_motor_2, pip_dip_soft_parts_2]
+  - - [thumb_tip_hard]
+    - [finger_v2_with_motor, pip_dip_soft_parts, finger_v2_with_motor_2]

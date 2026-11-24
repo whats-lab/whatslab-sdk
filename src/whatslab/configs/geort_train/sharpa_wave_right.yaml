@@ -1,0 +1,55 @@
+name: sharpa_wave_right
+urdf: sharpa_wave/sharpa_wave_right.urdf
+wrist: {link: right_hand_C_MC, offset: [0.0, 0.01, 0.0]}
+palm: {index: right_index_MCP_VL, middle: right_middle_MCP_VL, ring: right_ring_MCP_VL}
+fingers:
+- name: thumb
+  link: right_thumb_fingertip
+  joints: [right_thumb_CMC_FE, right_thumb_CMC_AA, right_thumb_MCP_FE, right_thumb_MCP_AA, right_thumb_IP]
+- name: index
+  link: right_index_fingertip
+  joints: [right_index_MCP_FE, right_index_MCP_AA, right_index_PIP, right_index_DIP]
+- name: middle
+  link: right_middle_fingertip
+  joints: [right_middle_MCP_FE, right_middle_MCP_AA, right_middle_PIP, right_middle_DIP]
+- name: ring
+  link: right_ring_fingertip
+  joints: [right_ring_MCP_FE, right_ring_MCP_AA, right_ring_PIP, right_ring_DIP]
+- name: little
+  link: right_pinky_fingertip
+  joints: [right_pinky_CMC, right_pinky_MCP_FE, right_pinky_MCP_AA, right_pinky_PIP, right_pinky_DIP]
+limits_deg:
+  right_thumb_MCP_FE: [0.0, 80.0]
+  right_thumb_IP: [0.0, 90.0]
+  right_index_MCP_FE: [0.0, 90.0]
+  right_index_PIP: [0.0, 90.0]
+  right_middle_MCP_FE: [0.0, 90.0]
+  right_middle_PIP: [0.0, 90.0]
+  right_ring_MCP_FE: [0.0, 90.0]
+  right_ring_PIP: [0.0, 90.0]
+  right_pinky_MCP_FE: [0.0, 90.0]
+  right_pinky_PIP: [0.0, 90.0]
+posture:
+  right_thumb_MCP_FE: {thumb.mcp: 1.0}
+  right_thumb_IP: {thumb.ip: 1.0}
+  right_index_MCP_FE: {index.mcp: 1.0}
+  right_index_PIP: {index.pip: 1.0}
+  right_index_DIP: {index.dip: 1.0}
+  right_middle_MCP_FE: {middle.mcp: 1.0}
+  right_middle_PIP: {middle.pip: 1.0}
+  right_middle_DIP: {middle.dip: 1.0}
+  right_ring_MCP_FE: {ring.mcp: 1.0}
+  right_ring_PIP: {ring.pip: 1.0}
+  right_ring_DIP: {ring.dip: 1.0}
+  right_pinky_MCP_FE: {little.mcp: 1.0}
+  right_pinky_PIP: {little.pip: 1.0}
+  right_pinky_DIP: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_PP, right_thumb_DP]
+    - [right_hand_C_MC]
+  - - [right_thumb_PP]
+    - [right_index_PP, right_index_MP, right_index_DP, right_middle_PP, right_middle_MP]
+  - - [right_thumb_DP]
+    - [right_index_PP, right_index_MP, right_middle_PP]

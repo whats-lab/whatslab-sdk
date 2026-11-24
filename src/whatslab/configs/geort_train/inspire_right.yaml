@@ -1,0 +1,41 @@
+name: inspire_right
+urdf: inspire_hand/inspire_hand_right.urdf
+wrist:
+  link: hand_base_link
+  offset: [0.0, 0.0022, -0.0234]
+palm: {index: index_proximal, middle: middle_proximal, ring: ring_proximal}
+fingers:
+- name: thumb
+  link: thumb_tip
+  joints: [thumb_proximal_yaw_joint, thumb_proximal_pitch_joint]
+- name: index
+  link: index_tip
+  joints: [index_proximal_joint]
+- name: middle
+  link: middle_tip
+  joints: [middle_proximal_joint]
+- name: ring
+  link: ring_tip
+  joints: [ring_proximal_joint]
+- name: little
+  link: pinky_tip
+  joints: [pinky_proximal_joint]
+limits_deg:
+  index_proximal_joint: [0.0, 90.0]
+  middle_proximal_joint: [0.0, 90.0]
+  ring_proximal_joint: [0.0, 90.0]
+  pinky_proximal_joint: [0.0, 90.0]
+posture:
+  thumb_proximal_pitch_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  index_proximal_joint: {index.mcp: 0.5, index.pip: 0.5}
+  middle_proximal_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  ring_proximal_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  pinky_proximal_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_intermediate, thumb_distal]
+    - [hand_base_link]
+  - - [thumb_distal]
+    - [index_proximal, index_intermediate, middle_proximal]
+abd_scale: 0.0

@@ -1,0 +1,61 @@
+name: brainco_revo3_right
+urdf: brainco_revo3/brainco_revo3_right.urdf
+wrist: {link: right_hand_base_link, offset: [0.0, 0.0125, 0.0]}
+palm: {index: right_index_MPR_Link, middle: right_middle_MPR_Link, ring: right_ring_MPR_Link}
+fingers:
+- name: thumb
+  link: right_thumb_tip_Link
+  joints: [right_thumb_CMP_joint, right_thumb_CMR_joint, right_thumb_MCP_joint, right_thumb_PIP_joint, right_thumb_DIP_joint]
+- name: index
+  link: right_index_tip_Link
+  joints: [right_index_MPR_joint, right_index_MCP_joint, right_index_PIP_joint, right_index_DIP_joint]
+- name: middle
+  link: right_middle_tip_Link
+  joints: [right_middle_MPR_joint, right_middle_MCP_joint, right_middle_PIP_joint, right_middle_DIP_joint]
+- name: ring
+  link: right_ring_tip_Link
+  joints: [right_ring_MPR_joint, right_ring_MCP_joint, right_ring_PIP_joint, right_ring_DIP_joint]
+- name: little
+  link: right_little_tip_Link
+  joints: [right_little_MPR_joint, right_little_MCP_joint, right_little_PIP_joint, right_little_DIP_joint]
+limits_deg:
+  right_index_MPR_joint: [-15.0, 15.0]
+  right_index_MCP_joint: [0.0, 85.0]
+  right_index_PIP_joint: [0.0, 85.0]
+  right_index_DIP_joint: [0.0, 85.0]
+  right_middle_MPR_joint: [-15.0, 15.0]
+  right_middle_MCP_joint: [0.0, 85.0]
+  right_middle_PIP_joint: [0.0, 85.0]
+  right_middle_DIP_joint: [0.0, 85.0]
+  right_ring_MPR_joint: [-15.0, 15.0]
+  right_ring_MCP_joint: [0.0, 85.0]
+  right_ring_PIP_joint: [0.0, 85.0]
+  right_ring_DIP_joint: [0.0, 85.0]
+  right_little_MPR_joint: [-15.0, 15.0]
+  right_little_MCP_joint: [0.0, 85.0]
+  right_little_PIP_joint: [0.0, 85.0]
+  right_little_DIP_joint: [0.0, 85.0]
+posture:
+  right_thumb_PIP_joint: {thumb.mcp: 1.0}
+  right_thumb_DIP_joint: {thumb.ip: 1.0}
+  right_index_MCP_joint: {index.mcp: 1.0}
+  right_index_PIP_joint: {index.pip: 1.0}
+  right_index_DIP_joint: {index.dip: 1.0}
+  right_middle_MCP_joint: {middle.mcp: 1.0}
+  right_middle_PIP_joint: {middle.pip: 1.0}
+  right_middle_DIP_joint: {middle.dip: 1.0}
+  right_ring_MCP_joint: {ring.mcp: 1.0}
+  right_ring_PIP_joint: {ring.pip: 1.0}
+  right_ring_DIP_joint: {ring.dip: 1.0}
+  right_little_MCP_joint: {little.mcp: 1.0}
+  right_little_PIP_joint: {little.pip: 1.0}
+  right_little_DIP_joint: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_PIP_Link, right_thumb_DIP_Link]
+    - [right_hand_base_link]
+  - - [right_thumb_PIP_Link]
+    - [right_index_MCP_Link, right_index_PIP_Link, right_index_DIP_Link, right_middle_MCP_Link, right_middle_PIP_Link]
+  - - [right_thumb_DIP_Link]
+    - [right_index_MCP_Link, right_index_PIP_Link, right_middle_MCP_Link]

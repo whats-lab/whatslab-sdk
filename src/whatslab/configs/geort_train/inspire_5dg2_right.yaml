@@ -1,0 +1,56 @@
+name: inspire_5dg2_right
+urdf: inspire_rh5dg2/inspire_rh5dg2_right.urdf
+wrist:
+  link: right_hand_base
+  offset: [0.0273, 0.0076, -0.0042]
+palm: {index: right_index_mcp, middle: right_middle_mcp, ring: right_ring_mcp}
+fingers:
+- name: thumb
+  link: right_thumb_dip
+  offset: [0.0296, 0.0, -0.0081]
+  joints: [right_thumb_yaw_joint, right_thumb_mcp_joint, right_thumb_dip_joint]
+- name: index
+  link: right_index_dip
+  offset: [0.0006, 0.0341, 0.0082]
+  joints: [right_index_pitch_joint, right_index_mcp_joint, right_index_pip_joint]
+- name: middle
+  link: right_middle_dip
+  offset: [0.0006, 0.0362, 0.0082]
+  joints: [right_middle_pitch_joint, right_middle_mcp_joint, right_middle_pip_joint]
+- name: ring
+  link: right_ring_dip
+  offset: [0.0006, 0.0341, 0.0081]
+  joints: [right_ring_mcp_joint, right_ring_pip_joint]
+- name: little
+  link: right_pinky_dip
+  offset: [0.0005, 0.0331, 0.0081]
+  joints: [right_pinky_mcp_joint, right_pinky_pip_joint]
+limits_deg:
+  right_index_pitch_joint: [0.0, 90.0]
+  right_index_mcp_joint: [-15.0, 15.0]
+  right_index_pip_joint: [0.0, 90.0]
+  right_middle_pitch_joint: [0.0, 90.0]
+  right_middle_mcp_joint: [-15.0, 15.0]
+  right_middle_pip_joint: [0.0, 90.0]
+  right_ring_mcp_joint: [0.0, 90.0]
+  right_ring_pip_joint: [0.0, 90.0]
+  right_pinky_mcp_joint: [0.0, 90.0]
+  right_pinky_pip_joint: [0.0, 90.0]
+posture:
+  right_thumb_mcp_joint: {thumb.mcp: 1.0}
+  right_thumb_dip_joint: {thumb.ip: 1.0}
+  right_index_pitch_joint: {index.mcp: 1.0}
+  right_index_pip_joint: {index.pip: 0.5, index.dip: 0.5}
+  right_middle_pitch_joint: {middle.mcp: 1.0}
+  right_middle_pip_joint: {middle.pip: 0.5, middle.dip: 0.5}
+  right_ring_mcp_joint: {ring.mcp: 1.0}
+  right_ring_pip_joint: {ring.pip: 0.5, ring.dip: 0.5}
+  right_pinky_mcp_joint: {little.mcp: 1.0}
+  right_pinky_pip_joint: {little.pip: 0.5, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_pip, right_thumb_dip]
+    - [right_hand_base, right_hand_casing]
+  - - [right_thumb_dip]
+    - [right_index_pitch, right_index_mcp, right_index_pip, right_middle_pitch, right_middle_mcp]

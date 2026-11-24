@@ -1,0 +1,65 @@
+name: dg5f_s_right
+urdf: tesollo_dg5f_s/tesollo_dg5f_s_right.urdf
+wrist: {link: link_base}
+palm: {index: link_2_2, middle: link_3_2, ring: link_4_2}
+fingers:
+- name: thumb
+  link: link_1_tip
+  joints: [joint_1_1, joint_1_2, joint_1_3, joint_1_4]
+- name: index
+  link: link_2_tip
+  joints: [joint_2_1, joint_2_2, joint_2_3, joint_2_4]
+- name: middle
+  link: link_3_tip
+  joints: [joint_3_1, joint_3_2, joint_3_3, joint_3_4]
+- name: ring
+  link: link_4_tip
+  joints: [joint_4_1, joint_4_2, joint_4_3, joint_4_4]
+- name: little
+  link: link_5_tip
+  joints: [joint_5_1, joint_5_2, joint_5_3, joint_5_4]
+limits_deg:
+  joint_1_1: [25.0, 90.0]
+  joint_1_2: [-55.0, 0.0]
+  joint_1_3: [0.0, 90.0]
+  joint_1_4: [0.0, 90.0]
+  joint_2_1: [-15.0, 15.0]
+  joint_2_2: [0.0, 95.0]
+  joint_2_3: [0.0, 90.0]
+  joint_2_4: [0.0, 90.0]
+  joint_3_1: [-20.0, 25.0]
+  joint_3_2: [0.0, 95.0]
+  joint_3_3: [0.0, 90.0]
+  joint_3_4: [0.0, 90.0]
+  joint_4_1: [-10.0, 20.0]
+  joint_4_2: [0.0, 95.0]
+  joint_4_3: [0.0, 90.0]
+  joint_4_4: [0.0, 90.0]
+  joint_5_1: [0.0, 30.0]
+  joint_5_2: [-5.0, 35.0]
+  joint_5_3: [0.0, 90.0]
+  joint_5_4: [0.0, 90.0]
+posture:
+  joint_1_3: {thumb.mcp: 1.0}
+  joint_1_4: {thumb.ip: 1.0}
+  joint_2_2: {index.mcp: 1.0}
+  joint_2_3: {index.pip: 1.0}
+  joint_2_4: {index.dip: 1.0}
+  joint_3_2: {middle.mcp: 1.0}
+  joint_3_3: {middle.pip: 1.0}
+  joint_3_4: {middle.dip: 1.0}
+  joint_4_2: {ring.mcp: 1.0}
+  joint_4_3: {ring.pip: 1.0}
+  joint_4_4: {ring.dip: 1.0}
+  joint_5_1: {little.mcp+: 0.25, little.pip+: 0.25, little.dip+: 0.25}
+  joint_5_3: {little.mcp: 1.0}
+  joint_5_4: {little.pip: 1.0, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [link_1_3, link_1_4, link_1_tip]
+    - [link_base]
+  - - [link_1_3, link_1_4]
+    - [link_2_2, link_2_3, link_2_4, link_2_tip, link_3_2, link_3_3]
+  - - [link_1_tip]
+    - [link_2_2, link_2_3, link_3_2]

@@ -1,0 +1,51 @@
+name: allegro_v5_4f_right
+urdf: allegro_v5_4f/allegro_v5_4f_right_a.urdf
+wrist: {link: palm_link, offset: [0.0, 0.0, -0.1]}
+palm: {index: link_1_0, middle: link_5_0, ring: link_9_0}
+fingers:
+- name: thumb
+  link: link_15_0_tip
+  joints: [joint_12_0, joint_13_0, joint_14_0, joint_15_0]
+- name: index
+  link: link_3_0_tip
+  joints: [joint_0_0, joint_1_0, joint_2_0, joint_3_0]
+- name: middle
+  link: link_7_0_tip
+  joints: [joint_4_0, joint_5_0, joint_6_0, joint_7_0]
+- name: ring
+  link: link_11_0_tip
+  joints: [joint_8_0, joint_9_0, joint_10_0, joint_11_0]
+limits_deg:
+  joint_0_0: [-20.0, 20.0]
+  joint_1_0: [0.0, 95.0]
+  joint_2_0: [0.0, 90.0]
+  joint_3_0: [0.0, 90.0]
+  joint_4_0: [-20.0, 20.0]
+  joint_5_0: [0.0, 95.0]
+  joint_6_0: [0.0, 90.0]
+  joint_7_0: [0.0, 90.0]
+  joint_8_0: [-20.0, 20.0]
+  joint_9_0: [0.0, 95.0]
+  joint_10_0: [0.0, 90.0]
+  joint_11_0: [0.0, 90.0]
+  joint_14_0: [0.0, 90.0]
+  joint_15_0: [0.0, 90.0]
+posture:
+  joint_1_0: {index.mcp: 1.0}
+  joint_2_0: {index.pip: 1.0}
+  joint_3_0: {index.dip: 1.0}
+  joint_5_0: {middle.mcp: 1.0}
+  joint_6_0: {middle.pip: 1.0}
+  joint_7_0: {middle.dip: 1.0}
+  joint_9_0: {ring.mcp: 1.0}
+  joint_10_0: {ring.pip: 1.0}
+  joint_11_0: {ring.dip: 1.0}
+  joint_14_0: {thumb.mcp: 1.0}
+  joint_15_0: {thumb.ip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [link_15_0, link_14_0]
+    - [palm_link]
+  - - [link_15_0]
+    - [link_1_0, link_2_0, link_3_0, link_5_0, link_6_0]

@@ -1,0 +1,54 @@
+name: dexhand_trs_right
+urdf: dexhand_trs/dexhand_trs_right.urdf
+wrist: {link: index_bulk_1, offset: [0.0, -0.013, 0.0]}
+palm: {index: index_knuckle_1, middle: middle_knuckle_1, ring: ring_knuckle_1}
+fingers:
+- name: thumb
+  link: thumb_tip_1
+  offset: [0.0058, 0.0212, 0.0185]
+  joints: [thumb_yaw, thumb_roll, thumb_pitch, thumb_knuckle, thumb_tip]
+- name: index
+  link: index_tip_1
+  offset: [-0.0012, -0.0042, 0.0184]
+  joints: [index_yaw, index_pitch, index_knuckle, index_tip]
+- name: middle
+  link: middle_tip_1
+  offset: [-0.0014, -0.0057, 0.0189]
+  joints: [middle_yaw, middle_pitch, middle_knuckle, middle_tip]
+- name: ring
+  link: ring_tip_1
+  offset: [-0.0006, -0.0077, 0.0171]
+  joints: [ring_yaw, ring_pitch, ring_knuckle, ring_tip]
+- name: little
+  link: pinky_tip_1
+  offset: [0.0001, -0.0077, 0.0144]
+  joints: [pinky_yaw, pinky_pitch, pinky_knuckle, pinky_tip]
+limits_deg:
+  index_yaw: [-20.0, 20.0]
+  middle_yaw: [-20.0, 20.0]
+  ring_yaw: [-20.0, 20.0]
+  pinky_yaw: [-20.0, 20.0]
+posture:
+  thumb_knuckle: {thumb.mcp: 1.0}
+  thumb_tip: {thumb.ip: 1.0}
+  index_pitch: {index.mcp: 1.0}
+  index_knuckle: {index.pip: 1.0}
+  index_tip: {index.dip: 1.0}
+  middle_pitch: {middle.mcp: 1.0}
+  middle_knuckle: {middle.pip: 1.0}
+  middle_tip: {middle.dip: 1.0}
+  ring_pitch: {ring.mcp: 1.0}
+  ring_knuckle: {ring.pip: 1.0}
+  ring_tip: {ring.dip: 1.0}
+  pinky_pitch: {little.mcp: 1.0}
+  pinky_knuckle: {little.pip: 1.0}
+  pinky_tip: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_mlp_1, thumb_tip_1]
+    - [hand-cover_1]
+  - - [thumb_mlp_1]
+    - [index_plp_1, index_mlp_1, index_tip_1, middle_plp_1, middle_mlp_1]
+  - - [thumb_tip_1]
+    - [index_plp_1, index_mlp_1, middle_plp_1]

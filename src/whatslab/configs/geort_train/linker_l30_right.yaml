@@ -1,0 +1,47 @@
+name: linker_l30_right
+urdf: linkerhand_l30/linkerhand_l30_right.urdf
+wrist: {link: base_link}
+palm: {index: index_proximal, middle: middle_proximal, ring: ring_proximal}
+fingers:
+- name: thumb
+  link: thumb_distal
+  offset: [-0.0069, -0.0002, 0.0327]
+  joints: [thumb_cmc_yaw, thumb_cmc_pitch, thumb_mcp, thumb_ip]
+- name: index
+  link: index_distal
+  offset: [-0.0047, 0.0, 0.0251]
+  joints: [index_mcp_roll, index_mcp_pitch, index_pip, index_dip]
+- name: middle
+  link: middle_distal
+  offset: [-0.0043, 0.0, 0.0252]
+  joints: [middle_mcp_roll, middle_mcp_pitch, middle_pip, middle_dip]
+- name: ring
+  link: ring_distal
+  offset: [-0.0041, 0.0, 0.0252]
+  joints: [ring_mcp_roll, ring_mcp_pitch, ring_pip, ring_dip]
+- name: little
+  link: pinky_distal
+  offset: [-0.0031, 0.0, 0.0253]
+  joints: [pinky_mcp_roll, pinky_mcp_pitch, pinky_pip, pinky_dip]
+posture:
+  thumb_mcp: {thumb.mcp: 1.0}
+  thumb_ip: {thumb.ip: 1.0}
+  index_mcp_pitch: {index.mcp: 1.0}
+  index_pip: {index.pip: 1.0}
+  index_dip: {index.dip: 1.0}
+  middle_mcp_pitch: {middle.mcp: 1.0}
+  middle_pip: {middle.pip: 1.0}
+  middle_dip: {middle.dip: 1.0}
+  ring_mcp_pitch: {ring.mcp: 1.0}
+  ring_pip: {ring.pip: 1.0}
+  ring_dip: {ring.dip: 1.0}
+  pinky_mcp_pitch: {little.mcp: 1.0}
+  pinky_pip: {little.pip: 1.0}
+  pinky_dip: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_distal, thumb_proximal]
+    - [base_link]
+  - - [thumb_distal]
+    - [index_proximal, index_middle, index_distal, middle_proximal, middle_middle]

@@ -1,0 +1,48 @@
+name: dexhand021_right
+urdf: dexrobot_dexhand021/dexrobot_dexhand021_right_simplified.urdf
+wrist: {link: right_hand_base, offset: [0.0, 0.0106, 0.0]}
+palm: {index: r_f_link2_1, middle: r_f_link3_1, ring: r_f_link4_1}
+fingers:
+- name: thumb
+  link: r_f_link1_tip
+  joints: [r_f_joint1_1, r_f_joint1_2, r_f_joint1_3, r_f_joint1_4]
+- name: index
+  link: r_f_link2_tip
+  joints: [r_f_joint2_1, r_f_joint2_2, r_f_joint2_3, r_f_joint2_4]
+- name: middle
+  link: r_f_link3_tip
+  joints: [r_f_joint3_2, r_f_joint3_3, r_f_joint3_4]
+- name: ring
+  link: r_f_link4_tip
+  joints: [r_f_joint4_1, r_f_joint4_2, r_f_joint4_3, r_f_joint4_4]
+- name: little
+  link: r_f_link5_tip
+  joints: [r_f_joint5_1, r_f_joint5_2, r_f_joint5_3, r_f_joint5_4]
+limits_deg:
+  r_f_joint2_1: [0.0, 20.0]
+  r_f_joint4_1: [0.0, 20.0]
+  r_f_joint5_1: [0.0, 30.0]
+posture:
+  r_f_joint1_3: {thumb.mcp: 1.0}
+  r_f_joint1_4: {thumb.ip: 1.0}
+  r_f_joint2_2: {index.mcp: 1.0}
+  r_f_joint2_3: {index.pip: 1.0}
+  r_f_joint2_4: {index.dip: 1.0}
+  r_f_joint3_2: {middle.mcp: 1.0}
+  r_f_joint3_3: {middle.pip: 1.0}
+  r_f_joint3_4: {middle.dip: 1.0}
+  r_f_joint4_2: {ring.mcp: 1.0}
+  r_f_joint4_3: {ring.pip: 1.0}
+  r_f_joint4_4: {ring.dip: 1.0}
+  r_f_joint5_2: {little.mcp: 1.0}
+  r_f_joint5_3: {little.pip: 1.0}
+  r_f_joint5_4: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [r_f_link1_3, r_f_link1_4]
+    - [right_hand_base]
+  - - [r_f_link1_3]
+    - [r_f_link2_2, r_f_link2_3, r_f_link2_4, r_f_link3_2, r_f_link3_3]
+  - - [r_f_link1_4]
+    - [r_f_link2_2, r_f_link2_3, r_f_link3_2]

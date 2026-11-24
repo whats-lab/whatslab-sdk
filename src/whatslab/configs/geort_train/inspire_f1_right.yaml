@@ -1,0 +1,41 @@
+name: inspire_f1_right
+urdf: inspire_rh56f1/inspire_rh56f1_right.urdf
+wrist:
+  link: base_link
+  offset: [0.0, 0.0289, -0.0033]
+palm: {index: right_index_1, middle: right_middle_1, ring: right_ring_1}
+fingers:
+- name: thumb
+  link: thumb_tip
+  joints: [right_thumb_1_joint, right_thumb_2_joint]
+- name: index
+  link: index_tip
+  joints: [right_index_1_joint]
+- name: middle
+  link: middle_tip
+  joints: [right_middle_1_joint]
+- name: ring
+  link: ring_tip
+  joints: [right_ring_1_joint]
+- name: little
+  link: little_tip
+  joints: [right_little_1_joint]
+limits_deg:
+  right_index_1_joint: [0.0, 90.0]
+  right_middle_1_joint: [0.0, 90.0]
+  right_ring_1_joint: [0.0, 90.0]
+  right_little_1_joint: [0.0, 90.0]
+posture:
+  right_thumb_2_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  right_index_1_joint: {index.mcp: 0.5, index.pip: 0.5}
+  right_middle_1_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  right_ring_1_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  right_little_1_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_3, right_thumb_4]
+    - [plam_1, plam_2, plam_3]
+  - - [right_thumb_4]
+    - [right_index_1, right_index_2, right_middle_1]
+abd_scale: 0.0

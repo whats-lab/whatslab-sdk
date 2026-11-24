@@ -1,0 +1,39 @@
+name: ability_right
+urdf: ability_hand/ability_hand_right.urdf
+wrist: {link: base}
+palm: {index: index_L1, middle: middle_L1, ring: ring_L1}
+fingers:
+- name: thumb
+  link: thumb_tip
+  joints: [thumb_q1, thumb_q2]
+- name: index
+  link: index_tip
+  joints: [index_q1]
+- name: middle
+  link: middle_tip
+  joints: [middle_q1]
+- name: ring
+  link: ring_tip
+  joints: [ring_q1]
+- name: little
+  link: pinky_tip
+  joints: [pinky_q1]
+limits_deg:
+  index_q1: [0.0, 90.0]
+  middle_q1: [0.0, 90.0]
+  ring_q1: [0.0, 90.0]
+  pinky_q1: [0.0, 90.0]
+posture:
+  thumb_q2: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  index_q1: {index.mcp: 0.5, index.pip: 0.5}
+  middle_q1: {middle.mcp: 0.5, middle.pip: 0.5}
+  ring_q1: {ring.mcp: 0.5, ring.pip: 0.5}
+  pinky_q1: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_L2]
+    - [thumb_base]
+  - - [thumb_L2]
+    - [index_L1, index_L2, middle_L1]
+abd_scale: 0.0

@@ -1,0 +1,46 @@
+name: inspire_dfq_right
+urdf: inspire_rh56dfq_unitree/inspire_rh56dfq_unitree_right.urdf
+wrist:
+  link: R_hand_base_link
+  offset: [0.0, 0.0022, -0.0237]
+palm: {index: R_index_proximal, middle: R_middle_proximal, ring: R_ring_proximal}
+fingers:
+- name: thumb
+  link: R_thumb_distal
+  offset: [0.0185, 0.0117, -0.0061]
+  joints: [R_thumb_proximal_yaw_joint, R_thumb_proximal_pitch_joint]
+- name: index
+  link: R_index_intermediate
+  offset: [-0.0017, 0.0426, -0.005]
+  joints: [R_index_proximal_joint]
+- name: middle
+  link: R_middle_intermediate
+  offset: [-0.0016, 0.046, -0.005]
+  joints: [R_middle_proximal_joint]
+- name: ring
+  link: R_ring_intermediate
+  offset: [-0.0013, 0.0426, -0.005]
+  joints: [R_ring_proximal_joint]
+- name: little
+  link: R_pinky_intermediate
+  offset: [-0.0003, 0.0349, -0.005]
+  joints: [R_pinky_proximal_joint]
+limits_deg:
+  R_index_proximal_joint: [0.0, 90.0]
+  R_middle_proximal_joint: [0.0, 90.0]
+  R_ring_proximal_joint: [0.0, 90.0]
+  R_pinky_proximal_joint: [0.0, 90.0]
+posture:
+  R_thumb_proximal_pitch_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  R_index_proximal_joint: {index.mcp: 0.5, index.pip: 0.5}
+  R_middle_proximal_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  R_ring_proximal_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  R_pinky_proximal_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [R_thumb_intermediate, R_thumb_distal]
+    - [R_hand_base_link]
+  - - [R_thumb_distal]
+    - [R_index_proximal, R_index_intermediate, R_middle_proximal]
+abd_scale: 0.0

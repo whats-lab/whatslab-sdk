@@ -1,0 +1,57 @@
+name: leap_right
+urdf: leap_hand/leap_hand_right.urdf
+wrist:
+  link: base
+  offset: [0.0187, 0.0002, 0.0]
+palm:
+  index: mcp_joint
+  middle: mcp_joint_2
+  ring: mcp_joint_3
+  shift: [0.0, -0.0154, 0.0]
+fingers:
+- name: thumb
+  link: thumb_tip_head
+  joints: ['12', '13', '14', '15']
+- name: index
+  link: index_tip_head
+  joints: ['1', '0', '2', '3']
+- name: middle
+  link: middle_tip_head
+  joints: ['5', '4', '6', '7']
+- name: ring
+  link: ring_tip_head
+  joints: ['9', '8', '10', '11']
+limits_deg:
+  '0': [-20.0, 20.0]
+  '1': [0.0, 95.0]
+  '2': [0.0, 90.0]
+  '3': [0.0, 90.0]
+  '4': [-20.0, 20.0]
+  '5': [0.0, 95.0]
+  '6': [0.0, 90.0]
+  '7': [0.0, 90.0]
+  '8': [-20.0, 20.0]
+  '9': [0.0, 95.0]
+  '10': [0.0, 90.0]
+  '11': [0.0, 90.0]
+  '14': [0.0, 90.0]
+  '15': [0.0, 90.0]
+posture:
+  '1': {index.mcp: 1.0}
+  '2': {index.pip: 1.0}
+  '3': {index.dip: 1.0}
+  '5': {middle.mcp: 1.0}
+  '6': {middle.pip: 1.0}
+  '7': {middle.dip: 1.0}
+  '9': {ring.mcp: 1.0}
+  '10': {ring.pip: 1.0}
+  '11': {ring.dip: 1.0}
+  '14': {thumb.mcp: 1.0}
+  '15': {thumb.ip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thumb_fingertip, thumb_dip]
+    - [palm_lower]
+  - - [thumb_fingertip]
+    - [fingertip, dip, fingertip_2, dip_2]

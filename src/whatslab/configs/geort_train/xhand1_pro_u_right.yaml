@@ -1,0 +1,54 @@
+name: xhand1_pro_u_right
+urdf: robotera_xhand1_pro_u/robotera_xhand1_pro_u_right.urdf
+wrist: {link: right_hand_link, offset: [0.0, 0.0086, 0.0]}
+palm: {index: right_hand_index_mcp1_link, middle: right_hand_mid_mcp1_link, ring: right_hand_ring_mcp1_link}
+fingers:
+- name: thumb
+  link: right_hand_thumb_top_link
+  joints: [right_hand_thumb_mcp0_joint, right_hand_thumb_mcp1_joint, right_hand_thumb_pip_joint]
+- name: index
+  link: right_hand_index_top_link
+  joints: [right_hand_index_mcp0_joint, right_hand_index_mcp1_joint, right_hand_index_pip_joint, right_hand_index_dip_joint]
+- name: middle
+  link: right_hand_mid_top_link
+  joints: [right_hand_mid_mcp0_joint, right_hand_mid_mcp1_joint, right_hand_mid_pip_joint, right_hand_mid_dip_joint]
+- name: ring
+  link: right_hand_ring_top_link
+  joints: [right_hand_ring_mcp0_joint, right_hand_ring_mcp1_joint, right_hand_ring_pip_joint, right_hand_ring_dip_joint]
+- name: little
+  link: right_hand_pinky_top_link
+  joints: [right_hand_ltspalm_joint, right_hand_pinky_mcp0_joint, right_hand_pinky_mcp1_joint, right_hand_pinky_pip_joint,
+    right_hand_pinky_dip_joint]
+limits_deg:
+  right_hand_index_mcp0_joint: [-9.0, 25.0]
+  right_hand_index_mcp1_joint: [0.0, 95.0]
+  right_hand_mid_mcp0_joint: [-20.0, 10.0]
+  right_hand_mid_mcp1_joint: [0.0, 95.0]
+  right_hand_ring_mcp0_joint: [-20.0, 10.0]
+  right_hand_ring_mcp1_joint: [0.0, 95.0]
+  right_hand_pinky_mcp0_joint: [-25.0, 10.0]
+  right_hand_pinky_mcp1_joint: [0.0, 95.0]
+posture:
+  right_hand_thumb_mcp1_joint: {thumb.mcp: 1.0}
+  right_hand_thumb_pip_joint: {thumb.ip: 1.0}
+  right_hand_index_mcp1_joint: {index.mcp: 1.0}
+  right_hand_index_pip_joint: {index.pip: 1.0}
+  right_hand_index_dip_joint: {index.dip: 1.0}
+  right_hand_mid_mcp1_joint: {middle.mcp: 1.0}
+  right_hand_mid_pip_joint: {middle.pip: 1.0}
+  right_hand_mid_dip_joint: {middle.dip: 1.0}
+  right_hand_ring_mcp1_joint: {ring.mcp: 1.0}
+  right_hand_ring_pip_joint: {ring.pip: 1.0}
+  right_hand_ring_dip_joint: {ring.dip: 1.0}
+  right_hand_pinky_mcp1_joint: {little.mcp: 1.0}
+  right_hand_pinky_pip_joint: {little.pip: 1.0}
+  right_hand_pinky_dip_joint: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_hand_thumb_pip_link]
+    - [right_hand_link]
+  - - [right_hand_thumb_mcp1_link]
+    - [right_hand_index_mcp1_link, right_hand_index_pip_link, right_hand_index_dip_link, right_hand_mid_mcp1_link, right_hand_mid_pip_link]
+  - - [right_hand_thumb_pip_link]
+    - [right_hand_index_mcp1_link, right_hand_index_pip_link, right_hand_mid_mcp1_link]

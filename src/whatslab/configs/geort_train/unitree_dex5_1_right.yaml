@@ -1,0 +1,56 @@
+name: unitree_dex5_1_right
+urdf: unitree_dex5_1/unitree_dex5_1_right.urdf
+wrist: {link: base_link00, offset: [-0.012, 0.0, 0.0]}
+palm: {index: Link_22R, middle: Link_32R, ring: Link_42R}
+fingers:
+- name: thumb
+  link: Link_14R
+  offset: [0.0564, 0.0028, 0.0]
+  joints: [Yaw_11R, Roll_12R, Pitch_13R, Pitch_14R]
+- name: index
+  link: Link_24R
+  offset: [0.0264, -0.0073, 0.0]
+  joints: [Roll_21R, Pitch_22R, Pitch_23R, Pitch_24R]
+- name: middle
+  link: Link_34R
+  offset: [0.0264, -0.0073, 0.0]
+  joints: [Roll_31R, Pitch_32R, Pitch_33R, Pitch_34R]
+- name: ring
+  link: Link_44R
+  offset: [0.0264, -0.0073, 0.0]
+  joints: [Roll_41R, Pitch_42R, Pitch_43R, Pitch_44R]
+- name: little
+  link: Link_54R
+  offset: [0.0264, -0.0073, 0.0]
+  joints: [Roll_51R, Pitch_52R, Pitch_53R, Pitch_54R]
+limits_deg:
+  Roll_21R: [-20.0, 20.0]
+  Pitch_23R: [0.0, 90.0]
+  Roll_31R: [-20.0, 20.0]
+  Pitch_33R: [0.0, 90.0]
+  Roll_41R: [-20.0, 20.0]
+  Pitch_43R: [0.0, 90.0]
+  Roll_51R: [-20.0, 20.0]
+  Pitch_53R: [0.0, 90.0]
+posture:
+  Pitch_13R: {thumb.mcp: 1.0}
+  Pitch_14R: {thumb.ip: 1.0}
+  Pitch_22R: {index.mcp: 1.0}
+  Pitch_23R: {index.pip: 1.0}
+  Pitch_24R: {index.dip: 1.0}
+  Pitch_32R: {middle.mcp: 1.0}
+  Pitch_33R: {middle.pip: 1.0}
+  Pitch_34R: {middle.dip: 1.0}
+  Pitch_42R: {ring.mcp: 1.0}
+  Pitch_43R: {ring.pip: 1.0}
+  Pitch_44R: {ring.dip: 1.0}
+  Pitch_52R: {little.mcp: 1.0}
+  Pitch_53R: {little.pip: 1.0}
+  Pitch_54R: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [Link_13R, Link_14R]
+    - [base_link00]
+  - - [Link_14R]
+    - [Link_22R, Link_23R, Link_24R, Link_32R, Link_33R]

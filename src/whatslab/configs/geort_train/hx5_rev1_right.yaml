@@ -1,0 +1,68 @@
+name: hx5_rev1_right
+urdf: robotis_hx5_d20_rev1/robotis_hx5_d20_rev1_right.urdf
+wrist: {link: hx5_d20_right_base, offset: [0.0, 0.009, 0.0]}
+palm: {index: finger_r_link6, middle: finger_r_link10, ring: finger_r_link14}
+fingers:
+- name: thumb
+  link: finger_end_r_link1
+  offset: [0.0032, 0.0, 0.0114]
+  joints: [finger_r_joint1, finger_r_joint2, finger_r_joint3, finger_r_joint4]
+- name: index
+  link: finger_end_r_link2
+  offset: [0.0032, 0.0, 0.0114]
+  joints: [finger_r_joint5, finger_r_joint6, finger_r_joint7, finger_r_joint8]
+- name: middle
+  link: finger_end_r_link3
+  offset: [0.0032, 0.0, 0.0114]
+  joints: [finger_r_joint9, finger_r_joint10, finger_r_joint11, finger_r_joint12]
+- name: ring
+  link: finger_end_r_link4
+  offset: [0.0032, 0.0, 0.0114]
+  joints: [finger_r_joint13, finger_r_joint14, finger_r_joint15, finger_r_joint16]
+- name: little
+  link: finger_end_r_link5
+  offset: [0.0032, 0.0, 0.0114]
+  joints: [finger_r_joint17, finger_r_joint18, finger_r_joint19, finger_r_joint20]
+limits_deg:
+  finger_r_joint3: [0.0, 90.0]
+  finger_r_joint4: [0.0, 90.0]
+  finger_r_joint5: [-30.0, 30.0]
+  finger_r_joint6: [0.0, 95.0]
+  finger_r_joint7: [0.0, 90.0]
+  finger_r_joint8: [0.0, 90.0]
+  finger_r_joint9: [-30.0, 30.0]
+  finger_r_joint10: [0.0, 95.0]
+  finger_r_joint11: [0.0, 90.0]
+  finger_r_joint12: [0.0, 90.0]
+  finger_r_joint13: [-30.0, 30.0]
+  finger_r_joint14: [0.0, 95.0]
+  finger_r_joint15: [0.0, 90.0]
+  finger_r_joint16: [0.0, 90.0]
+  finger_r_joint17: [-30.0, 30.0]
+  finger_r_joint18: [0.0, 95.0]
+  finger_r_joint19: [0.0, 90.0]
+  finger_r_joint20: [0.0, 90.0]
+posture:
+  finger_r_joint3: {thumb.mcp: 1.0}
+  finger_r_joint4: {thumb.ip: 1.0}
+  finger_r_joint6: {index.mcp: 1.0}
+  finger_r_joint7: {index.pip: 1.0}
+  finger_r_joint8: {index.dip: 1.0}
+  finger_r_joint10: {middle.mcp: 1.0}
+  finger_r_joint11: {middle.pip: 1.0}
+  finger_r_joint12: {middle.dip: 1.0}
+  finger_r_joint14: {ring.mcp: 1.0}
+  finger_r_joint15: {ring.pip: 1.0}
+  finger_r_joint16: {ring.dip: 1.0}
+  finger_r_joint18: {little.mcp: 1.0}
+  finger_r_joint19: {little.pip: 1.0}
+  finger_r_joint20: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [finger_r_link3, finger_r_link4]
+    - [hx5_d20_right_base]
+  - - [finger_r_link3]
+    - [finger_r_link6, finger_r_link7, finger_r_link8, finger_r_link10, finger_r_link11]
+  - - [finger_r_link4]
+    - [finger_r_link6, finger_r_link7, finger_r_link10]

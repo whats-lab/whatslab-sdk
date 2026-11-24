@@ -146,7 +146,13 @@ The keys of both config formats are described in [API.md](docs/API.md).
 | ROBOTIS HX5-D20 (right) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are not in
-dexhand-description yet. Training tools are not part of this SDK.
+dexhand-description yet.
+
+Training: `whatslab-geort-train` (`pip install '.[train]'`) builds the training data from
+`configs/geort_train/<hand>.yaml` (56 right hands with 5, 4 or 3 fingers) and trains and exports a model
+on any GPU host; see [API.md](docs/API.md). The training code and the bundled model are based on
+[facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT) (CC BY-NC 4.0) and are for
+**non-commercial use** only. Human hand-motion data is not included.
 
 ## Installation
 
@@ -165,6 +171,7 @@ pip install -e '.[all]'   # editable, for development
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
 | `hand` | `dexhand-description` | the DexPilot engine (URDF assets) |
 | `viz` | `viser`, `trimesh`, `pycollada` | robot-hand visualization |
+| `train` | `torch`, `trimesh`, `dexhand-description` | GeoRT model training (`whatslab-geort-train`) |
 
 GeoRT inference (`geort:`) needs only numpy. The DexPilot engine carries its own numpy port of
 the dex-retargeting optimizer and its own numpy URDF kinematics (`whatslab.kinematics`), so it
@@ -245,11 +252,12 @@ whatslab/
 │   ├── retargeter.py HandRetargeter, Engine protocol
 │   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, palm frame, mirroring
 │   └── geort/        engine.py GeortEngine · preprocess.py Kabsch input frame · prompt.py model · bundled npz
+│       └── train/    training CLI (torch, not imported by inference) · GeoRT chamfer + license
 ├── hand.py           HandModel: receiver → retargeter → optional SafetyFilter
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 106 files), geort/ (2 files)
+└── configs/          hands/ (DexPilot, 106 files), geort/ (2 files), geort_train/ (56 files)
 ```
 
 ## Examples & tools
@@ -277,8 +285,9 @@ whatslab builds on excellent open-source work:
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT —
 the DexPilot engine's optimizer is a numpy port of it; see
 [THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE)),
-[GeoRT](https://zhaohengyin.github.io/geort) (geometric hand retargeting, which the soft-prompt
-model's training builds on),
+[GeoRT](https://github.com/facebookresearch/GeoRT) (geometric hand retargeting, CC BY-NC 4.0 — the
+soft-prompt training code and model build on it; its `chamfer_distance` is vendored, see
+[THIRD_PARTY_LICENSE_GeoRT.txt](src/whatslab/retarget/geort/train/THIRD_PARTY_LICENSE_GeoRT.txt)),
 and [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization).
 
 ## License

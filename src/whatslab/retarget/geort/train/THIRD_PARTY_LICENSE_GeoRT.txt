@@ -1,0 +1,32 @@
+chamfer.py in this directory is adapted from geort/loss.py (chamfer_distance) of
+facebookresearch/GeoRT, commit fb2075e2a3272be372016580c0b6ebd6120228f0
+https://github.com/facebookresearch/GeoRT
+Copyright (c) UC Berkeley and Meta Platforms, Inc. and affiliates.
+Changes: comments removed; the repeat() broadcast replaced by implicit broadcasting (same result).
+
+The loss design (direction, chamfer, curvature, pinch, collision terms) and the training recipe of the
+whatslab.retarget.geort.train package follow GeoRT ("Geometric Retargeting: A Principled,
+Ultrafast Neural Hand Retargeting Algorithm", arXiv:2503.07541). The package and every model trained with it are for non-commercial use only.
+
+GeoRT LICENSE (verbatim):
+
+CC-by-NC License
+Copyright (c) UC Berkeley and Meta Platforms, Inc. and affiliates.
+
+You are free to:
+
+Share — copy and share the work in any way
+
+Adapt — change or build upon the work
+
+But you must:
+
+Give credit to the original creator
+
+Not use the work for commercial purposes
+
+You cannot:
+
+Use the work for anything that is primarily intended for commercial advantage or monetary compensation
+
+For full details, visit: https://creativecommons.org/licenses/by-nc/4.0/

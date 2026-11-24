@@ -1,0 +1,35 @@
+name: schunk_svh_right
+urdf: schunk_hand/schunk_svh_hand_right.urdf
+wrist: {link: right_hand_base_link}
+palm: {index: right_hand_l, middle: right_hand_k, ring: right_hand_j}
+fingers:
+- name: thumb
+  link: thtip
+  joints: [right_hand_Thumb_Opposition, right_hand_Thumb_Flexion]
+- name: index
+  link: fftip
+  joints: [right_hand_Index_Finger_Proximal, right_hand_Index_Finger_Distal]
+- name: middle
+  link: mftip
+  joints: [right_hand_Middle_Finger_Proximal, right_hand_Middle_Finger_Distal]
+- name: ring
+  link: rftip
+  joints: [right_hand_Ring_Finger]
+- name: little
+  link: lftip
+  joints: [right_hand_Finger_Spread, right_hand_Pinky]
+posture:
+  right_hand_Thumb_Flexion: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  right_hand_Index_Finger_Proximal: {index.mcp: 1.0}
+  right_hand_Index_Finger_Distal: {index.pip: 0.5, index.dip: 0.5}
+  right_hand_Middle_Finger_Proximal: {middle.mcp: 1.0}
+  right_hand_Middle_Finger_Distal: {middle.pip: 0.5, middle.dip: 0.5}
+  right_hand_Ring_Finger: {ring.mcp: 0.5, ring.pip: 0.5}
+  right_hand_Pinky: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_hand_b, right_hand_c]
+    - [right_hand_e1]
+  - - [right_hand_c]
+    - [right_hand_l, right_hand_p, right_hand_k]

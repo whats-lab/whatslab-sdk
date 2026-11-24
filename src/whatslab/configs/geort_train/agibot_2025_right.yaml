@@ -1,0 +1,38 @@
+name: agibot_2025_right
+urdf: agibot_omnihand_2025/agibot_omnihand_2025_right.urdf
+wrist: {link: R_palm}
+palm: {index: R_index_pip_link, middle: R_middle_pip_link, ring: R_ring_pip_link}
+fingers:
+- name: thumb
+  link: R_thumb_tip
+  joints: [R_thumb_roll_joint, R_thumb_abad_joint, R_thumb_mcp_joint]
+- name: index
+  link: R_index_tip
+  joints: [R_index_abad_joint, R_index_pip_joint]
+- name: middle
+  link: R_middle_tip
+  joints: [R_middle_pip_joint]
+- name: ring
+  link: R_ring_tip
+  joints: [R_ring_abad_joint, R_ring_pip_joint]
+- name: little
+  link: R_pinky_tip
+  joints: [R_pinky_abad_joint, R_pinky_pip_joint]
+limits_deg:
+  R_index_pip_joint: [0.0, 90.0]
+  R_middle_pip_joint: [0.0, 90.0]
+  R_ring_pip_joint: [0.0, 90.0]
+  R_pinky_pip_joint: [0.0, 90.0]
+posture:
+  R_thumb_mcp_joint: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  R_index_pip_joint: {index.mcp: 0.5, index.pip: 0.5}
+  R_middle_pip_joint: {middle.mcp: 0.5, middle.pip: 0.5}
+  R_ring_pip_joint: {ring.mcp: 0.5, ring.pip: 0.5}
+  R_pinky_pip_joint: {little.mcp: 0.5, little.pip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [R_thumb_pip_link, R_thumb_dip_link]
+    - [R_palm]
+  - - [R_thumb_dip_link]
+    - [R_index_pip_link, R_index_dip_link, R_middle_pip_link]

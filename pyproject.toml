@@ -26,7 +26,12 @@ hand     = ["dexhand-description @ git+https://github.com/whats-lab/dexterous-ha
 viz      = ["viser", "trimesh", "pycollada"]
 webxr    = ["websockets>=13", "cryptography"]
 all      = ["whatslab-sdk[receiver,hand,viz,webxr]"]
+train    = ["torch>=2.1", "trimesh",
+            "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 dev      = ["pytest", "pin>=2.7"]
+
+[project.scripts]
+whatslab-geort-train = "whatslab.retarget.geort.train.cli:main"
 
 [tool.setuptools]
 include-package-data = false

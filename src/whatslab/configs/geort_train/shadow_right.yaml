@@ -1,0 +1,51 @@
+name: shadow_right
+urdf: shadow_hand/shadow_hand_right.urdf
+wrist: {link: palm, offset: [0.011, 0.0, 0.0]}
+palm: {index: ffknuckle, middle: mfknuckle, ring: rfknuckle}
+fingers:
+- name: thumb
+  link: thtip
+  joints: [THJ5, THJ4, THJ3, THJ2, THJ1]
+- name: index
+  link: fftip
+  joints: [FFJ4, FFJ3, FFJ2, FFJ1]
+- name: middle
+  link: mftip
+  joints: [MFJ4, MFJ3, MFJ2, MFJ1]
+- name: ring
+  link: rftip
+  joints: [RFJ4, RFJ3, RFJ2, RFJ1]
+- name: little
+  link: lftip
+  joints: [LFJ5, LFJ4, LFJ3, LFJ2, LFJ1]
+limits_deg:
+  THJ2: [0.0, 40.0]
+  THJ1: [0.0, 90.0]
+  FFJ3: [0.0, 90.0]
+  MFJ3: [0.0, 90.0]
+  RFJ3: [0.0, 90.0]
+  LFJ3: [0.0, 90.0]
+posture:
+  THJ2: {thumb.mcp: 1.0}
+  THJ1: {thumb.ip: 1.0}
+  FFJ3: {index.mcp: 1.0}
+  FFJ2: {index.pip: 1.0}
+  FFJ1: {index.dip: 1.0}
+  MFJ3: {middle.mcp: 1.0}
+  MFJ2: {middle.pip: 1.0}
+  MFJ1: {middle.dip: 1.0}
+  RFJ3: {ring.mcp: 1.0}
+  RFJ2: {ring.pip: 1.0}
+  RFJ1: {ring.dip: 1.0}
+  LFJ3: {little.mcp: 1.0}
+  LFJ2: {little.pip: 1.0}
+  LFJ1: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [thmiddle, thdistal]
+    - [palm]
+  - - [thmiddle]
+    - [ffproximal, ffmiddle, ffdistal, mfproximal, mfmiddle]
+  - - [thdistal]
+    - [ffproximal, ffmiddle, mfproximal]

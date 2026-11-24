@@ -1,0 +1,68 @@
+name: allegro_v6_right
+urdf: allegro_v6/allegro_v6_right.urdf
+wrist: {link: base_link, offset: [0.015, 0.0, 0.0]}
+palm: {index: Finger02_Link01, middle: Finger03_Link01, ring: Finger04_Link01}
+fingers:
+- name: thumb
+  link: Finger01_Link04
+  offset: [-0.0561, -0.0007, -0.0122]
+  joints: [joint00, joint01, joint02, joint03]
+- name: index
+  link: Finger02_Link04
+  offset: [-0.0011, -0.0426, 0.0124]
+  joints: [joint10, joint11, joint12, joint13]
+- name: middle
+  link: Finger03_Link04
+  offset: [-0.0426, 0.0011, 0.0124]
+  joints: [joint20, joint21, joint22, joint23]
+- name: ring
+  link: Finger04_Link04
+  offset: [-0.0426, 0.0011, 0.0124]
+  joints: [joint30, joint31, joint32, joint33]
+- name: little
+  link: Finger05_Link04
+  offset: [-0.0426, 0.0005, 0.0124]
+  joints: [joint40, joint41, joint42, joint43]
+limits_deg:
+  joint02: [0.0, 75.0]
+  joint03: [0.0, 80.0]
+  joint10: [-20.0, 20.0]
+  joint11: [0.0, 90.0]
+  joint12: [0.0, 80.0]
+  joint13: [0.0, 80.0]
+  joint20: [-20.0, 20.0]
+  joint21: [0.0, 90.0]
+  joint22: [0.0, 80.0]
+  joint23: [0.0, 80.0]
+  joint30: [-20.0, 20.0]
+  joint31: [0.0, 90.0]
+  joint32: [0.0, 80.0]
+  joint33: [0.0, 80.0]
+  joint40: [-25.0, 20.0]
+  joint41: [0.0, 90.0]
+  joint42: [0.0, 80.0]
+  joint43: [0.0, 80.0]
+posture:
+  joint02: {thumb.mcp: 1.0}
+  joint03: {thumb.ip: 1.0}
+  joint11: {index.mcp: 1.0}
+  joint12: {index.pip: 1.0}
+  joint13: {index.dip: 1.0}
+  joint21: {middle.mcp: 1.0}
+  joint22: {middle.pip: 1.0}
+  joint23: {middle.dip: 1.0}
+  joint31: {ring.mcp: 1.0}
+  joint32: {ring.pip: 1.0}
+  joint33: {ring.dip: 1.0}
+  joint41: {little.mcp: 1.0}
+  joint42: {little.pip: 1.0}
+  joint43: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [Finger01_Link03, Finger01_Link04]
+    - [base_link]
+  - - [Finger01_Link03]
+    - [Finger02_Link02, Finger02_Link03, Finger02_Link04, Finger03_Link02, Finger03_Link03]
+  - - [Finger01_Link04]
+    - [Finger02_Link02, Finger02_Link03, Finger03_Link02]

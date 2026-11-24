@@ -287,7 +287,7 @@ q = engine.solve(masked_keypoints(xr_joints, xr_valid))       # 계산만
 ```
 
 GeoRT 소프트 프롬프트 모델(여러 손이 공유하는 신경망 + 손별 프롬프트·출력층)의 numpy 추론이다.
-학습 도구는 이 SDK 에 없다. 지원하는 모델은 하나의 조합이다 — 모델 구조 `format = geort-prompt-v1`(MLP + 손별
+학습은 아래 `whatslab.retarget.geort.train`. 지원하는 모델은 하나의 조합이다 — 모델 구조 `format = geort-prompt-v1`(MLP + 손별
 soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 원점 + Kabsch 정렬). 다른 값이면
 `ValueError`. 설정·모델 파일이 없으면 `FileNotFoundError` 가 그대로 올라온다.
 
@@ -303,6 +303,52 @@ soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 �
 동봉 설정(`configs/geort/`): `orca_right`(ORCA 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
 dexhand-description URDF 와 같다(테스트로 확인). 모델에는 Allegro·DG-5F-S 프롬프트도 있지만 관절 이름이 아직
 dexhand-description 에 없는 URDF 기준이다.
+
+## whatslab.retarget.geort.train — GeoRT 소프트 프롬프트 학습 (`whatslab-sdk[train]`)
+
+비상업 전용. 학습 코드와 동봉 모델은 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT)
+(CC BY-NC 4.0)를 바탕으로 한다 — `chamfer.py` 는 GeoRT 의 `chamfer_distance` 를 옮긴 것이고 원문 라이선스와 출처는
+옆의 `THIRD_PARTY_LICENSE_GeoRT.txt` 에 있다. 추론 경로(`whatslab.retarget.geort`)는 이 모듈을 import 하지 않는다
+(torch 없이 동작, 테스트로 확인). torch·trimesh·dexhand-description 이 필요하다.
+
+사람 손 데이터는 SDK 에 없고 배포하지 않는다. `--human <npz>` 또는 `$WHATSLAB_GEORT_HUMAN` 으로 준다. 형식:
+`points`(N, 21, 3 — MediaPipe 21점, `openxr-wrist-kabsch-v2` 정규 좌표계, `canonical_points` 결과),
+`source`(N, 0/1 = Quest, 2 = EgoDemo; 학습 표본의 35 %를 Quest 에서 뽑는다), `template`(4, 3), `size`.
+
+```bash
+whatslab-geort-train check all                                   # 손 설정 검사(좌표축, 굽힘 방향, mimic 포함 FK)
+whatslab-geort-train data --hands all --human H.npz --out data.npz   # 사람 표본 40만 + 손별 FK·자세·충돌 점 (한 파일)
+whatslab-geort-train train --data data.npz --out s0.npz --human-only               # 0단계: 공유 몸통(사람 재구성)
+whatslab-geort-train train --data data.npz --out s1.npz --init s0.npz --freeze encoder   # 1단계: 모든 손 함께
+whatslab-geort-train train --data one.npz --out s2.npz --init s1.npz --freeze body      # 2단계: 고른 손의 프롬프트·출력층만
+whatslab-geort-train eval --model s2.npz --hands all --human H.npz  # 손끝 오차(mm, 평균·p95·손가락별)
+```
+
+- `data` 는 URDF·메시가 있는 곳에서, `train` 은 아무 GPU 호스트에서 돌린다(`data.npz` 하나와 `pip install '.[train]'` 만
+  있으면 된다, `--device cuda|cpu`). `train` 은 `geort-prompt-v1` npz 를 쓰고 SDK 로더로 numpy 출력과 torch 출력을
+  비교한다(1e-5 보다 크면 종료 코드 3). 학습 기록은 `<out>.log.json`, 하이퍼파라미터·시간·손별 scale 은 npz `meta_json`.
+- `--freeze body` 는 `--init` 모델의 몸통을 고정하고 `--data` 에 든 손의 프롬프트·출력층만 학습한다. `--init` 모델의 다른 손은
+  그대로 내보낸다(출력이 비트 단위로 같다, 테스트로 확인). `--freeze encoder` 는 인코더만 고정,
+  `--encoder-lr-scale` 은 인코더 학습률 배율.
+- 하이퍼파라미터 기본값 = 동봉 모델 값(8000 단계, 배치 2048, 폭 512, 손끝 1000, 엄지 손끝 ×3, 벌림 6 …,
+  `whatslab-geort-train train -h`). `--w-contrast` 를 주면 0단계에 soft-target InfoNCE(두 증강 관점, 사람 자세 거리로
+  정답 분포를 부드럽게)를 더한다(`--contrast-temperature`, `--contrast-sigma`, `--view-*`).
+
+손 학습 설정 `configs/geort_train/<이름>.yaml` (이름 = 모델 안 손 이름 = `configs/geort/<이름>.yaml` 의 `name`):
+
+| 키 | 뜻 |
+|---|---|
+| `name`, `urdf` | 손 이름(`…_right`), dexhand-description `get_share()`(또는 `$WHATSLAB_MODELS_ROOT`) 기준 URDF 경로 |
+| `wrist: {link, offset}` | 손목 링크와(선택) 그 링크 좌표의 실제 손목 중심 |
+| `palm: {index, middle, ring, shift}` | 손바닥 좌표계를 정하는 MCP 점(링크 이름 또는 `{link, offset}`). 셋 중 둘 이상. `middle` 이 없으면 index·ring 의 가운데, `ring` 이 없으면 middle 에 대해 index 를 뒤집은 점, `index` 가 없으면 그 반대. Z = 손목→중지 MCP, 가로 = 검지 MCP − 약지 MCP |
+| `fingers: [{name, link, offset, joints}]` | `name` = 따라갈 **사람 손가락**(thumb/index/middle/ring/little, thumb·middle 필수). `link`+`offset` = 손끝 점, `joints` = 그 손가락의 구동 관절(몸쪽→끝). mimic 관절은 적지 않는다 — URDF mimic(여러 단계도)대로 FK 에 들어가고 SDK 출력은 구동 관절뿐이다. 적지 않은 다른 관절은 0 에 고정 |
+| `limits_deg` | 관절 한계(도). URDF 한계와 교집합 |
+| `posture` | `{관절: {사람 각: 배율}}` 자세 사전 목표. 사람 각 = `thumb.mcp/ip`, `<손가락>.mcp/pip/dip`, `+` 접미사는 양수 부분만 |
+| `collision` | `{margin_mm, pairs: [[[링크…], [링크…]], …]}` 엄지와 손바닥·검지·중지 사이 여유(메시 표면 점) |
+| `scale`, `tip_scale`, `abd_scale` | (선택) 사람→로봇 크기(기본: q=0 로봇 중지 길이 / 사람 중지 길이 p95), 손별 손끝·벌림 손실 배율(벌림 관절이 없는 커플링 손은 `abd_scale: 0`) |
+
+손가락이 4개면 thumb·index·middle·ring 에 매핑하고 사람 새끼손가락은 쓰지 않는다. 3개면 thumb + index + middle
+(손바닥은 위 규칙으로 세 번째 MCP 점을 만든다). 2손가락 그리퍼는 지원하지 않는다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 

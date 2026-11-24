@@ -1,0 +1,39 @@
+name: barrett_right
+urdf: barrett_hand/bhand_model.urdf
+wrist: {link: base_link, offset: [-0.01, 0.0, 0.0754]}
+palm:
+  index: finger_1_med_liink
+  ring: finger_2_med_link
+  shift: [-0.01, 0.0, 0.0]
+fingers:
+- name: thumb
+  link: finger_3_dist_link
+  offset: [-0.042, 0.030, 0.0]
+  joints: [finger_3_med_joint, finger_3_dist_joint]
+- name: index
+  link: finger_1_dist_link
+  offset: [-0.042, 0.030, 0.0]
+  joints: [finger_1_prox_joint, finger_1_med_joint, finger_1_dist_joint]
+- name: middle
+  link: finger_2_dist_link
+  offset: [-0.042, 0.030, 0.0]
+  joints: [finger_2_prox_joint, finger_2_med_joint, finger_2_dist_joint]
+limits_deg:
+  finger_1_prox_joint: [-30.0, 0.0]
+  finger_1_med_joint: [-95.0, 0.0]
+  finger_2_prox_joint: [0.0, 30.0]
+  finger_2_med_joint: [-95.0, 0.0]
+posture:
+  finger_3_med_joint: {thumb.mcp: -1.0}
+  finger_3_dist_joint: {thumb.ip: -1.0}
+  finger_1_med_joint: {index.mcp: -1.0}
+  finger_1_dist_joint: {index.pip: -0.5, index.dip: -0.5}
+  finger_2_med_joint: {middle.mcp: -1.0}
+  finger_2_dist_joint: {middle.pip: -0.5, middle.dip: -0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [finger_3_dist_link]
+    - [base_link]
+  - - [finger_3_dist_link]
+    - [finger_1_med_liink, finger_1_dist_link, finger_2_med_link, finger_2_dist_link]

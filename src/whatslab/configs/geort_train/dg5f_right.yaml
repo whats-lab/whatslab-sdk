@@ -1,0 +1,64 @@
+name: dg5f_right
+urdf: tesollo_dg5f/dg5f_right.urdf
+wrist: {link: rl_dg_base}
+palm: {index: rl_dg_2_2, middle: rl_dg_3_2, ring: rl_dg_4_2}
+fingers:
+- name: thumb
+  link: rl_dg_1_tip
+  joints: [rj_dg_1_1, rj_dg_1_2, rj_dg_1_3, rj_dg_1_4]
+- name: index
+  link: rl_dg_2_tip
+  joints: [rj_dg_2_1, rj_dg_2_2, rj_dg_2_3, rj_dg_2_4]
+- name: middle
+  link: rl_dg_3_tip
+  joints: [rj_dg_3_1, rj_dg_3_2, rj_dg_3_3, rj_dg_3_4]
+- name: ring
+  link: rl_dg_4_tip
+  joints: [rj_dg_4_1, rj_dg_4_2, rj_dg_4_3, rj_dg_4_4]
+- name: little
+  link: rl_dg_5_tip
+  joints: [rj_dg_5_1, rj_dg_5_2, rj_dg_5_3, rj_dg_5_4]
+limits_deg:
+  rj_dg_1_2: [-90.0, 0.0]
+  rj_dg_1_3: [0.0, 90.0]
+  rj_dg_1_4: [0.0, 90.0]
+  rj_dg_2_1: [-20.0, 20.0]
+  rj_dg_2_2: [0.0, 95.0]
+  rj_dg_2_3: [0.0, 90.0]
+  rj_dg_2_4: [0.0, 90.0]
+  rj_dg_3_1: [-20.0, 20.0]
+  rj_dg_3_2: [0.0, 95.0]
+  rj_dg_3_3: [0.0, 90.0]
+  rj_dg_3_4: [0.0, 90.0]
+  rj_dg_4_1: [-20.0, 20.0]
+  rj_dg_4_2: [0.0, 95.0]
+  rj_dg_4_3: [0.0, 90.0]
+  rj_dg_4_4: [0.0, 90.0]
+  rj_dg_5_1: [0.0, 30.0]
+  rj_dg_5_2: [-20.0, 20.0]
+  rj_dg_5_3: [0.0, 90.0]
+  rj_dg_5_4: [0.0, 90.0]
+posture:
+  rj_dg_1_3: {thumb.mcp: 1.0}
+  rj_dg_1_4: {thumb.ip: 1.0}
+  rj_dg_2_2: {index.mcp: 1.0}
+  rj_dg_2_3: {index.pip: 1.0}
+  rj_dg_2_4: {index.dip: 1.0}
+  rj_dg_3_2: {middle.mcp: 1.0}
+  rj_dg_3_3: {middle.pip: 1.0}
+  rj_dg_3_4: {middle.dip: 1.0}
+  rj_dg_4_2: {ring.mcp: 1.0}
+  rj_dg_4_3: {ring.pip: 1.0}
+  rj_dg_4_4: {ring.dip: 1.0}
+  rj_dg_5_1: {little.mcp+: 0.25, little.pip+: 0.25, little.dip+: 0.25}
+  rj_dg_5_3: {little.mcp: 1.0}
+  rj_dg_5_4: {little.pip: 1.0, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [rl_dg_1_3, rl_dg_1_4, rl_dg_1_tip]
+    - [rl_dg_palm]
+  - - [rl_dg_1_3, rl_dg_1_4]
+    - [rl_dg_2_2, rl_dg_2_3, rl_dg_2_4, rl_dg_2_tip, rl_dg_3_2, rl_dg_3_3]
+  - - [rl_dg_1_tip]
+    - [rl_dg_2_2, rl_dg_2_3, rl_dg_3_2]
