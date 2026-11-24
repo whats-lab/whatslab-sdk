@@ -56,7 +56,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | Tesollo DG-5F-S (20-DoF) | `dex:dg5f_s` | `dg5f_s_{left,right}.yaml` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
 | Tesollo DG-5F-S 15-DoF | `dex:dg5f_s_15dof` | `dg5f_s_15dof_{left,right}.yaml` | 손가락 5개, 구동 15축; PIP·DIP −5..90° 제한 |
 | Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
-| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 손가락 5개, 구동 20축; 손끝 센서 오프셋 |
 | Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |

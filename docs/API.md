@@ -164,7 +164,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `dg5f_s` | `tesollo_dg5f_s/tesollo_dg5f_s_right.urdf` | `link_base` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
 | `dg5f_s_15dof` | `tesollo_dg5f_s/tesollo_dg5f_s_right_15dof.urdf` | `link_base` | 손가락 5개, 구동 15축; PIP·DIP −5..90° 제한 |
 | `dg5f` | `tesollo_dg5f/dg5f_right.urdf` | `rl_dg_palm` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
-| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축 |
+| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 센서 오프셋(robotPlatform 센서 프레임과 같은 점) |
 | `allegro` | `allegro_hand/allegro_hand_right.urdf` | `wrist` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | `allegro_v5_4f` | `allegro_v5_4f/allegro_v5_4f_right_a.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | `allegro_v5_sense` | `allegro_v5_sense/allegro_v5_sense_right.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
@@ -300,14 +300,16 @@ URDF 와 DexPilot config(손끝 링크, 손바닥 링크)로 블록을 만든다
 굽힘 관절이 `thumb.mcp`·`thumb.ip`(엄지 끝이 손바닥 가운데로 다가가면 +). 기본 `weight` 0.01. robotPlatform 이 손으로
 맞춘 4손(DG-5F-S, HX5, ORCA, Allegro)의 블록을 다시 만들면 DG-5F-S 손바닥 관절(`joint_5_1`) 하나를 빼고 같다.
 
-동봉 config 는 DG-5F-S·ORCA·Allegro(V4) 오른손에 robotPlatform 블록을 그대로(Allegro 는 관절 이름만 바꿔), 같은 손의
-왼손에 생성 블록 + 같은 손 조정(엄지 가중치, DG-5F-S `joint_5_1`, ORCA `open_hand`)을, 나머지에 생성 블록을 넣었다.
+동봉 config 는 DG-5F-S·HX5·ORCA·Allegro(V4) 오른손에 robotPlatform 블록을 그대로(Allegro 는 관절 이름만 바꿔), 같은
+손의 왼손에 생성 블록 + 같은 손 조정(엄지 가중치, DG-5F-S `joint_5_1`, ORCA `open_hand`)을, 나머지에 생성 블록을 넣었다.
+HX5(`robotis_{left,right}`)는 config 전체가 robotPlatform HX5 설정과 같다 — 손끝은 robotPlatform 센서 프레임 위치를
+`link_offsets` 로 옮긴 점(FK 차 0 m), 관절 한계는 로봇 드라이버 한계(±1.57 rad), `max_evals` 20,
+`project_dist`/`escape_dist` 0.03/0.035. 왼손은 같은 값을 거울상으로 둔다.
 녹화 장갑 400프레임 + 합성 주먹·핀치·손가락별 굽힘 스윕에서 켰을 때 손끝 p95 가 2 배 넘게 나빠지거나
 드리프트·역행·떨림이 늘어난 손은 블록을 넣지 않았다(사전항 꺼짐):
 
 | 손 | 이유(꺼짐 → 켬) |
 |---|---|
-| `robotis`(HX5) | 손끝 p95 6.5 → 18.6 mm. 가중치를 낮추면 역행이 돌아온다(0.0025: 9.2 mm, 역행 127°) |
 | `allegro_v5_4f` | 역행 59 → 91° |
 | `unitree_dex2_5` | 떨림 p95 0.004 → 0.2~1.0° |
 | `linkerhand_o7` | 펴진 손 드리프트 0.02 → 28° |

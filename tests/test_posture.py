@@ -107,8 +107,11 @@ def test_left_hand_spread_is_anatomical():
     assert np.allclose(right, left, atol=1e-9)
 
 
-@pytest.mark.parametrize("pair", (("dg5f_s_right", "dg5f_s_left"), ("orca_right", "orca_left"),
-                                  ("shadow_right", "shadow_left")))
+MIRROR_PAIRS = (("dg5f_s_right", "dg5f_s_left"), ("orca_right", "orca_left"),
+                ("shadow_right", "shadow_left"), ("robotis_right", "robotis_left"))
+
+
+@pytest.mark.parametrize("pair", MIRROR_PAIRS)
 def test_left_config_mirrors_right(pair):
     for n in pair:
         _require_urdf(n)
@@ -160,7 +163,7 @@ def test_positive_suffix_uses_positive_part():
     assert len(FEATURES) == 18
 
 
-PRIOR_OFF_HANDS = ("allegro_v5_4f", "igris_c", "linkerhand_l20lite", "linkerhand_o7", "robotis",
+PRIOR_OFF_HANDS = ("allegro_v5_4f", "igris_c", "linkerhand_l20lite", "linkerhand_o7",
                    "unitree_dex2_5")
 PRIOR_OFF = {f"{n}_{s}" for n in PRIOR_OFF_HANDS for s in ("left", "right")}
 

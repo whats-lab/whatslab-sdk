@@ -63,7 +63,7 @@ that repository:
 | Tesollo DG-5F-S (20-DoF) | `dex:dg5f_s` | `dg5f_s_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
 | Tesollo DG-5F-S 15-DoF | `dex:dg5f_s_15dof` | `dg5f_s_15dof_{left,right}.yaml` | 5 fingers, 15 actuated; PIP/DIP limited to −5..90° |
 | Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
-| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 5 fingers, 20 actuated |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 5 fingers, 20 actuated; fingertip sensor offsets |
 | Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
 | Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
 | Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |

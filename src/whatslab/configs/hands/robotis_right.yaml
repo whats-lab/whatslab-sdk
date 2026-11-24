@@ -2,10 +2,50 @@ name: robotis_right
 side: right
 urdf: robotis_hx5_d20/urdf/hx5_d20_right.urdf
 palm_links: {index: finger_r_link6, middle: finger_r_link10, pinky: finger_r_link18}
+link_offsets:
+  finger_end_r_link1: [0.004, 0.01375, -0.000122]
+  finger_end_r_link2: [-0.000122, 0.004, 0.01375]
+  finger_end_r_link3: [-0.000122, 0.004, 0.01375]
+  finger_end_r_link4: [-0.000122, 0.004, 0.01375]
+  finger_end_r_link5: [-0.000122, 0.004, 0.01375]
 human_hand_length: 0.19
-max_evals: 10
+joint_limits_deg:
+  "finger_r_joint1": [-89.9544, 89.9544]
+  "finger_r_joint2": [-89.9544, 0.0]
+  "finger_r_joint[34]": [0.0, 89.9544]
+max_evals: 20
 retargeting:
   type: DexPilot
   wrist_link_name: hx5_d20_right_base
   finger_tip_link_names: [finger_end_r_link1, finger_end_r_link2, finger_end_r_link3, finger_end_r_link4, finger_end_r_link5]
   low_pass_alpha: 0.5
+  project_dist: 0.03
+  escape_dist: 0.035
+posture_prior:
+  weight: 0.01
+  joint_weights: {finger_r_joint1: 0.05, finger_r_joint2: 0.05, finger_r_joint3: 0.05, finger_r_joint4: 0.05}
+  joints:
+    finger_r_joint3: {thumb.mcp: 1.0}
+    finger_r_joint4: {thumb.ip: 1.0}
+    finger_r_joint5: {index.spread: 1.0}
+    finger_r_joint6: {index.mcp: 1.0}
+    finger_r_joint7: {index.pip: 1.0}
+    finger_r_joint8: {index.dip: 1.0}
+    finger_r_joint9: {middle.spread: 1.0}
+    finger_r_joint10: {middle.mcp: 1.0}
+    finger_r_joint11: {middle.pip: 1.0}
+    finger_r_joint12: {middle.dip: 1.0}
+    finger_r_joint13: {ring.spread: 1.0}
+    finger_r_joint14: {ring.mcp: 1.0}
+    finger_r_joint15: {ring.pip: 1.0}
+    finger_r_joint16: {ring.dip: 1.0}
+    finger_r_joint17: {little.spread: 1.0}
+    finger_r_joint18: {little.mcp: 1.0}
+    finger_r_joint19: {little.pip: 1.0}
+    finger_r_joint20: {little.dip: 1.0}
+  thumb_base:
+    joints: [finger_r_joint1, finger_r_joint2]
+    bone: [finger_r_link2, finger_r_link3]
+    flex_joint: finger_r_joint3
+    step_deg: 2.0
+    axis_weight: 0.5
