@@ -14,6 +14,7 @@ HERE = Path(__file__).resolve().parent
 FPS = 30
 Q_SCALE = 10000
 P_SCALE = 10000
+R_SCALE = 1000
 MOTIONS = (
     ("fist", "Flat to fist"),
     ("pinch_index", "Pinch thumb–index"),
@@ -23,13 +24,9 @@ MOTIONS = (
     ("v_pose", "V pose"),
 )
 SIDES = ("right", "left")
-GROUPS = ("Korean hands", "Korean humanoid hands", "Foreign hands", "Foreign humanoid hands")
-KOREAN_MAKERS = {"Tesollo", "Wonik Robotics", "ROBOTIS"}
-KOREAN_HUMANOID_MAKERS = {"ROBROS", "Rainbow Robotics"}
-HUMANOID_MAKERS = {"Unitree", "Fourier", "RobotEra", "AgiBot"}
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-PACKAGE = "package://dexhand_description/"
-NOTE_FILES = re.compile(r"^(LICENSE.*|PATCHES\.txt)$")
+RAW_URL = "https://raw.githubusercontent.com/{repo}/{commit}/"
+NOTE_FILES = re.compile(r"^((MESHES-)?LICENSE.*|PATCHES\.txt)$")
 
 
 def parse_args():
@@ -95,16 +92,6 @@ def check_readme(rows, folders):
         )
 
 
-def group_of(row):
-    if row["maker"] in KOREAN_MAKERS:
-        return GROUPS[0]
-    if row["maker"] in KOREAN_HUMANOID_MAKERS:
-        return GROUPS[1]
-    if row["maker"] in HUMANOID_MAKERS or "Unitree" in row["name"]:
-        return GROUPS[3]
-    return GROUPS[2]
-
-
 def side_of(name):
     tokens = set(re.split(r"[^a-z]+", name.lower()))
     return "right" if "right" in tokens else "left" if "left" in tokens else None
@@ -116,6 +103,12 @@ def folder_urdfs(hands_root, hid):
         by_side.setdefault(side_of(p.name), p.relative_to(hands_root).as_posix())
     fallback = by_side.get(None) or next(iter(by_side.values()))
     return {s: by_side.get(s) or fallback for s in SIDES}
+
+
+def display_urdf(hands_root, rel):
+    glb = Path(rel).with_name(Path(rel).stem + "_glb.urdf").as_posix()
+    path = hands_root / glb
+    return glb if path.is_file() and path.resolve() != (hands_root / rel).resolve() else rel
 
 
 def urdf_structure(path):
@@ -164,35 +157,54 @@ def load_clip(path):
     return d["xr_joints"][np.minimum(idx, len(t) - 1)].astype(float)
 
 
-def canonical_skeleton(xr_seq, mirror, as_side):
+def canonical_joints(xr_seq, mirror, as_side):
+    from scipy.spatial.transform import Rotation
+
+    from whatslab.core.constants import OPENXR_TO_HAND21_AXES, XR_WRIST
     from whatslab.retarget.dex.preprocess import mano_palm_frame, mirror_xr_joints, xr_to_mano
 
-    out = []
+    quats, positions = [], []
     for xr in xr_seq:
-        mano = xr_to_mano(mirror_xr_joints(xr) if mirror else xr)
-        out.append(mano @ mano_palm_frame(mano, as_side))
-    return np.array(out)
+        a = mirror_xr_joints(xr) if mirror else np.asarray(xr, dtype=float)
+        rot = Rotation.from_quat(a[:, :4]).as_matrix()
+        frame = mano_palm_frame(xr_to_mano(a), as_side)
+        to_canon = frame.T @ OPENXR_TO_HAND21_AXES @ rot[XR_WRIST].T
+        q = Rotation.from_matrix(to_canon @ rot).as_quat()
+        if quats:
+            q[np.einsum("ij,ij->i", q, quats[-1]) < 0] *= -1
+        quats.append(q)
+        positions.append((a[:, 4:7] - a[XR_WRIST, 4:7]) @ to_canon.T)
+    return np.array(quats), np.array(positions)
+
+
+def canonical_skeleton(xr_seq, mirror, as_side):
+    from whatslab.core.constants import OPENXR26_TO_HAND21
+
+    return canonical_joints(xr_seq, mirror, as_side)[1][:, list(OPENXR26_TO_HAND21)]
+
+
+def joint_rows(xr_seq, mirror, as_side):
+    quats, positions = canonical_joints(xr_seq, mirror, as_side)
+    return (
+        np.concatenate([np.rint(quats * R_SCALE), np.rint(positions * P_SCALE)], axis=2)
+        .reshape(len(quats), -1)
+        .astype(int)
+        .tolist()
+    )
 
 
 def quantize(a, scale):
     return np.rint(np.asarray(a) * scale).astype(int).tolist()
 
 
-def mesh_files(urdf_path, hands_root):
-    files = {urdf_path.resolve()}
-    for visual in ET.parse(urdf_path).getroot().iter("visual"):
-        for mesh in visual.iter("mesh"):
-            name = mesh.get("filename")
-            if name.startswith(PACKAGE):
-                path = hands_root / name[len(PACKAGE) :]
-            else:
-                path = urdf_path.parent / name
-            files.add(path.resolve())
-            if path.suffix.lower() == ".obj":
-                for line in path.read_text(errors="ignore").splitlines():
-                    if line.startswith("mtllib "):
-                        files.add((path.parent / line.split(None, 1)[1].strip()).resolve())
-    return files
+def mesh_sources(hand_dir):
+    manifest = json.loads((hand_dir / "meshes.json").read_text())
+    if manifest.get("redistribute") is False:
+        return None
+    return {
+        "base": RAW_URL.format(repo=manifest["repo"], commit=manifest["commit"]),
+        "files": {e["path"]: [e["source"], e["size"]] for e in manifest["files"]},
+    }
 
 
 def solve_hand(job):
@@ -289,25 +301,21 @@ def main():
         key = f"{res['side']}_as_{res['modelSide']}"
         if key not in skeleton:
             skeleton[key] = {
-                m: quantize(
-                    canonical_skeleton(
-                        clips[f"{m}_{res['side']}"], res["mirrored"], res["modelSide"]
-                    ).reshape(-1, 63),
-                    P_SCALE,
-                )
+                m: joint_rows(clips[f"{m}_{res['side']}"], res["mirrored"], res["modelSide"])
                 for m, _ in MOTIONS
             }
 
-    model_files = set()
+    urdf_files = set()
     hands = []
     for hid in folders:
         row = rows[hid]
         solved_sides = retargeted.get(hid, {})
         urdfs = {s: solved_sides[s]["urdf"] for s in solved_sides} or folder_urdfs(hands_root, hid)
-        data = {"id": hid, "sides": {}}
+        data = {"id": hid, "meshes": mesh_sources(hands_root / hid), "sides": {}}
         for side, rel in urdfs.items():
-            model_files |= mesh_files(hands_root / rel, hands_root)
-            entry = {"urdf": f"robots/{rel}"}
+            shown = display_urdf(hands_root, rel)
+            urdf_files |= {shown, rel}
+            entry = {"urdf": f"robots/{shown}", "engineUrdf": f"robots/{rel}"}
             res = solved_sides.get(side)
             if res:
                 entry.update(
@@ -336,7 +344,6 @@ def main():
             {
                 "id": hid,
                 **row,
-                "group": group_of(row),
                 "dof": structure["dof"],
                 "fingers": structure["fingers"],
                 "retargeted": bool(solved_sides),
@@ -356,10 +363,10 @@ def main():
             f"fail={fails} fit={fit:.1e}"
         )
 
-    hands.sort(key=lambda h: GROUPS.index(h["group"]))
+    hands.sort(key=lambda h: h["name"].casefold())
     (out / "data" / "hands.json").write_text(
         json.dumps(
-            {"groups": GROUPS, "hands": hands, "default": "tesollo_dg5f_s"},
+            {"hands": hands, "default": "tesollo_dg5f_s"},
             separators=(",", ":"),
             ensure_ascii=False,
         )
@@ -370,6 +377,7 @@ def main():
                 "fps": FPS,
                 "qScale": Q_SCALE,
                 "pScale": P_SCALE,
+                "rScale": R_SCALE,
                 "motions": [{"id": m, "label": label} for m, label in MOTIONS],
                 "skeleton": skeleton,
             },
@@ -378,17 +386,17 @@ def main():
         )
     )
 
-    for src in sorted(model_files):
-        dst = out / "robots" / src.relative_to(hands_root)
+    for rel in sorted(urdf_files):
+        dst = out / "robots" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
+        shutil.copyfile(hands_root / rel, dst)
     if args.wheel:
         (out / "py").mkdir()
         shutil.copy2(args.wheel, out / "py" / args.wheel.name)
         (out / "py" / "wheel.json").write_text(json.dumps({"wheel": args.wheel.name}))
     total = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(
-        f"{len(hands)} hands ({len(retargeted)} retargeted), {len(model_files)} model files, "
+        f"{len(hands)} hands ({len(retargeted)} retargeted), {len(urdf_files)} URDF files, "
         f"{total / 1e6:.1f} MB -> {out}"
     )
 

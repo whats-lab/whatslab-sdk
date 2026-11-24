@@ -46,6 +46,11 @@
     <div class="viewport">
       <canvas id="view"></canvas>
       <p id="status" class="status" role="status"></p>
+      <div id="loading" class="loading" role="progressbar" aria-label="Loading meshes" aria-valuemin="0" aria-valuemax="100" hidden>
+        <div class="loading-track"><span class="loading-fill"></span></div>
+        <p class="loading-text mono"></p>
+        <p class="loading-failed mono" hidden></p>
+      </div>
       <div id="live-panel" class="live-panel" hidden>
         <video id="cam" playsinline muted></video>
         <p id="live-note" class="live-note" role="status"></p>

@@ -5,6 +5,8 @@ import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import URDFLoader from "urdf-loader";
 
 const $ = (s) => document.querySelector(s);
@@ -17,6 +19,16 @@ const BONES = [
   [0, 17], [17, 18], [18, 19], [19, 20],
   [5, 9], [9, 13], [13, 17],
 ];
+const HAND21 = [1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24, 25];
+const XR_BONES = [
+  "wrist",
+  "thumb-metacarpal", "thumb-phalanx-proximal", "thumb-phalanx-distal", "thumb-tip",
+  ...["index", "middle", "ring", "pinky"].flatMap((f) => ["metacarpal", "phalanx-proximal", "phalanx-intermediate", "phalanx-distal", "tip"]
+    .map((b) => `${f}-finger-${b}`)),
+];
+const CREASE = THREE.MathUtils.degToRad(35);
+const NEUTRAL = 0xa3a7ad;
+const SKIN = 0xd8a88a;
 const PALM_TO_WORLD = new THREE.Matrix4().set(
   0, 1, 0, 0,
   0, 0, 1, 0,
@@ -51,20 +63,38 @@ const color = (name) => new THREE.Color(css.getPropertyValue(name).trim());
 const canvas = $("#view");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.7;
+pmrem.dispose();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.005, 20);
 camera.position.set(0.25, 0.18, 0.55);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.target.set(0, 0.08, 0);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f98, 1.6));
-const key = new THREE.DirectionalLight(0xffffff, 2.2);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f98, 0.5));
+const key = new THREE.DirectionalLight(0xffffff, 1.2);
 key.position.set(0.6, 1.2, 0.9);
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+const fill = new THREE.DirectionalLight(0xffffff, 0.4);
 fill.position.set(-0.8, 0.4, -0.6);
 scene.add(fill);
+const shadowLight = new THREE.DirectionalLight(0xffffff, 0.5);
+shadowLight.castShadow = true;
+shadowLight.shadow.mapSize.set(1024, 1024);
+shadowLight.shadow.radius = 6;
+shadowLight.shadow.bias = -0.0005;
+scene.add(shadowLight, shadowLight.target);
+const shadowFloor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ opacity: 0.22 }));
+shadowFloor.rotation.x = -Math.PI / 2;
+shadowFloor.receiveShadow = true;
+scene.add(shadowFloor);
 
 const grid = new THREE.GridHelper(1, 20, color("--floor"), color("--floor"));
 grid.material.transparent = true;
@@ -75,8 +105,14 @@ const mount = new THREE.Group();
 mount.matrixAutoUpdate = false;
 scene.add(mount);
 
+const human = new THREE.Group();
+human.visible = false;
+scene.add(human);
+const humanFrame = new THREE.Group();
+humanFrame.quaternion.setFromRotationMatrix(PALM_TO_WORLD);
+human.add(humanFrame);
 const skeleton = new THREE.Group();
-scene.add(skeleton);
+humanFrame.add(skeleton);
 const bonePos = new Float32Array(BONES.length * 6);
 const boneGeom = new THREE.BufferGeometry();
 boneGeom.setAttribute("position", new THREE.BufferAttribute(bonePos, 3));
@@ -90,99 +126,233 @@ const dots = new THREE.InstancedMesh(
 skeleton.add(dots);
 const tmpMat = new THREE.Matrix4();
 const tmpVec = new THREE.Vector3();
+const skinMaterial = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.6, metalness: 0 });
+const handMeshes = {};
+const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().loadAsync(`assets/generic-hand/${side}.glb`)
+  .then((gltf) => {
+    const root = gltf.scene;
+    root.traverse((o) => {
+      if (o.isSkinnedMesh) {
+        o.material = skinMaterial;
+        o.frustumCulled = false;
+        o.castShadow = true;
+      }
+    });
+    root.visible = false;
+    humanFrame.add(root);
+    handMeshes[side] = { root, bones: XR_BONES.map((n) => root.getObjectByName(n)) };
+  })));
 
-function tidyMaterial(m) {
-  const src = m && m.color ? m.color : new THREE.Color(0xd4d7dc);
-  const c = src.getHex() === 0xffffff ? new THREE.Color(0xd4d7dc) : src.clone();
-  return new THREE.MeshStandardMaterial({
-    color: c,
-    roughness: 0.62,
-    metalness: 0.05,
-    transparent: m ? m.transparent : false,
-    opacity: m && m.transparent ? m.opacity : 1,
-  });
+const converted = new WeakMap();
+
+function convert(m, make) {
+  if (!converted.has(m)) converted.set(m, make(m));
+  return converted.get(m);
 }
 
-function tidy(obj, fallback) {
+function fromUrdf(m) {
+  const plain = !m || (!m.name && !m.map && m.color.getHex() === 0xffffff);
+  if (plain) return convert(fromUrdf, () => new THREE.MeshStandardMaterial({ color: NEUTRAL, roughness: 0.5, metalness: 0.1 }));
+  return convert(m, () => new THREE.MeshStandardMaterial({
+    color: m.color,
+    map: m.map,
+    roughness: 0.5,
+    metalness: 0.1,
+    transparent: m.transparent,
+    opacity: m.opacity,
+    depthWrite: m.depthWrite,
+  }));
+}
+
+function embedded(m, linear) {
+  if (m.isMeshStandardMaterial) return m;
+  return convert(m, () => new THREE.MeshStandardMaterial({
+    color: linear ? THREE.ColorManagement.workingToColorSpace(m.color.clone(), THREE.SRGBColorSpace) : m.color,
+    map: m.map,
+    vertexColors: m.vertexColors,
+    roughness: 0.5,
+    metalness: 0.1,
+    transparent: m.transparent,
+    opacity: m.opacity,
+    side: m.side,
+  }));
+}
+
+function faceted(g) {
+  const n = g.attributes.normal;
+  if (!n) return true;
+  if (g.index) return false;
+  const tris = n.count / 3;
+  const step = Math.max(1, Math.floor(tris / 300));
+  let flat = 0;
+  let seen = 0;
+  for (let t = 0; t < tris; t += step) {
+    const i = t * 3;
+    seen++;
+    const same = (j) => n.getX(i) === n.getX(j) && n.getY(i) === n.getY(j) && n.getZ(i) === n.getZ(j);
+    if (same(i + 1) && same(i + 2)) flat++;
+  }
+  return flat > seen * 0.9;
+}
+
+function tidy(obj, urdfMaterial, own, linear) {
   obj.traverse((o) => {
-    if (o.isMesh) {
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      const out = mats.map((m) => tidyMaterial(m && m.color ? m : fallback));
-      o.material = Array.isArray(o.material) ? out : out[0];
-    }
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    if (faceted(o.geometry)) o.geometry = toCreasedNormals(o.geometry, CREASE);
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    const out = mats.map((m) => (own && m ? embedded(m, linear) : fromUrdf(urdfMaterial)));
+    o.material = Array.isArray(o.material) ? out : out[0];
   });
   return obj;
-}
-
-function loadMesh(path, manager, material, done) {
-  const fail = (err) => done(null, err);
-  const ext = path.split(".").pop().toLowerCase();
-  if (ext === "stl") {
-    new STLLoader(manager).load(path, (g) => done(tidy(new THREE.Mesh(g), material)), null, fail);
-  } else if (ext === "dae") {
-    manager.itemStart(path);
-    fetch(path)
-      .then((r) => r.text())
-      .then((text) => {
-        const yUp = text.replace(/<up_axis>\s*Z_UP\s*<\/up_axis>/, "<up_axis>Y_UP</up_axis>");
-        const dae = new ColladaLoader(manager).parse(yUp, path.slice(0, path.lastIndexOf("/") + 1));
-        done(tidy(dae.scene, material));
-      })
-      .catch(fail)
-      .finally(() => manager.itemEnd(path));
-  } else if (ext === "glb" || ext === "gltf") {
-    new GLTFLoader(manager).load(path, (g) => done(tidy(g.scene, material)), null, fail);
-  } else if (ext === "obj") {
-    manager.itemStart(path);
-    fetch(path)
-      .then((r) => r.text())
-      .then((text) => {
-        const lib = text.match(/^mtllib\s+(.+)$/m);
-        const base = path.slice(0, path.lastIndexOf("/") + 1);
-        const mtl = lib
-          ? new MTLLoader(manager).setPath(base).loadAsync(lib[1].trim()).then((m) => {
-            m.preload();
-            return m;
-          })
-          : Promise.resolve(null);
-        return mtl.then((m) => {
-          const loader = new OBJLoader();
-          if (m) loader.setMaterials(m);
-          const obj = loader.parse(text);
-          done(tidy(obj, m ? null : material));
-        });
-      })
-      .catch(fail)
-      .finally(() => manager.itemEnd(path));
-  } else {
-    fail(new Error(`unsupported mesh ${path}`));
-  }
 }
 
 function setStatus(text) {
   $("#status").textContent = text;
 }
 
-function loadRobot(url) {
+function showLoading(stats) {
+  const el = $("#loading");
+  if (!stats) {
+    el.hidden = true;
+    return;
+  }
+  const frac = stats.total ? stats.done / stats.total : stats.files ? stats.finished / stats.files : 0;
+  const pct = Math.round(frac * 100);
+  el.hidden = false;
+  el.setAttribute("aria-valuenow", String(pct));
+  el.querySelector(".loading-fill").style.width = `${pct}%`;
+  el.querySelector(".loading-text").textContent = stats.total
+    ? `${pct}% · ${stats.finished}/${stats.files} files · ${(stats.total / 1e6).toFixed(1)} MB`
+    : `${pct}% · ${stats.finished}/${stats.files} files`;
+  const failed = el.querySelector(".loading-failed");
+  failed.hidden = !stats.failed.length;
+  failed.textContent = `${stats.failed.length} failed`;
+}
+
+function meshLoader(meshes, signal, manager, stats) {
+  if (!meshes) return (path, _, material, done) => done(null);
+  const robotsBase = new URL("robots/", location.href).href;
+  const resolveUrl = (u) => {
+    if (!u.startsWith(robotsBase)) return u;
+    const rel = decodeURIComponent(u.slice(robotsBase.length));
+    const entry = meshes.files[rel.slice(rel.indexOf("/") + 1)];
+    return entry ? meshes.base + entry[0].split("/").map(encodeURIComponent).join("/") : u;
+  };
+  const sizeOf = (u) => {
+    const rel = decodeURIComponent(u.slice(robotsBase.length));
+    const entry = u.startsWith(robotsBase) && meshes.files[rel.slice(rel.indexOf("/") + 1)];
+    return entry ? entry[1] : 0;
+  };
+  manager.setURLModifier(resolveUrl);
+  const get = (path, kind) => {
+    const size = sizeOf(path);
+    stats.total += size;
+    stats.files += 1;
+    stats.report();
+    return fetch(resolveUrl(path), { signal, cache: "force-cache" })
+      .then((r) => (r.ok ? r[kind]() : null))
+      .then((body) => body, () => null)
+      .then((body) => {
+        stats.done += size;
+        stats.finished += 1;
+        if (!body && !signal.aborted) stats.failed.push(path);
+        stats.report();
+        return body;
+      });
+  };
+  return (path, _, material, done) => {
+    const ext = path.split(".").pop().toLowerCase();
+    const base = path.slice(0, path.lastIndexOf("/") + 1);
+    const finish = (obj) => {
+      done(obj);
+      manager.itemEnd(path);
+    };
+    manager.itemStart(path);
+    get(path, ext === "dae" || ext === "obj" ? "text" : "arrayBuffer").then((body) => {
+      if (!body) {
+        finish(null);
+      } else if (ext === "stl") {
+        finish(tidy(new THREE.Mesh(new STLLoader().parse(body)), material, false));
+      } else if (ext === "dae") {
+        const yUp = body.replace(/<up_axis>\s*Z_UP\s*<\/up_axis>/, "<up_axis>Y_UP</up_axis>");
+        finish(tidy(new ColladaLoader(manager).parse(yUp, base).scene, material, true, true));
+      } else if (ext === "glb" || ext === "gltf") {
+        new GLTFLoader(manager).parse(body, base, (g) => finish(tidy(g.scene, material, true)), () => {
+          stats.failed.push(path);
+          finish(null);
+        });
+      } else if (ext === "obj") {
+        const lib = body.match(/^mtllib\s+(.+)$/m);
+        const mtl = lib ? get(base + lib[1].trim(), "text") : Promise.resolve(null);
+        mtl.then((text) => {
+          const loader = new OBJLoader();
+          const m = text && new MTLLoader(manager).parse(text, base);
+          if (m) {
+            m.preload();
+            loader.setMaterials(m);
+          }
+          finish(tidy(loader.parse(body), material, Boolean(m), true));
+        });
+      } else {
+        stats.failed.push(path);
+        finish(null);
+      }
+    });
+  };
+}
+
+let pending = null;
+const kinematicMaterial = new THREE.MeshStandardMaterial({ color: NEUTRAL, roughness: 0.5, metalness: 0.1 });
+const UP = new THREE.Vector3(0, 1, 0);
+
+function addKinematics(robot) {
+  const r = 0.0035;
+  const ball = new THREE.SphereGeometry(r * 1.6, 16, 12);
+  const rod = new THREE.CylinderGeometry(r, r, 1, 12);
+  for (const joint of Object.values(robot.joints)) {
+    const sphere = new THREE.Mesh(ball, kinematicMaterial);
+    sphere.castShadow = true;
+    joint.add(sphere);
+    const len = joint.position.length();
+    if (len < 1e-6) continue;
+    const bar = new THREE.Mesh(rod, kinematicMaterial);
+    bar.castShadow = true;
+    bar.scale.set(1, len, 1);
+    bar.position.copy(joint.position).multiplyScalar(0.5);
+    bar.quaternion.setFromUnitVectors(UP, joint.position.clone().normalize());
+    joint.parent.add(bar);
+  }
+}
+
+function loadRobot(url, meshes) {
   if (robots.has(url)) return robots.get(url);
+  if (pending) pending.abort();
+  const controller = new AbortController();
+  pending = controller;
   const manager = new THREE.LoadingManager();
+  const stats = { total: 0, done: 0, files: 0, finished: 0, failed: [] };
+  stats.report = () => controller.signal.aborted || showLoading(stats);
   const loader = new URDFLoader(manager);
-  loader.loadMeshCb = loadMesh;
+  loader.loadMeshCb = meshLoader(meshes, controller.signal, manager, stats);
   loader.packages = { dexhand_description: new URL("robots", location.href).href };
-  const ready = new Promise((resolve, reject) => {
+  const p = new Promise((resolve) => {
     let robot = null;
-    manager.onProgress = (_, loaded, total) => setStatus(`Loading meshes ${loaded}/${total}`);
-    manager.onLoad = () => robot && resolve(robot);
-    loader.load(url, (r) => {
-      robot = r;
-      if (!manager.isLoading) resolve(r);
-    }, null, reject);
-  });
-  manager.isLoading = true;
-  manager.onStart = () => { manager.isLoading = true; };
-  const p = ready.then((r) => {
-    manager.isLoading = false;
-    return r;
+    manager.onLoad = () => {
+      if (controller.signal.aborted || !robot) {
+        robots.delete(url);
+        if (!robot && !controller.signal.aborted) {
+          showLoading(null);
+          setStatus("The model could not be loaded.");
+        }
+        return;
+      }
+      if (!meshes) addKinematics(robot);
+      robot.userData.meshBytes = stats.done;
+      robot.userData.failedMeshes = stats.failed;
+      resolve(robot);
+    };
+    loader.load(url, (r) => { robot = r; });
   });
   robots.set(url, p);
   return p;
@@ -217,6 +387,16 @@ function frameCamera(box) {
   const dist = (radius * 0.9) / Math.sin(Math.min(vfov, hfov) / 2);
   const dir = new THREE.Vector3(0.42, 0.28, 1).normalize();
   controls.target.copy(center);
+  shadowLight.target.position.copy(center);
+  shadowLight.position.copy(center).add(new THREE.Vector3(0.1, 1, 0.2).multiplyScalar(radius * 3));
+  const cam = shadowLight.shadow.camera;
+  cam.left = cam.bottom = -radius * 1.2;
+  cam.right = cam.top = radius * 1.2;
+  cam.near = radius;
+  cam.far = radius * 6;
+  cam.updateProjectionMatrix();
+  shadowFloor.position.set(center.x, box.min.y - 0.0005, center.z);
+  shadowFloor.scale.setScalar(radius * 4);
   camera.position.copy(center).addScaledVector(dir, dist);
   camera.near = dist / 100;
   camera.far = dist * 20;
@@ -231,10 +411,13 @@ async function show() {
   const data = await loadHandData(hand.id);
   const sideData = data.sides[state.side];
   const url = new URL(sideData.urdf, location.href).href;
-  setStatus("Loading model");
-  const robot = await loadRobot(url);
-  if (token !== loadToken) return;
   setStatus("");
+  showLoading({ total: 0, done: 0, files: 0, finished: 0, failed: [] });
+  const [robot] = await Promise.all([loadRobot(url, data.meshes), handModels]);
+  if (token !== loadToken) return;
+  showLoading(null);
+  const failed = robot.userData.failedMeshes;
+  setStatus(failed.length ? `${failed.length} of the model's meshes could not be downloaded and are not shown.` : "");
   mount.clear();
   mount.add(robot);
   mount.matrix.copy(placement(sideData));
@@ -260,26 +443,34 @@ async function show() {
   }
 }
 
+function humanBox() {
+  human.updateMatrixWorld(true);
+  return new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012 * human.scale.x);
+}
+
 function applyHuman() {
   const sd = current.sideData;
-  skeleton.visible = state.human !== "off" && Boolean(sd.clips);
+  human.visible = state.human !== "off" && Boolean(sd.clips);
   const box = current.box.clone();
-  if (skeleton.visible) {
+  if (human.visible) {
     const overlay = state.human === "overlay";
-    const s = sd.scale;
+    const chirality = sd.skeleton.split("_as_")[1];
+    for (const [side, model] of Object.entries(handMeshes)) model.root.visible = side === chirality;
+    current.handMesh = handMeshes[chirality];
+    skeleton.visible = overlay;
+    skinMaterial.transparent = overlay;
+    skinMaterial.opacity = overlay ? 0.25 : 1;
+    skinMaterial.depthWrite = !overlay;
     const pose = poseAt(0);
     applyPose(pose.q, pose.p);
-    skeleton.scale.setScalar(s);
-    skeleton.position.set(0, 0, 0);
-    skeleton.updateMatrixWorld(true);
-    const human = new THREE.Box3().setFromObject(boneLines);
-    if (!overlay) skeleton.position.x = box.min.x - 0.25 * (box.max.x - box.min.x) - human.max.x;
+    human.scale.setScalar(sd.scale);
+    human.position.set(0, 0, 0);
+    if (!overlay) human.position.x = box.min.x - 0.25 * (box.max.x - box.min.x) - humanBox().max.x;
     for (const o of [boneLines, dots]) {
       o.material.depthTest = !overlay;
       o.renderOrder = overlay ? 10 : 0;
     }
-    skeleton.updateMatrixWorld(true);
-    box.union(new THREE.Box3().setFromObject(boneLines));
+    box.union(humanBox());
   }
   frameCamera(box);
 }
@@ -299,12 +490,16 @@ function poseAt(t) {
   const j = Math.min(i + 1, frames.length - 1);
   const a = f - i;
   const sk = motions.skeleton[current.sideData.skeleton][state.motion];
-  return { q: lerpRow(frames[i], frames[j], a, motions.qScale), p: lerpRow(sk[i], sk[j], a, motions.pScale) };
+  return { q: lerpRow(frames[i], frames[j], a, () => motions.qScale), p: lerpRow(sk[i], sk[j], a, jointScale) };
+}
+
+function jointScale(k) {
+  return k % 7 < 4 ? motions.rScale : motions.pScale;
 }
 
 function lerpRow(r0, r1, a, scale) {
   const out = new Float32Array(r0.length);
-  for (let k = 0; k < r0.length; k++) out[k] = (r0[k] + (r1[k] - r0[k]) * a) / scale;
+  for (let k = 0; k < r0.length; k++) out[k] = (r0[k] + (r1[k] - r0[k]) * a) / scale(k);
   return out;
 }
 
@@ -314,22 +509,27 @@ function applyPose(q, p) {
   current.values.set(q);
   if (!p) return;
   for (let k = 0; k < 21; k++) {
-    tmpVec.set(p[k * 3], p[k * 3 + 1], p[k * 3 + 2]).applyMatrix4(PALM_TO_WORLD);
+    tmpVec.fromArray(p, HAND21[k] * 7 + 4);
     tmpMat.makeTranslation(tmpVec.x, tmpVec.y, tmpVec.z);
     dots.setMatrixAt(k, tmpMat);
   }
   dots.instanceMatrix.needsUpdate = true;
   BONES.forEach(([a, b], k) => {
     for (let c = 0; c < 3; c++) {
-      bonePos[k * 6 + c] = p[a * 3 + c];
-      bonePos[k * 6 + 3 + c] = p[b * 3 + c];
+      bonePos[k * 6 + c] = p[HAND21[a] * 7 + 4 + c];
+      bonePos[k * 6 + 3 + c] = p[HAND21[b] * 7 + 4 + c];
     }
   });
-  for (let k = 0; k < BONES.length * 2; k++) {
-    tmpVec.fromArray(bonePos, k * 3).applyMatrix4(PALM_TO_WORLD).toArray(bonePos, k * 3);
-  }
   boneGeom.attributes.position.needsUpdate = true;
   boneGeom.computeBoundingSphere();
+  boneGeom.computeBoundingBox();
+  const model = current.handMesh;
+  if (!model) return;
+  model.bones.forEach((bone, k) => {
+    const o = (k + 1) * 7;
+    bone.quaternion.set(p[o], p[o + 1], p[o + 2], p[o + 3]).normalize();
+    bone.position.set(p[o + 4], p[o + 5], p[o + 6]);
+  });
 }
 
 const jointCells = [];
@@ -362,7 +562,7 @@ function renderInfo() {
       <dt>Model</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
       ${notes ? `<dt>Files</dt><dd>${notes}</dd>` : ""}
     </dl>
-    ${mirrored}${unclear}${modelOnly}
+    ${mirrored}${unclear}${current.data.meshes ? "" : `<p class="note">Meshes not shown: proprietary mesh license (see MESHES-LICENSE).</p>`}${modelOnly}
     <table class="joints"><caption>Joints</caption><tbody></tbody></table>`;
   const body = info.querySelector("tbody");
   jointCells.length = 0;
@@ -393,27 +593,19 @@ function renderList(filter = "") {
   const q = filter.trim().toLowerCase();
   list.innerHTML = "";
   let shown = 0;
-  for (const group of catalog.groups) {
-    const items = catalog.hands.filter((h) => h.group === group
-      && (!q || `${h.name} ${h.id} ${h.maker} ${h.license}`.toLowerCase().includes(q)));
-    if (!items.length) continue;
-    const title = document.createElement("h2");
-    title.className = "group-title";
-    title.innerHTML = `${esc(group)}<span>${items.length}</span>`;
-    list.append(title);
-    for (const h of items) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "hand";
-      b.dataset.id = h.id;
-      b.setAttribute("aria-selected", String(h.id === state.hand));
-      b.innerHTML = `<span class="name"></span><span class="spec"><b>${h.dof}</b> DoF<br>${h.retargeted ? `${h.fingers} fingers` : "model only"}</span><span class="maker"></span>`;
-      b.querySelector(".name").textContent = h.name;
-      b.querySelector(".maker").textContent = `${h.maker}, ${h.license}`;
-      b.title = `${h.name}\n${h.maker}\n${h.license}`;
-      list.append(b);
-      shown++;
-    }
+  for (const h of catalog.hands) {
+    if (q && !`${h.name} ${h.id} ${h.maker} ${h.license}`.toLowerCase().includes(q)) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "hand";
+    b.dataset.id = h.id;
+    b.setAttribute("aria-selected", String(h.id === state.hand));
+    b.innerHTML = `<span class="name"></span><span class="spec"><b>${h.dof}</b> DoF<br>${h.retargeted ? `${h.fingers} fingers` : "model only"}</span><span class="maker"></span>`;
+    b.querySelector(".name").textContent = h.name;
+    b.querySelector(".maker").textContent = `${h.maker}, ${h.license}`;
+    b.title = `${h.name}\n${h.maker}\n${h.license}`;
+    list.append(b);
+    shown++;
   }
   if (!shown) list.innerHTML = `<p class="empty">No hand matches “${esc(filter)}”. Try a maker name or a license.</p>`;
 }

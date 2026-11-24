@@ -62,10 +62,19 @@ export function createLive({ video, note, button, onPose }) {
   let running = false;
   let solveMs = 0;
   let config = 0;
+  let tracker = "waiting";
+  let engine = "waiting";
+  const STAGES = {
+    pyodide: "starting Python (Pyodide)",
+    packages: "loading numpy and scipy",
+    wheel: "installing whatslab-sdk",
+    engine: "building the retargeting engine",
+  };
 
   const wheel = fetch("py/wheel.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
   const say = (text) => { note.textContent = text; };
+  const progress = () => say(`Hand tracker: ${tracker}. Retargeting engine: ${engine}. The first load downloads about 40 MB.`);
 
   function configure() {
     if (!worker || !hand || !hand.sideData.config) return;
@@ -77,8 +86,8 @@ export function createLive({ video, note, button, onPose }) {
       type: "init",
       id,
       wheelUrl: new URL(`py/${w.wheel}`, location.href).href,
-      urdfUrl: new URL(sd.urdf, location.href).href,
-      urdfRel: sd.urdf.replace(/^robots\//, ""),
+      urdfUrl: new URL(sd.engineUrdf, location.href).href,
+      urdfRel: sd.engineUrdf.replace(/^robots\//, ""),
       config: sd.config,
       side: hand.side,
     }));
@@ -86,26 +95,23 @@ export function createLive({ video, note, button, onPose }) {
 
   function onWorker(e) {
     const msg = e.data;
-    if (msg.type === "ready" && msg.id === config) {
+    if (msg.type === "stage") {
+      engine = STAGES[msg.stage];
+      progress();
+    } else if (msg.type === "ready" && msg.id === config) {
       ready = true;
-      say(`Show your ${hand.side} hand to the camera.`);
+      engine = "ready";
+      if (landmarker) say(`Show your ${hand.side} hand to the camera.`);
+      else progress();
     } else if (msg.type === "error") {
+      engine = "failed";
       say(`The retargeting engine failed to start: ${msg.message}`);
     } else if (msg.type === "pose") {
       busy = false;
       if (msg.id !== config || !msg.values) return;
       solveMs = msg.ms;
       const n = hand.sideData.joints.length;
-      const q = Float32Array.from(msg.values.slice(0, n));
-      const kp = msg.values.slice(n);
-      const r = hand.sideData.palm;
-      const p = new Float32Array(63);
-      for (let k = 0; k < 21; k++) {
-        for (let i = 0; i < 3; i++) {
-          p[k * 3 + i] = r[i][0] * kp[k * 3] + r[i][1] * kp[k * 3 + 1] + r[i][2] * kp[k * 3 + 2];
-        }
-      }
-      onPose(q, p);
+      onPose(Float32Array.from(msg.values.slice(0, n)), Float32Array.from(msg.values.slice(n)));
     }
   }
 
@@ -143,7 +149,9 @@ export function createLive({ video, note, button, onPose }) {
     }
     button.disabled = true;
     say("Waiting for camera permission.");
-    wheel.then((w) => w || say("This build has no retargeting engine for live mode."));
+    wheel.then((w) => {
+      if (!w) engine = "not included in this build";
+    });
     navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false })
       .then((s) => {
         stream = s;
@@ -154,10 +162,15 @@ export function createLive({ video, note, button, onPose }) {
         running = true;
         button.textContent = "Stop camera";
         button.disabled = false;
-        say("Loading the hand tracker and the retargeting engine. The first load downloads about 40 MB.");
+        tracker = landmarker ? "ready" : "loading";
+        progress();
         if (!worker) {
           worker = new Worker(new URL("retarget-worker.js", import.meta.url), { type: "module" });
           worker.onmessage = onWorker;
+          worker.onerror = (e) => {
+            engine = "failed";
+            say(`The retargeting engine could not start: ${e.message || "its script or Pyodide could not be loaded"}.`);
+          };
           configure();
         }
         requestAnimationFrame(loop);
@@ -170,7 +183,9 @@ export function createLive({ video, note, button, onPose }) {
       })
       .then((lm) => {
         landmarker = lm || landmarker;
+        tracker = "ready";
         if (ready) say(`Show your ${hand.side} hand to the camera.`);
+        else if (engine !== "failed") progress();
       })
       .catch((err) => {
         button.disabled = false;
