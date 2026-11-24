@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Protocol, Sequence, Tuple, runtime_checkable
+from typing import List, Optional, Protocol, Sequence, runtime_checkable
 
 import numpy as np
 
@@ -22,7 +22,6 @@ class HandInputError(ValueError):
 class Engine(Protocol):
     joint_names: Sequence[str]
     joint_limits: np.ndarray
-    solve_errors: Tuple[type, ...]
 
     def solve(self, xr_joints: np.ndarray) -> np.ndarray: ...
     def reset(self) -> None: ...
@@ -68,7 +67,7 @@ class HandRetargeter:
         lim = self._engine.joint_limits
         self._last = np.clip(np.zeros(len(self._engine.joint_names)), lim[:, 0], lim[:, 1])
         self._tracking = False
-        self.last_error: Optional[Exception] = None
+        self.last_error: Optional[ValueError] = None
 
     @property
     def joint_names(self) -> List[str]:
@@ -97,7 +96,7 @@ class HandRetargeter:
                 self._last = np.asarray(self._solve(hand), dtype=float)
                 self._tracking = True
                 self.last_error = None
-            except (HandInputError, *self._engine.solve_errors) as e:
+            except HandInputError as e:
                 first = self.last_error is None
                 if first:
                     _log.warning("손 리타게팅 입력을 풀 수 없어 직전 명령을 유지한다: %s", e)

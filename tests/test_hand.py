@@ -124,38 +124,3 @@ def test_geort_engine_satisfies_engine_protocol():
 
     assert isinstance(GeortEngine.from_config("orca_right"), Engine)
     assert not isinstance(object(), Engine)
-
-
-class _FailingEngine:
-    joint_names = ["j"]
-    joint_limits = np.array([[-1.0, 1.0]])
-    solve_errors = (RuntimeError,)
-
-    def __init__(self):
-        self.fail = False
-
-    def solve(self, xr_joints):
-        if self.fail:
-            raise RuntimeError("nlopt failure")
-        return np.array([0.5])
-
-    def reset(self):
-        pass
-
-
-def test_engine_solve_error_holds_last_command():
-    from whatslab.retarget import Engine
-
-    ctrl = HandRetargeter.__new__(HandRetargeter)
-    engine = _FailingEngine()
-    assert isinstance(engine, Engine)
-    ctrl._engine = engine
-    ctrl.engine_name = "dex:"
-    ctrl._last = np.zeros(1)
-    ctrl._tracking = False
-    ctrl.last_error = None
-    sample = InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True)
-    assert ctrl.compute(sample).joint_angles[0] == 0.5
-    engine.fail = True
-    assert ctrl.compute(sample).joint_angles[0] == 0.5
-    assert isinstance(ctrl.last_error, RuntimeError)

@@ -8,8 +8,6 @@ import nlopt
 import numpy as np
 import pinocchio as pin
 
-SOLVE_ERRORS = (nlopt.RoundoffLimited, nlopt.ForcedStop, RuntimeError)
-
 DEXPILOT_HUBER_DELTA = 0.03
 DEXPILOT_ETA1 = 1e-4
 DEXPILOT_ETA2 = 3e-2

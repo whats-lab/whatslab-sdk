@@ -25,7 +25,6 @@ _REMEDY_FILE = "GeoRT 설정 YAML(name, side, model)과 모델 파일 경로를 
 
 
 class GeortEngine:
-    solve_errors: Tuple[type, ...] = ()
 
     def __init__(
         self,
