@@ -158,6 +158,10 @@ class Kinematics:
     def dof(self) -> int:
         return len(self.joint_names)
 
+    @property
+    def link_joints(self) -> np.ndarray:
+        return self._link_parent - 1
+
     def neutral(self) -> np.ndarray:
         return np.zeros(self.dof)
 

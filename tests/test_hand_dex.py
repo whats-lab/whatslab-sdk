@@ -8,12 +8,11 @@ import pytest
 import yaml
 from scipy.spatial.transform import Rotation
 
-pin = pytest.importorskip("pinocchio")
-
-from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  # noqa: E402
-from whatslab.core.types import HandPose, InputSample  # noqa: E402
-from whatslab.paths import models_root  # noqa: E402
-from whatslab.retarget import (  # noqa: E402
+from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES
+from whatslab.core.types import HandPose, InputSample
+from whatslab.kinematics import Kinematics
+from whatslab.paths import models_root
+from whatslab.retarget import (
     DexEngine,
     DexHandConfig,
     Engine,
@@ -22,8 +21,8 @@ from whatslab.retarget import (  # noqa: E402
     mirror_xr_joints,
     xr_to_mano,
 )
-from whatslab.retarget.dex import mano_palm_frame, resolve_hand_config, xr_wrist_positions  # noqa: E402
-from whatslab.retarget.dex.optimizer import huber_vector_loss  # noqa: E402
+from whatslab.retarget.dex import mano_palm_frame, resolve_hand_config, xr_wrist_positions
+from whatslab.retarget.dex.optimizer import huber_vector_loss
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
@@ -141,16 +140,11 @@ def test_config_rejects_unknown_dex_key():
 
 
 def _tip_wrist_mean(eng, q):
-    m = pin.buildModelFromUrdf(eng.urdf_path)
-    d = m.createData()
-    qq = pin.neutral(m)
-    for n, v in zip(eng.robot_joint_names, eng.full_qpos(q)):
-        qq[m.idx_qs[m.getJointId(n)]] = v
-    pin.framesForwardKinematics(m, d, qq)
-    w = d.oMf[m.getFrameId(eng.config.retargeting["wrist_link_name"])].translation
-    tips = eng.config.retargeting["finger_tip_link_names"][1:]
-    return float(np.mean([np.linalg.norm(d.oMf[m.getFrameId(t)].translation - w)
-                          for t in tips]))
+    kin = Kinematics(eng.urdf_path)
+    tf = kin.link_placements(eng.full_qpos(q))
+    w = tf[kin.frame_ids([eng.config.retargeting["wrist_link_name"]])[0], :3, 3]
+    tips = kin.frame_ids(eng.config.retargeting["finger_tip_link_names"][1:])
+    return float(np.mean(np.linalg.norm(tf[tips, :3, 3] - w, axis=1)))
 
 
 def _settle(eng, xr, n=25):

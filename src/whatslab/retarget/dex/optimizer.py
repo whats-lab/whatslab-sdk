@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
-import pinocchio as pin
 from scipy.optimize import OptimizeResult, minimize
+
+from whatslab.kinematics import Kinematics
 
 DEXPILOT_HUBER_DELTA = 0.03
 DEXPILOT_ETA1 = 1e-4
@@ -18,75 +18,6 @@ LIMIT_EPSILON = 1e-3
 FTOL = 1e-6
 MAX_ITER = 100
 USABLE_STATUS = (0, 9)
-
-
-class HandKinematics:
-    def __init__(self, urdf_path: str):
-        self.model = pin.buildModelFromUrdf(urdf_path)
-        self.data = self.model.createData()
-        if self.model.nq != self.model.nv:
-            raise ValueError(f"{urdf_path}: nq != nv 인 관절(continuous 등)은 다루지 않는다")
-        self.joint_names: List[str] = [
-            n for i, n in enumerate(self.model.names) if self.model.nqs[i] > 0
-        ]
-        self.joint_limits = np.stack(
-            [self.model.lowerPositionLimit, self.model.upperPositionLimit], axis=1
-        )
-        direct = {
-            j.get("name"): (m.get("joint"), float(m.get("multiplier", 1.0)),
-                            float(m.get("offset", 0.0)))
-            for j in ET.parse(urdf_path).getroot().iter("joint")
-            for m in j.findall("mimic")
-        }
-        mimic = []
-        for name, (source, k, offset) in direct.items():
-            while source in direct:
-                source, k2, o2 = direct[source]
-                k, offset = k * k2, k * o2 + offset
-            mimic.append((name, source, k, offset))
-        self.mimic_names = [m[0] for m in mimic]
-        self.mimic_source_names = [m[1] for m in mimic]
-        self.idx_mimic = np.array([self.joint_names.index(m[0]) for m in mimic], dtype=int)
-        self.idx_source = np.array([self.joint_names.index(m[1]) for m in mimic], dtype=int)
-        self.mimic_multipliers = np.array([m[2] for m in mimic])
-        self.mimic_offsets = np.array([m[3] for m in mimic])
-
-    def add_offset_frame(self, link: str, offset: Sequence[float]) -> str:
-        name = f"{link}_offset"
-        if self.model.existFrame(name):
-            raise ValueError(f"URDF 에 이미 있는 프레임 이름: {name}")
-        parent = self.frame_ids([link])[0]
-        frame = self.model.frames[parent]
-        self.model.addFrame(pin.Frame(
-            name, frame.parentJoint, parent,
-            frame.placement * pin.SE3(np.eye(3), np.asarray(offset, dtype=float)), pin.BODY))
-        self.data = self.model.createData()
-        return name
-
-    @property
-    def dof(self) -> int:
-        return self.model.nq
-
-    def frame_ids(self, names: Sequence[str]) -> List[int]:
-        missing = [n for n in names if not self.model.existFrame(n, pin.BODY)]
-        if missing:
-            raise ValueError(f"URDF 에 없는 링크: {missing}")
-        return [self.model.getFrameId(n, pin.BODY) for n in names]
-
-    def forward_qpos(self, qpos: np.ndarray) -> np.ndarray:
-        qpos[self.idx_mimic] = qpos[self.idx_source] * self.mimic_multipliers + self.mimic_offsets
-        return qpos
-
-    def frames(self, qpos: np.ndarray, frame_ids: Sequence[int]) -> Tuple[np.ndarray, np.ndarray]:
-        pin.computeJointJacobians(self.model, self.data, qpos)
-        pos = np.array(
-            [pin.updateFramePlacement(self.model, self.data, f).translation for f in frame_ids]
-        )
-        jac = np.array([
-            pin.getFrameJacobian(self.model, self.data, f, pin.LOCAL_WORLD_ALIGNED)[:3]
-            for f in frame_ids
-        ])
-        return pos, jac
 
 
 def huber_vector_loss(
@@ -164,7 +95,7 @@ class DexPilotState:
 class RetargetOptimizer:
     def __init__(
         self,
-        kin: HandKinematics,
+        kin: Kinematics,
         target_joint_names: Sequence[str],
         base_qpos: np.ndarray,
         dexpilot_links: Tuple[str, List[str]] | None,

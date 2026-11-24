@@ -6,15 +6,15 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pinocchio as pin
 import yaml
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.constants import SIDES
+from whatslab.kinematics import Kinematics
 from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX
-from .optimizer import HandKinematics, RetargetOptimizer, VectorTerm, dexpilot_pairs
+from .optimizer import RetargetOptimizer, VectorTerm, dexpilot_pairs
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
@@ -145,20 +145,21 @@ class DexEngine:
         if kind not in RETARGETING_TYPES:
             raise ValueError(f"{cfg.name}: retargeting.type 은 DexPilot|Vector|Position: {kind!r}")
         self.type = kind.upper()
-        kin = HandKinematics(self.urdf_path)
+        kin = Kinematics(self.urdf_path)
         missing = [n for n in cfg.fixed_joints if n not in kin.joint_names]
         if missing:
             raise ValueError(f"{cfg.name}: fixed_joints 가 URDF 에 없다 {missing}")
-        shifted = {link: kin.add_offset_frame(link, offset)
-                   for link, offset in cfg.link_offsets.items()}
+        shifted = {link: f"{link}_offset" for link in cfg.link_offsets}
+        for link, offset in cfg.link_offsets.items():
+            kin.add_frame(shifted[link], link, offset)
         target_joints = rt.get("target_joint_names")
         if target_joints is None:
             target_joints = [n for n in kin.joint_names
                              if n not in cfg.fixed_joints and n not in kin.mimic_names]
-        q0 = pin.neutral(kin.model)
+        q0 = kin.neutral()
         for n, v in cfg.fixed_joints.items():
             q0[kin.joint_names.index(n)] = v
-        pos = self._frame_positions(kin.model, q0)
+        pos = self._frame_positions(kin, q0)
         wrist = rt.get("wrist_link_name")
         if wrist is None:
             raise ValueError(f"{cfg.name}: retargeting.wrist_link_name 이 필요하다")
@@ -244,14 +245,11 @@ class DexEngine:
             self.optimizer.set_max_evals(self.max_evals)
 
     @staticmethod
-    def _frame_positions(model, q):
-        data = model.createData()
-        pin.framesForwardKinematics(model, data, q)
+    def _frame_positions(kin: Kinematics, q):
+        tf = kin.link_placements(q)
 
         def pos(name: str) -> np.ndarray:
-            if not model.existFrame(name, pin.BODY):
-                raise ValueError(f"URDF 에 없는 링크: {name}")
-            return data.oMf[model.getFrameId(name, pin.BODY)].translation.copy()
+            return tf[kin.frame_ids([name])[0], :3, 3].copy()
 
         return pos
 

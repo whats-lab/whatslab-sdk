@@ -1,6 +1,5 @@
 import pytest
 
-pytest.importorskip("pinocchio")
 pytest.importorskip("trimesh")
 pytest.importorskip("viser")
 

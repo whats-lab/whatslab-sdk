@@ -6,7 +6,6 @@ import os
 import time
 
 import numpy as np
-import pinocchio as pin
 from scipy.spatial.transform import Rotation
 
 from whatslab.retarget import DexEngine, mirror_xr_joints
@@ -59,12 +58,9 @@ def load_sequences(paths):
 class RobotProbe:
     def __init__(self, eng: DexEngine):
         self.eng = eng
-        self.model = eng.kinematics.model
-        self.data = self.model.createData()
-        names = eng.robot_joint_names
-        self._qidx = np.array([self.model.idx_qs[self.model.getJointId(n)] for n in names])
-        self.tips = [self.model.getFrameId(n, pin.BODY) for n in eng.tip_frames]
-        self.wrist = self.model.getFrameId(eng.wrist_frame, pin.BODY)
+        self.kin = eng.kinematics
+        self.tips = self.kin.frame_ids(eng.tip_frames)
+        self.wrist = self.kin.frame_ids([eng.wrist_frame])[0]
         self.chains = [self._chain(t, k == 0) for k, t in enumerate(self.tips)]
         self._fk(
             eng.full_qpos(
@@ -73,34 +69,33 @@ class RobotProbe:
                 )
             )
         )
-        palm = [np.mean([self._pos(self.model.getFrameId(n, pin.BODY)) for n in links], axis=0)
+        palm = [np.mean([self._pos(f) for f in self.kin.frame_ids(links)], axis=0)
                 for links in eng.config.palm_links]
         self.rot_palm = palm_frame(self._pos(self.wrist), *palm, side=eng.config.side)
         self.length = float(np.linalg.norm(self._pos(self.tips[2]) - self._pos(self.wrist)))
 
     def _pos(self, fid):
-        return self.data.oMf[fid].translation.copy()
+        return self.links[fid, :3, 3].copy()
 
     def _chain(self, fid, thumb):
         target = set(self.eng.robot_joint_names) - set(self.eng.config.fixed_joints)
-        j, joints = self.model.frames[fid].parent, []
-        while j > 0:
-            if self.model.names[j] in target:
+        j, joints = self.kin.link_joints[fid], []
+        while j >= 0:
+            if self.kin.joint_names[j] in target:
                 joints.append(j)
-            j = self.model.parents[j]
+            j = self.kin.joint_parents[j]
         joints = joints[::-1]
         return joints[-2:] if thumb or len(joints) < 3 else joints[1:3]
 
     def _fk(self, q_full):
-        q = pin.neutral(self.model)
-        q[self._qidx] = q_full
-        pin.framesForwardKinematics(self.model, self.data, q)
+        self.links = self.kin.link_placements(q_full)
+        self.joints = self.kin.joint_frames(q_full)
 
     def points(self, q):
         self._fk(self.eng.full_qpos(q))
-        tips = np.array([self.data.oMf[f].translation for f in self.tips])
+        tips = self.links[self.tips, :3, 3]
         bones = [
-            np.array([self.data.oMi[j].translation for j in ch] + [tips[k]])
+            np.array([self.joints[j, :3, 3] for j in ch] + [tips[k]])
             for k, ch in enumerate(self.chains)
         ]
         return tips, bones

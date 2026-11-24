@@ -3,13 +3,15 @@ from __future__ import annotations
 import logging
 import os
 import re
+import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pinocchio as pin
 import trimesh
 import viser
+from scipy.spatial.transform import Rotation
 
+from whatslab.kinematics import Kinematics, origin_matrix
 from whatslab.paths import models_root
 
 _log = logging.getLogger(__name__)
@@ -39,72 +41,91 @@ def _rebased_urdf(urdf: str, root: str) -> Optional[str]:
     return text
 
 
-def _mesh_files(text: str, tag: str) -> List[str]:
-    blocks = re.findall(rf"<{tag}\b.*?</{tag}>", text, re.S)
-    return [f for b in blocks for f in re.findall(r'<mesh\b[^>]*filename="([^"]+)"', b)]
-
-
-def _mesh_loadable(filename: str, urdf_dir: str, pkg_dirs: List[str]) -> bool:
+def _mesh_path(filename: str, urdf_dir: str, pkg_dirs: List[str]) -> Optional[str]:
     if filename.startswith("package://"):
         rel = filename[len("package://"):]
         paths = [os.path.join(d, rel) for d in pkg_dirs]
     else:
         path = filename[len("file://"):] if filename.startswith("file://") else filename
         paths = [path if os.path.isabs(path) else os.path.join(urdf_dir, path)]
-    ext = os.path.splitext(filename)[1].lstrip(".").lower()
-    return ext in trimesh.available_formats() and any(os.path.isfile(p) for p in paths)
+    return next((p for p in paths if os.path.isfile(p)), None)
+
+
+def _mesh_loadable(path: Optional[str]) -> bool:
+    ext = os.path.splitext(path or "")[1].lstrip(".").lower()
+    return path is not None and ext in trimesh.available_formats()
+
+
+def _rgba(material) -> Optional[np.ndarray]:
+    color = None if material is None else material.find("color")
+    return None if color is None else np.array([float(v) for v in color.get("rgba").split()])
+
+
+def _geometries(robot, tag: str, urdf_dir: str, pkg_dirs: List[str]) -> List[Dict]:
+    named: Dict[str, Optional[np.ndarray]] = {}
+    for m in robot.findall("material"):
+        named.setdefault(m.get("name"), _rgba(m))
+    out = []
+    for link in robot.findall("link"):
+        for i, el in enumerate(link.findall(tag)):
+            mesh = el.find("geometry/mesh")
+            material = el.find("material")
+            name = None if material is None else material.get("name")
+            rgba = named[name] if name in named else _rgba(material)
+            if name:
+                named.setdefault(name, rgba)
+            out.append({
+                "name": f"{link.get('name')}_{i}",
+                "link": link.get("name"),
+                "origin": origin_matrix(el.find("origin")),
+                "filename": None if mesh is None else mesh.get("filename"),
+                "path": None if mesh is None else _mesh_path(mesh.get("filename"), urdf_dir,
+                                                             pkg_dirs),
+                "scale": np.array([float(v) for v in
+                                   (mesh.get("scale", "1 1 1") if mesh is not None
+                                    else "1 1 1").split()]),
+                "rgba": rgba if tag == "visual" else None,
+            })
+    return out
 
 
 def _wxyz(rot: np.ndarray) -> Tuple[float, float, float, float]:
-    q = pin.Quaternion(np.asarray(rot, dtype=float))
-    return (float(q.w), float(q.x), float(q.y), float(q.z))
+    x, y, z, w = Rotation.from_matrix(np.asarray(rot, dtype=float)).as_quat()
+    return (float(w), float(x), float(y), float(z))
 
 
 class URDFScene:
 
     def __init__(self, server, urdf: str, mesh_dir: str,
                  root_path: str = "/robot"):
-        self.model = pin.buildModelFromUrdf(urdf)
-        self.data = self.model.createData()
-        self.root = server.scene.add_frame(root_path, show_axes=False)
-        self._idx_q = {self.model.names[j]: self.model.joints[j].idx_q
-                       for j in range(1, self.model.njoints)}
-        self.handles: List = []
-        self.gmodel = None
         urdf_dir = os.path.dirname(os.path.abspath(urdf))
         pkg_dirs = [urdf_dir, mesh_dir, os.path.dirname(mesh_dir)]
         urdf_text = _rebased_urdf(urdf, mesh_dir)
         with open(urdf, "r") as f:
             text = urdf_text if urdf_text is not None else f.read()
+        robot = ET.fromstring(text)
+        self.kin = Kinematics.from_string(text)
+        self.root = server.scene.add_frame(root_path, show_axes=False)
+        self.handles: List = []
+        self.geoms: List[Dict] = []
         best = 0
-        for gtype, tag in ((pin.GeometryType.VISUAL, "visual"),
-                           (pin.GeometryType.COLLISION, "collision")):
-            files = _mesh_files(text, tag)
-            if not files or not all(_mesh_loadable(f, urdf_dir, pkg_dirs) for f in files):
+        for tag in ("visual", "collision"):
+            geoms = _geometries(robot, tag, urdf_dir, pkg_dirs)
+            meshes = [g for g in geoms if g["filename"] is not None]
+            if not meshes or not all(_mesh_loadable(g["path"]) for g in meshes):
                 continue
-            if urdf_text is None:
-                gm = pin.buildGeomFromUrdf(self.model, urdf, gtype, package_dirs=pkg_dirs)
-            else:
-                gm = pin.buildGeomFromUrdfString(self.model, urdf_text, gtype,
-                                                 package_dirs=pkg_dirs)
-            n = sum(1 for g in gm.geometryObjects
-                    if os.path.exists(str(g.meshPath)))
-            if n > best:
-                self.gmodel, best = gm, n
-        if self.gmodel is not None:
-            self.gdata = pin.GeometryData(self.gmodel)
-            for g in self.gmodel.geometryObjects:
-                path = str(g.meshPath)
-                if not path or path in ("BOX", "SPHERE", "CYLINDER") \
-                        or not os.path.exists(path):
-                    self.handles.append(None)
-                    continue
-                mesh = trimesh.load(path, force="mesh")
-                mesh.apply_scale(np.asarray(g.meshScale))
-                if mesh.visual.kind is None and g.overrideMaterial:
-                    mesh.visual.face_colors = np.round(np.asarray(g.meshColor) * 255).astype(
-                        np.uint8)
-                self.handles.append(server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
+            if len(meshes) > best:
+                self.geoms, best = geoms, len(meshes)
+        self._link_ids = self.kin.frame_ids([g["link"] for g in self.geoms])
+        for g in self.geoms:
+            if g["path"] is None:
+                self.handles.append(None)
+                continue
+            mesh = trimesh.load(g["path"], force="mesh")
+            mesh.apply_scale(g["scale"])
+            if mesh.visual.kind is None and g["rgba"] is not None:
+                mesh.visual.face_colors = np.round(g["rgba"] * 255).astype(np.uint8)
+            self.handles.append(server.scene.add_mesh_trimesh(f"{root_path}/{g['name']}", mesh))
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:
             _log.warning("메쉬 로드 실패 → 스켈레톤 모드로 강등: %s", urdf)
@@ -112,9 +133,8 @@ class URDFScene:
             ball.visual.face_colors = [250, 200, 90, 255]
             self.joint_handles = [
                 server.scene.add_mesh_trimesh(f"{root_path}/j{j}", ball.copy())
-                for j in range(1, self.model.njoints)]
-            n_bones = sum(1 for j in range(1, self.model.njoints)
-                          if int(self.model.parents[j]) >= 1)
+                for j in range(1, self.kin.dof + 1)]
+            n_bones = sum(1 for p in self.kin.joint_parents if p >= 0)
             self.bones = server.scene.add_line_segments(
                 f"{root_path}/bones", points=np.zeros((max(n_bones, 1), 2, 3)),
                 colors=(200, 160, 70), line_width=3.0)
@@ -124,30 +144,29 @@ class URDFScene:
         self.root.wxyz = _wxyz(tf[:3, :3])
 
     def q_from_named(self, name_to_val: Dict[str, float]) -> np.ndarray:
-        q = pin.neutral(self.model)
+        q = self.kin.neutral()
         for name, val in name_to_val.items():
-            if name in self._idx_q:
-                q[self._idx_q[name]] = float(val)
+            if name in self.kin.joint_names:
+                q[self.kin.joint_names.index(name)] = float(val)
         return q
 
     def fk(self, q: np.ndarray) -> None:
-        pin.forwardKinematics(self.model, self.data, np.asarray(q, dtype=float))
         if self.mesh_mode:
-            pin.updateGeometryPlacements(self.model, self.data,
-                                         self.gmodel, self.gdata)
-            for h, o_to_g in zip(self.handles, self.gdata.oMg):
+            links = self.kin.link_placements(q)[self._link_ids]
+            for h, link, g in zip(self.handles, links, self.geoms):
                 if h is None:
                     continue
-                h.position = tuple(o_to_g.translation)
-                h.wxyz = _wxyz(o_to_g.rotation)
+                tf = link @ g["origin"]
+                h.position = tuple(tf[:3, 3])
+                h.wxyz = _wxyz(tf[:3, :3])
         else:
+            joints = self.kin.joint_frames(q)
             segs = []
-            for j in range(1, self.model.njoints):
-                p = self.data.oMi[j].translation
-                self.joint_handles[j - 1].position = tuple(p)
-                par = int(self.model.parents[j])
-                if par >= 1:
-                    segs.append([self.data.oMi[par].translation.copy(), p.copy()])
+            for j, par in enumerate(self.kin.joint_parents):
+                p = joints[j, :3, 3]
+                self.joint_handles[j].position = tuple(p)
+                if par >= 0:
+                    segs.append([joints[par, :3, 3], p])
             if segs:
                 self.bones.points = np.asarray(segs)
 
