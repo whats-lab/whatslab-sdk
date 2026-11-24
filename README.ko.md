@@ -88,7 +88,7 @@ pip install -e '.[all]'   # 개발용 editable
 | `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
 | `hand` | `pin`, `dexhand-description` | DexPilot 엔진 |
-| `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
+| `viz` | `viser`, `trimesh`, `pycollada`, `pin` | 로봇 손 시각화 |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. DexPilot 엔진은 dex-retargeting 최적화기를 numpy 로 옮긴
 자체 구현이라 torch·dex-retargeting 이 필요 없고 `pin>=2.7` 만 더 씁니다(Python 3.14 까지 휠이 있습니다).

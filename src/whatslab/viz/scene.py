@@ -71,11 +71,11 @@ class URDFScene:
                        for j in range(1, self.model.njoints)}
         self.handles: List = []
         self.gmodel = None
-        pkg_dirs = [mesh_dir, os.path.dirname(mesh_dir)]
+        urdf_dir = os.path.dirname(os.path.abspath(urdf))
+        pkg_dirs = [urdf_dir, mesh_dir, os.path.dirname(mesh_dir)]
         urdf_text = _rebased_urdf(urdf, mesh_dir)
         with open(urdf, "r") as f:
             text = urdf_text if urdf_text is not None else f.read()
-        urdf_dir = os.path.dirname(os.path.abspath(urdf))
         best = 0
         for gtype, tag in ((pin.GeometryType.VISUAL, "visual"),
                            (pin.GeometryType.COLLISION, "collision")):
@@ -101,6 +101,9 @@ class URDFScene:
                     continue
                 mesh = trimesh.load(path, force="mesh")
                 mesh.apply_scale(np.asarray(g.meshScale))
+                if mesh.visual.kind is None and g.overrideMaterial:
+                    mesh.visual.face_colors = np.round(np.asarray(g.meshColor) * 255).astype(
+                        np.uint8)
                 self.handles.append(server.scene.add_mesh_trimesh(f"{root_path}/{g.name}", mesh))
         self.mesh_mode = any(h is not None for h in self.handles)
         if not self.mesh_mode:

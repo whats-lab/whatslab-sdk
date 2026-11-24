@@ -24,7 +24,7 @@ dependencies = [
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v1.0.0#subdirectory=python"]
 hand     = ["pin>=2.7",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
-viz      = ["viser", "trimesh", "pin"]
+viz      = ["viser", "trimesh", "pycollada", "pin"]
 webxr    = ["websockets>=13", "cryptography"]
 all      = ["whatslab-sdk[receiver,hand,viz,webxr]"]
 dev      = ["pytest"]

@@ -21,12 +21,14 @@ class _Handle:
 class _Scene:
     def __init__(self):
         self.meshes = []
+        self.trimeshes = []
 
     def add_frame(self, *a, **k):
         return _Handle()
 
     def add_mesh_trimesh(self, name, mesh):
         self.meshes.append(name)
+        self.trimeshes.append(mesh)
         return _Handle()
 
     def add_line_segments(self, *a, **k):
@@ -66,7 +68,38 @@ def test_missing_visual_mesh_falls_back_to_collision(tmp_path):
 def test_unloadable_meshes_fall_back_to_skeleton(tmp_path):
     from whatslab.viz import URDFScene
 
-    (tmp_path / "hand.dae").write_text("")
-    scene = URDFScene(_Server(), _urdf(tmp_path, "missing.stl", "hand.dae"), str(tmp_path))
+    (tmp_path / "hand.blend").write_text("")
+    scene = URDFScene(_Server(), _urdf(tmp_path, "missing.stl", "hand.blend"), str(tmp_path))
     assert not scene.mesh_mode
     scene.fk(scene.q_from_named({"j": 0.5}))
+
+
+def test_visual_material_colours_plain_meshes(tmp_path):
+    import numpy as np
+    import trimesh
+
+    from whatslab.viz import URDFScene
+
+    trimesh.creation.box().export(tmp_path / "box.stl")
+    painted = trimesh.creation.box()
+    painted.visual.face_colors = [10, 20, 30, 255]
+    painted.export(tmp_path / "painted.glb")
+    path = tmp_path / "hand.urdf"
+    path.write_text("""<robot name="h">
+  <material name="red"><color rgba="1 0 0 1"/></material>
+  <link name="base">
+    <visual><geometry><mesh filename="box.stl"/></geometry><material name="red"/></visual>
+    <visual><geometry><mesh filename="box.stl"/></geometry>
+      <material name="green"><color rgba="0 0.5 0 1"/></material></visual>
+    <visual><geometry><mesh filename="box.stl"/></geometry></visual>
+    <visual><geometry><mesh filename="painted.glb"/></geometry><material name="red"/></visual>
+  </link>
+</robot>""")
+    srv = _Server()
+    URDFScene(srv, str(path), str(tmp_path / "elsewhere"))
+    red, green, plain, painted = srv.scene.trimeshes
+    assert np.all(red.visual.face_colors == [255, 0, 0, 255])
+    assert np.all(green.visual.face_colors == [0, 128, 0, 255])
+    assert plain.visual.kind is None
+    assert painted.visual.kind is not None
+    assert np.all(painted.visual.face_colors == [10, 20, 30, 255])

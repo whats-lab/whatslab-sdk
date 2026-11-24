@@ -254,7 +254,7 @@ dexhand-description 에 없는 URDF 기준이다.
 
 | 클래스 | 내용 |
 |---|---|
-| `URDFScene` | URDF 하나를 메쉬/스켈레톤 자동 판별 렌더 + 관절 구동. visual 메쉬가 전부 있고 trimesh 로 읽을 수 있으면 visual, 아니면 collision, 둘 다 안 되면 스켈레톤. `set_root`, `q_from_named`, `fk`. |
+| `URDFScene` | URDF 하나를 메쉬/스켈레톤 자동 판별 렌더 + 관절 구동. visual 메쉬가 전부 있고 trimesh 로 읽을 수 있으면 visual, 아니면 collision, 둘 다 안 되면 스켈레톤. DAE 는 pycollada 로 읽는다. 메쉬에 자체 색·텍스처가 없으면 URDF visual `<material>` 색(로봇 수준 이름 material 포함)을 칠하고, GLB/OBJ/DAE 의 자체 색은 그대로 둔다. 상대 메쉬 경로는 URDF 폴더 기준이다. `set_root`, `q_from_named`, `fk`. |
 | `HandViz(urdf, joint_names, port=8080, root_path="/hand", root_pose=None)` | 로봇 손 URDF 하나를 q 로 구동한다(리타게팅 결과 확인). 사람 손 시각화는 Spine 이 맡는다. |
 
 ## whatslab.safety — 운동학 안전 유틸 (dep-light)

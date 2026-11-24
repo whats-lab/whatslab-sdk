@@ -94,7 +94,7 @@ pip install -e '.[all]'   # editable, for development
 | `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
 | `hand` | `pin`, `dexhand-description` | the DexPilot engine |
-| `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
+| `viz` | `viser`, `trimesh`, `pycollada`, `pin` | robot-hand visualization |
 
 GeoRT inference (`geort:`) needs only numpy. The DexPilot engine carries its own numpy port of
 the dex-retargeting optimizer, so it needs neither torch nor dex-retargeting — only `pin>=2.7`
