@@ -6,6 +6,7 @@ from test_hand_dex import _fd_check, _require_urdf, synthetic_right_hand
 
 from whatslab.kinematics import Kinematics, parse_couplings
 from whatslab.retarget.dex import DexEngine, DexHandConfig
+from whatslab.retarget.geort.train.hand import HandKinematics, read_hand, urdf_path, urdf_tips
 
 CHAIN = """<robot name="c">
   <link name="base"/><link name="a"/><link name="b"/><link name="c"/><link name="tip"/>
@@ -78,9 +79,7 @@ def test_coupling_urdf_errors(mimic2, raw, match):
 
 def _igris_coupled():
     cfg = _require_urdf("igris_c_right")
-    couplings = {name: (name.replace("distal", "middle").replace(f"_{n}_", f"_{n - 1}_"), 1.0, 0.0)
-                 for name in cfg.fixed_joints for n in [int(name.split("_")[1])]}
-    return cfg, dataclasses.replace(cfg, fixed_joints={}, couplings=couplings, posture=None)
+    return cfg, dataclasses.replace(cfg, posture=None)
 
 
 def test_engine_drops_coupled_joints_and_fills_them_in_full_qpos():
@@ -105,20 +104,33 @@ def test_objective_gradient_with_couplings():
 
 
 def test_coupled_joint_cannot_be_fixed():
-    cfg, coupled = _igris_coupled()
-    both = dataclasses.replace(coupled, fixed_joints=dict(cfg.fixed_joints))
+    _, coupled = _igris_coupled()
+    both = dataclasses.replace(coupled, fixed_joints={n: 0.0 for n in coupled.couplings})
     with pytest.raises(ValueError, match="fixed_joints"):
         DexEngine(both)
 
 
 @pytest.mark.parametrize("side", ("right", "left"))
-def test_igris_c_distal_joints_are_passive_at_rest(side):
+def test_igris_c_distal_follows_middle(side):
     cfg = _require_urdf(f"igris_c_{side}")
     eng = DexEngine(cfg)
-    assert len(eng.joint_names) == 6 and len(cfg.fixed_joints) == 5
-    assert all("distal" in n for n in cfg.fixed_joints)
+    assert len(eng.joint_names) == 6 and len(cfg.couplings) == 5
+    assert all("distal" in n and "middle" in src for n, (src, _, _) in cfg.couplings.items())
     full = dict(zip(eng.robot_joint_names, eng.full_qpos(eng.joint_limits.mean(1))))
-    assert all(full[n] == 0.0 for n in cfg.fixed_joints)
+    assert all(full[n] == full[src] for n, (src, _, _) in cfg.couplings.items())
+
+
+def test_geort_train_couplings_follow_source():
+    _require_urdf("igris_c_right")
+    cfg = read_hand("igris_c_right")
+    kin = HandKinematics(cfg, urdf_path(cfg))
+    assert len(kin.joint_order) == 6
+    q = (kin.lower + kin.upper) / 2
+    assert np.abs(kin.tips(q[None])[0] - urdf_tips(kin, q)).max() < 1e-12
+    bad = {**cfg, "fingers": [{**f, "joints": [*f["joints"], *(
+        ["r_4_joint_index_distal"] if f["name"] == "index" else [])]} for f in cfg["fingers"]]}
+    with pytest.raises(ValueError, match="종속 관절"):
+        HandKinematics(bad, urdf_path(cfg))
 
 
 def test_coupling_keys_load_from_dict():

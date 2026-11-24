@@ -23,6 +23,12 @@ fingers:
   link: r_little_distal
   offset: [0.0, 0.0007, 0.0391]
   joints: [r_9_joint_little_middle]
+couplings:
+  r_2_joint_thumb_distal: {source: r_1_joint_thumb_middle, multiplier: 1.0, offset: 0.0}
+  r_4_joint_index_distal: {source: r_3_joint_index_middle, multiplier: 1.0, offset: 0.0}
+  r_6_joint_middle_distal: {source: r_5_joint_middle_middle, multiplier: 1.0, offset: 0.0}
+  r_8_joint_ring_distal: {source: r_7_joint_ring_middle, multiplier: 1.0, offset: 0.0}
+  r_10_joint_little_distal: {source: r_9_joint_little_middle, multiplier: 1.0, offset: 0.0}
 limits_deg:
   r_1_joint_thumb_middle: [0.0, 70.0]
   r_3_joint_index_middle: [0.0, 90.0]
@@ -30,11 +36,11 @@ limits_deg:
   r_7_joint_ring_middle: [0.0, 90.0]
   r_9_joint_little_middle: [0.0, 90.0]
 posture:
-  r_1_joint_thumb_middle: {thumb.mcp: 1.0}
-  r_3_joint_index_middle: {index.mcp: 1.0}
-  r_5_joint_middle_middle: {middle.mcp: 1.0}
-  r_7_joint_ring_middle: {ring.mcp: 1.0}
-  r_9_joint_little_middle: {little.mcp: 1.0}
+  r_1_joint_thumb_middle: {thumb.mcp: 0.5, thumb.ip: 0.5}
+  r_3_joint_index_middle: {index.mcp: 0.5, index.pip: 0.5}
+  r_5_joint_middle_middle: {middle.mcp: 0.5, middle.pip: 0.5}
+  r_7_joint_ring_middle: {ring.mcp: 0.5, ring.pip: 0.5}
+  r_9_joint_little_middle: {little.mcp: 0.5, little.pip: 0.5}
 collision:
   margin_mm: 4.0
   pairs:

@@ -68,7 +68,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 | 손 | 엔진 이름 | 설정 | 비고 |
 |---|---|---|---|
-| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 6축; distal 5축 passive(0 고정); 말단 링크 + 손끝 오프셋 |
+| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 6축; distal 5축 passive — middle 에 1:1 연동으로 근사(`couplings`, 실물 비율 미확인, ROBROS 확인 필요); 말단 링크 + 손끝 오프셋 |
 
 **해외 손**
 

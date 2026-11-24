@@ -8,12 +8,12 @@ link_offsets:
   r_middle_distal: [0, 0.0007, 0.0391]
   r_ring_distal: [0, 0.0007, 0.0391]
   r_little_distal: [0, 0.0007, 0.0391]
-fixed_joints:
-  r_2_joint_thumb_distal: 0.0
-  r_4_joint_index_distal: 0.0
-  r_6_joint_middle_distal: 0.0
-  r_8_joint_ring_distal: 0.0
-  r_10_joint_little_distal: 0.0
+couplings:
+  r_2_joint_thumb_distal: {source: r_1_joint_thumb_middle, multiplier: 1.0, offset: 0.0}
+  r_4_joint_index_distal: {source: r_3_joint_index_middle, multiplier: 1.0, offset: 0.0}
+  r_6_joint_middle_distal: {source: r_5_joint_middle_middle, multiplier: 1.0, offset: 0.0}
+  r_8_joint_ring_distal: {source: r_7_joint_ring_middle, multiplier: 1.0, offset: 0.0}
+  r_10_joint_little_distal: {source: r_9_joint_little_middle, multiplier: 1.0, offset: 0.0}
 human_hand_length: 0.19
 max_evals: 10
 retargeting:
@@ -24,13 +24,13 @@ retargeting:
 posture_prior:
   weight: 0.01
   joints:
-    r_3_joint_index_middle: {index.mcp: 1.0}
-    r_5_joint_middle_middle: {middle.mcp: 1.0}
-    r_7_joint_ring_middle: {ring.mcp: 1.0}
-    r_9_joint_little_middle: {little.mcp: 1.0}
+    r_3_joint_index_middle: {index.mcp: 0.5, index.pip: 0.5, index.dip: 0.25}
+    r_5_joint_middle_middle: {middle.mcp: 0.5, middle.pip: 0.5, middle.dip: 0.25}
+    r_7_joint_ring_middle: {ring.mcp: 0.5, ring.pip: 0.5, ring.dip: 0.25}
+    r_9_joint_little_middle: {little.mcp: 0.5, little.pip: 0.5, little.dip: 0.25}
   thumb_base:
     joints: [r_0_joint_thumb_proximal, r_1_joint_thumb_middle]
-    bone: [r_thumb_middle, r_thumb_distal_offset]
-    flex_joint: r_1_joint_thumb_middle
+    bone: [r_thumb_middle, r_thumb_distal]
+    flex_joint: r_2_joint_thumb_distal
     step_deg: 2.0
     axis_weight: 0.5

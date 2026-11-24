@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from whatslab.kinematics import check_coupling_cycles, parse_couplings
 from whatslab.paths import configs_root, models_root
 
 from .human import FINGERS
@@ -139,6 +140,20 @@ def read_joints(root: ET.Element) -> list[Joint]:
     return out
 
 
+def coupled(joints: list[Joint], couplings: dict) -> list[Joint]:
+    by_name = {j.name: j for j in joints}
+    unknown = sorted({n for name, (src, _, _) in couplings.items() for n in (name, src)
+                      if n not in by_name or by_name[n].kind not in MOVING})
+    if unknown:
+        raise ValueError(f"couplings: URDF 에 없는 움직이는 관절 {unknown}")
+    clash = sorted(n for n in couplings if by_name[n].mimic is not None)
+    if clash:
+        raise ValueError(f"couplings: URDF mimic 관절과 겹친다 {clash}")
+    check_coupling_cycles({**{j.name: j.mimic for j in joints if j.mimic}, **couplings})
+    return [dataclasses.replace(j, mimic=couplings[j.name]) if j.name in couplings else j
+            for j in joints]
+
+
 def palm_axes(wrist: np.ndarray, index: np.ndarray, middle: np.ndarray, ring: np.ndarray):
     z = middle - wrist
     z = z / np.linalg.norm(z)
@@ -152,9 +167,15 @@ def palm_axes(wrist: np.ndarray, index: np.ndarray, middle: np.ndarray, ring: np
 class HandKinematics:
     def __init__(self, cfg: dict, urdf: Path) -> None:
         self.root = ET.parse(urdf).getroot()
-        joints = read_joints(self.root)
+        self.couplings = parse_couplings(cfg.get("couplings"))
+        joints = coupled(read_joints(self.root), self.couplings)
         self.wrist = cfg["wrist"]["link"]
         self.joint_order = tuple(j for f in cfg["fingers"] for j in f["joints"])
+        driven_coupled = sorted(set(self.joint_order) & set(self.couplings))
+        if driven_coupled:
+            raise ValueError(
+                f"couplings 의 종속 관절은 fingers.joints 에 적지 않는다: {driven_coupled}"
+            )
         by_name = {j.name: j for j in joints}
         unknown = [n for n in self.joint_order if n not in by_name]
         if unknown:
@@ -314,7 +335,7 @@ class HandKinematics:
 
 
 def urdf_tips(kin: HandKinematics, q: np.ndarray) -> np.ndarray:
-    pending = read_joints(kin.root)
+    pending = coupled(read_joints(kin.root), kin.couplings)
     by_name = {j.name: j for j in pending}
     driven = dict(zip(kin.joint_order, q))
 
