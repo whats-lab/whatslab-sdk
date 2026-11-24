@@ -160,7 +160,8 @@ numpy·scipy·pyyaml 만 쓰는 순수 파이썬이라 Python 3.10–3.14 와 Py
 설치돼 있으면 테스트가 기구학을 pinocchio 와 대조합니다.
 SLSQP 는 기본 의존성인 scipy 의 것을 씁니다. numpy 상한은 두지 않습니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
-다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
+다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다. 기구학은 URDF 만 쓰고, `viz` 와 GeoRT 학습은
+손의 원본 메쉬를 처음 한 번 사용자 캐시로 받습니다(오프라인 전에 `dexhand-fetch <hand>` 로 미리 받아 둘 수 있음).
 
 ## 호환성
 

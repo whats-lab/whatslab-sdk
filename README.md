@@ -169,7 +169,9 @@ makes it pure Python (Python 3.10–3.14, and Pyodide). numpy has no upper bound
 dependency only: the tests check the kinematics against pinocchio when it is installed.
 URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
-`hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
+`hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it. Kinematics needs only
+the URDFs; `viz` and GeoRT training download the hand's original meshes once into the user cache
+(`dexhand-fetch <hand>` does the same ahead of time, e.g. before going offline).
 
 ## Compatibility
 

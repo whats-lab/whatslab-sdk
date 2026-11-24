@@ -12,7 +12,7 @@ import viser
 from scipy.spatial.transform import Rotation
 
 from whatslab.kinematics import Kinematics, origin_matrix
-from whatslab.paths import models_root
+from whatslab.paths import mesh_urdf, models_root
 
 _log = logging.getLogger(__name__)
 
@@ -185,7 +185,7 @@ class HandViz:
         self._scene = None
 
     def start(self) -> None:
-        self._scene = URDFScene(get_server(self.port), self.urdf, models_root(),
+        self._scene = URDFScene(get_server(self.port), mesh_urdf(self.urdf), models_root(),
                                 self.root_path)
         if self.root_pose is not None:
             self._scene.set_root(np.asarray(self.root_pose, dtype=float))

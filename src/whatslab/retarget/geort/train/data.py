@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from whatslab.paths import models_root
+from whatslab.paths import mesh_urdf, models_root
 
 from ..preprocess import to_geort
 from .hand import HandKinematics, read_hand, rpy_matrix, urdf_path
@@ -127,7 +127,8 @@ def hand_entry(
     arrays[f"mask_{name}"] = mask
     collision = None
     if cfg.get("collision"):
-        collision, points = collision_points(kin, cfg["collision"], urdf.resolve().parent, seed)
+        base = Path(mesh_urdf(str(urdf))).resolve().parent
+        collision, points = collision_points(kin, cfg["collision"], base, seed)
         arrays.update({f"coll_{name}_{k}": v for k, v in points.items()})
     return {
         "name": name,

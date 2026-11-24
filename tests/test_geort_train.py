@@ -1,10 +1,12 @@
 import os
+import re
 import subprocess
 import sys
 
 import numpy as np
 import pytest
 
+from whatslab.paths import mesh_urdf
 from whatslab.retarget.geort import GeortEngine, load_prompt_model
 from whatslab.retarget.geort.preprocess import PALM_MCPS, canonical_points
 
@@ -26,8 +28,13 @@ SMALL = ["--steps", "3", "--batch", "32", "--width", "32", "--latent", "16", "--
 
 
 def needs_urdf(hand):
-    if not urdf_path(read_hand(hand)).is_file():
+    urdf = urdf_path(read_hand(hand))
+    if not urdf.is_file():
         pytest.skip(f"dexhand-description has no URDF for {hand}")
+    base = os.path.dirname(mesh_urdf(str(urdf)))
+    names = re.findall(r'<mesh[^>]*\sfilename="([^"]+)"', urdf.read_text())
+    if not all(os.path.isfile(os.path.join(base, n)) for n in names):
+        pytest.skip(f"meshes of {hand} are not cached and could not be downloaded (dexhand-fetch)")
 
 
 def human_points(n, rng):
