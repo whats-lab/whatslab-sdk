@@ -1,0 +1,11 @@
+name: brainco_revo2_right
+side: right
+urdf: brainco_revo2/brainco_revo2_right.urdf
+palm_links: {index: right_index_proximal_link, middle: right_middle_proximal_link, pinky: right_pinky_proximal_link}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_base_link
+  finger_tip_link_names: [right_thumb_tip_link, right_index_tip_link, right_middle_tip_link, right_ring_tip_link, right_pinky_tip_link]
+  low_pass_alpha: 0.5

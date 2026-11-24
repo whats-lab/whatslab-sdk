@@ -1,0 +1,11 @@
+name: dexrobot_dexhand021_left
+side: left
+urdf: dexrobot_dexhand021/dexrobot_dexhand021_left.urdf
+palm_links: {index: l_f_link2_1, middle: l_f_link3_1, pinky: l_f_link5_1}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: left_hand_base
+  finger_tip_link_names: [l_f_link1_tip, l_f_link2_tip, l_f_link3_tip, l_f_link4_tip, l_f_link5_tip]
+  low_pass_alpha: 0.5

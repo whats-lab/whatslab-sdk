@@ -62,8 +62,9 @@ class DexHandConfig:
     side: str
     urdf: str
     retargeting: Dict
-    palm_links: Tuple[str, str, str]
+    palm_links: Tuple[Tuple[str, ...], Tuple[str, ...], Tuple[str, ...]]
     fixed_joints: Dict[str, float] = field(default_factory=dict)
+    link_offsets: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)
     joint_limits: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     human_hand_length: float = _DEFAULT_HUMAN_HAND_LENGTH
     mano_to_root_rpy: Optional[Tuple[float, float, float]] = None
@@ -82,7 +83,10 @@ class DexHandConfig:
         palm = d.get("palm_links") or {}
         if not {"index", "middle", "pinky"} <= set(palm):
             raise ValueError(f"palm_links 에 index/middle/pinky 가 필요하다: {sorted(palm)}")
-        palm_links = (str(palm["index"]), str(palm["middle"]), str(palm["pinky"]))
+        palm_links = tuple(
+            (str(palm[k]),) if isinstance(palm[k], str) else tuple(str(n) for n in palm[k])
+            for k in ("index", "middle", "pinky")
+        )
         frame = d.get("mano_to_root")
         limits = {
             str(k): (float(v[0]), float(v[1]))
@@ -95,6 +99,8 @@ class DexHandConfig:
             retargeting=rt,
             palm_links=palm_links,
             fixed_joints={str(k): float(v) for k, v in (d.get("fixed_joints") or {}).items()},
+            link_offsets={str(k): tuple(float(x) for x in v)
+                          for k, v in (d.get("link_offsets") or {}).items()},
             joint_limits=limits,
             human_hand_length=float(d.get("human_hand_length", _DEFAULT_HUMAN_HAND_LENGTH)),
             mano_to_root_rpy=None if frame is None else tuple(float(v) for v in frame["rpy"]),
@@ -143,9 +149,12 @@ class DexEngine:
         missing = [n for n in cfg.fixed_joints if n not in kin.joint_names]
         if missing:
             raise ValueError(f"{cfg.name}: fixed_joints 가 URDF 에 없다 {missing}")
+        shifted = {link: kin.add_offset_frame(link, offset)
+                   for link, offset in cfg.link_offsets.items()}
         target_joints = rt.get("target_joint_names")
         if target_joints is None:
-            target_joints = [n for n in kin.joint_names if n not in cfg.fixed_joints]
+            target_joints = [n for n in kin.joint_names
+                             if n not in cfg.fixed_joints and n not in kin.mimic_names]
         q0 = pin.neutral(kin.model)
         for n, v in cfg.fixed_joints.items():
             q0[kin.joint_names.index(n)] = v
@@ -153,7 +162,12 @@ class DexEngine:
         wrist = rt.get("wrist_link_name")
         if wrist is None:
             raise ValueError(f"{cfg.name}: retargeting.wrist_link_name 이 필요하다")
-        self._rot_robot = palm_frame(pos(wrist), *(pos(n) for n in cfg.palm_links), side=cfg.side)
+        wrist = shifted.get(wrist, wrist)
+        self._rot_robot = palm_frame(
+            pos(wrist),
+            *(np.mean([pos(n) for n in links], axis=0) for links in cfg.palm_links),
+            side=cfg.side,
+        )
         if self._rot_robot is None:
             raise ValueError(f"{cfg.name}: palm_links 로 로봇 손바닥 프레임을 정할 수 없다")
         self._rot_fixed = (
@@ -161,7 +175,7 @@ class DexEngine:
             if cfg.mano_to_root_rpy is None
             else Rotation.from_euler("xyz", cfg.mano_to_root_rpy).as_matrix()
         )
-        tips = list(rt.get("finger_tip_link_names") or [])
+        tips = [shifted.get(n, n) for n in rt.get("finger_tip_link_names") or []]
         if rt.get("scaling_factor") is None:
             ref = tips[2] if len(tips) > 2 else (rt.get("target_task_link_names") or [wrist])[-1]
             rt["scaling_factor"] = float(
@@ -218,6 +232,8 @@ class DexEngine:
             escape_dist=float(rt.get("escape_dist", 0.05)),
         )
         self.kinematics = kin
+        self.wrist_frame = wrist
+        self.tip_frames = list(tips)
         self.joint_names: List[str] = list(target_joints)
         self.low_pass_alpha = float(rt.get("low_pass_alpha", 0.1))
         self._smoothed: Optional[np.ndarray] = None
@@ -233,9 +249,9 @@ class DexEngine:
         pin.framesForwardKinematics(model, data, q)
 
         def pos(name: str) -> np.ndarray:
-            if not model.existFrame(name):
+            if not model.existFrame(name, pin.BODY):
                 raise ValueError(f"URDF 에 없는 링크: {name}")
-            return data.oMf[model.getFrameId(name)].translation.copy()
+            return data.oMf[model.getFrameId(name, pin.BODY)].translation.copy()
 
         return pos
 

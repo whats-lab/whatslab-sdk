@@ -1,0 +1,11 @@
+name: dg3f_m
+side: right
+urdf: tesollo_dg3f_m/tesollo_dg3f_m.urdf
+palm_links: {index: l_dg_2_1, middle: [l_dg_1_1, l_dg_2_1, l_dg_3_1], pinky: l_dg_3_1}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: l_dg_base
+  finger_tip_link_names: [l_dg_1_tip, l_dg_2_tip, l_dg_3_tip]
+  low_pass_alpha: 0.5

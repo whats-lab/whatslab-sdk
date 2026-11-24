@@ -1,0 +1,11 @@
+name: linkerhand_l6_right
+side: right
+urdf: linkerhand_l6/linkerhand_l6_right.urdf
+palm_links: {index: rh_index_proximal, middle: rh_middle_proximal, pinky: rh_pinky_proximal}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: rh_hand_base_link
+  finger_tip_link_names: [rh_thumb_tip, rh_index_tip, rh_middle_tip, rh_ring_tip, rh_pinky_tip]
+  low_pass_alpha: 0.5

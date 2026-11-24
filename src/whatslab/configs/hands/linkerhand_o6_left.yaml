@@ -1,0 +1,17 @@
+name: linkerhand_o6_left
+side: left
+urdf: linkerhand_o6/linkerhand_o6_left.urdf
+palm_links: {index: lh_index_proximal, middle: lh_middle_proximal, pinky: lh_pinky_proximal}
+link_offsets:
+  lh_thumb_distal: [-0.0001, -0.0059, 0.0469]
+  lh_index_distal: [0.0151, 0.0, 0.0356]
+  lh_middle_distal: [0.0151, 0.0, 0.0356]
+  lh_ring_distal: [0.0151, 0.0, 0.0356]
+  lh_pinky_distal: [0.0151, 0.0, 0.0356]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: lh_hand_base_link
+  finger_tip_link_names: [lh_thumb_distal, lh_index_distal, lh_middle_distal, lh_ring_distal, lh_pinky_distal]
+  low_pass_alpha: 0.5

@@ -1,0 +1,11 @@
+name: fourier_hand_6dof_left
+side: left
+urdf: fourier_hand_6dof/fourier_hand_6dof_left.urdf
+palm_links: {index: L_index_proximal_link, middle: L_middle_proximal_link, pinky: L_pinky_proximal_link}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: L_hand_base_link
+  finger_tip_link_names: [L_thumb_tip_link, L_index_tip_link, L_middle_tip_link, L_ring_tip_link, L_pinky_tip_link]
+  low_pass_alpha: 0.5

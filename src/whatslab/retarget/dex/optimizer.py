@@ -32,18 +32,36 @@ class HandKinematics:
         self.joint_limits = np.stack(
             [self.model.lowerPositionLimit, self.model.upperPositionLimit], axis=1
         )
-        mimic = [
-            (j.get("name"), m.get("joint"), float(m.get("multiplier", 1.0)),
-             float(m.get("offset", 0.0)))
+        direct = {
+            j.get("name"): (m.get("joint"), float(m.get("multiplier", 1.0)),
+                            float(m.get("offset", 0.0)))
             for j in ET.parse(urdf_path).getroot().iter("joint")
             for m in j.findall("mimic")
-        ]
+        }
+        mimic = []
+        for name, (source, k, offset) in direct.items():
+            while source in direct:
+                source, k2, o2 = direct[source]
+                k, offset = k * k2, k * o2 + offset
+            mimic.append((name, source, k, offset))
         self.mimic_names = [m[0] for m in mimic]
         self.mimic_source_names = [m[1] for m in mimic]
         self.idx_mimic = np.array([self.joint_names.index(m[0]) for m in mimic], dtype=int)
         self.idx_source = np.array([self.joint_names.index(m[1]) for m in mimic], dtype=int)
         self.mimic_multipliers = np.array([m[2] for m in mimic])
         self.mimic_offsets = np.array([m[3] for m in mimic])
+
+    def add_offset_frame(self, link: str, offset: Sequence[float]) -> str:
+        name = f"{link}_offset"
+        if self.model.existFrame(name):
+            raise ValueError(f"URDF 에 이미 있는 프레임 이름: {name}")
+        parent = self.frame_ids([link])[0]
+        frame = self.model.frames[parent]
+        self.model.addFrame(pin.Frame(
+            name, frame.parentJoint, parent,
+            frame.placement * pin.SE3(np.eye(3), np.asarray(offset, dtype=float)), pin.BODY))
+        self.data = self.model.createData()
+        return name
 
     @property
     def dof(self) -> int:

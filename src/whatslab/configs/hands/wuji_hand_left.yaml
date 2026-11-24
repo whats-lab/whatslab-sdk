@@ -1,0 +1,11 @@
+name: wuji_hand_left
+side: left
+urdf: wuji_hand/wuji_hand_left.urdf
+palm_links: {index: left_finger2_link1, middle: left_finger3_link1, pinky: left_finger5_link1}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: left_palm_link
+  finger_tip_link_names: [left_finger1_tip_link, left_finger2_tip_link, left_finger3_tip_link, left_finger4_tip_link, left_finger5_tip_link]
+  low_pass_alpha: 0.5

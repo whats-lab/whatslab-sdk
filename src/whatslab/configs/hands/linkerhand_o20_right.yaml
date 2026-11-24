@@ -1,0 +1,17 @@
+name: linkerhand_o20_right
+side: right
+urdf: linkerhand_o20/linkerhand_o20_right.urdf
+palm_links: {index: index_metacarpals_Link, middle: middle_metacarpals_Link, pinky: pinky_metacarpals_Link}
+link_offsets:
+  thumb_proximal_Link: [-0.0143, 0.0, 0.0472]
+  index_distal_Link: [0.005, -0.0001, 0.0452]
+  middle_distal_Link: [0.005, -0.0001, 0.0452]
+  ring_distal_Link: [0.005, -0.0001, 0.0452]
+  pinky_distal_Link: [0.005, -0.0001, 0.0452]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: hand_link
+  finger_tip_link_names: [thumb_proximal_Link, index_distal_Link, middle_distal_Link, ring_distal_Link, pinky_distal_Link]
+  low_pass_alpha: 0.5

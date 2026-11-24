@@ -1,0 +1,11 @@
+name: igris_c_left
+side: left
+urdf: igris_c_hand/igris_c_hand_left_coupled.urdf
+palm_links: {index: l_index_middle, middle: l_middle_middle, pinky: l_little_middle}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: l_palm
+  finger_tip_link_names: [l_thumb_tip, l_index_tip, l_middle_tip, l_ring_tip, l_little_tip]
+  low_pass_alpha: 0.5

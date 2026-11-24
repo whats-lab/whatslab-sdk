@@ -1,0 +1,17 @@
+name: inspire_rh56dfq_unitree_left
+side: left
+urdf: inspire_rh56dfq_unitree/inspire_rh56dfq_unitree_left.urdf
+palm_links: {index: L_index_proximal, middle: L_middle_proximal, pinky: L_pinky_proximal}
+link_offsets:
+  L_thumb_distal: [0.0198, -0.012, -0.007]
+  L_index_intermediate: [-0.0009, -0.0439, -0.0052]
+  L_middle_intermediate: [-0.0015, -0.0471, -0.0053]
+  L_ring_intermediate: [-0.001, -0.0439, -0.0052]
+  L_pinky_intermediate: [-0.0, -0.0361, -0.0053]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: L_hand_base_link
+  finger_tip_link_names: [L_thumb_distal, L_index_intermediate, L_middle_intermediate, L_ring_intermediate, L_pinky_intermediate]
+  low_pass_alpha: 0.5

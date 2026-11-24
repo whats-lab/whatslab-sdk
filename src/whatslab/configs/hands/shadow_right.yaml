@@ -1,0 +1,14 @@
+name: shadow_right
+side: right
+urdf: shadow_hand/shadow_hand_right.urdf
+palm_links: {index: ffknuckle, middle: mfknuckle, pinky: lfmetacarpal}
+fixed_joints:
+  WRJ2: 0.0
+  WRJ1: 0.0
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: ee_link
+  finger_tip_link_names: [thtip, fftip, mftip, rftip, lftip]
+  low_pass_alpha: 0.5

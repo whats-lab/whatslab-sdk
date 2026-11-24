@@ -1,9 +1,11 @@
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
+import yaml
 from scipy.spatial.transform import Rotation
 
 pin = pytest.importorskip("pinocchio")
@@ -175,6 +177,65 @@ def test_retargeter_smoke(name):
         dist.append(_tip_wrist_mean(eng, q))
     assert dist[0] > dist[1] > dist[2], f"{name}: 펴짐→주먹 굽힘이 단조가 아니다 {dist}"
     assert dist[2] < 0.85 * dist[0], f"{name}: 주먹이 충분히 닫히지 않는다 {dist}"
+
+
+SEQUENCE_CURLS = np.concatenate([np.linspace(0.0, 1.0, 8), np.linspace(1.0, 0.0, 8)])
+
+
+def _synthetic_sequence(side):
+    rng = np.random.default_rng(7)
+    return [_rigid(hand_for(side, c), Rotation.from_rotvec(rng.normal(0.0, 0.6, 3)).as_matrix(),
+                   rng.normal(0.0, 0.3, 3))
+            for c in SEQUENCE_CURLS]
+
+
+@pytest.mark.parametrize("name", hand_config_names())
+def test_every_hand_config_solves_synthetic_sequence(name):
+    cfg = _require_urdf(name)
+    eng = DexEngine(name)
+    lim = eng.joint_limits
+    assert not set(eng.kinematics.mimic_names) & set(eng.joint_names)
+    for xr in _synthetic_sequence(cfg.side):
+        q = eng.solve(xr)
+        assert q is not None, f"{name}: {eng.last_failure}"
+        assert np.all(np.isfinite(q))
+        assert np.all(q >= lim[:, 0] - 2e-3) and np.all(q <= lim[:, 1] + 2e-3), name
+
+
+def test_link_offsets_match_fixed_tip_links():
+    cfg = _require_urdf("dg5f_s_right")
+    with open(cfg.path) as f:
+        d = yaml.safe_load(f)
+    d["retargeting"]["finger_tip_link_names"][1] = "link_2_4"
+    d["link_offsets"] = {"link_2_4": [0.018, 0.0, 0.0], "link_base": [0.0, 0.0, 0.0]}
+    shifted = DexEngine(DexHandConfig.from_dict(d))
+    assert shifted.tip_frames[1] == "link_2_4_offset"
+    assert shifted.wrist_frame == "link_base_offset"
+    plain = DexEngine("dg5f_s_right")
+    for curl in (0.2, 0.9):
+        a = _settle(shifted, hand_for("right", curl))
+        b = _settle(plain, hand_for("right", curl))
+        assert np.allclose(a, b, atol=1e-5)
+
+
+def test_palm_links_accept_link_lists():
+    cfg = DexHandConfig.from_dict({"side": "right", "urdf": "x.urdf", "retargeting": {},
+                                   "palm_links": {"index": "a", "middle": ["a", "b"],
+                                                  "pinky": "b"}})
+    assert cfg.palm_links == (("a",), ("a", "b"), ("b",))
+
+
+def test_chained_mimic_joints_follow_urdf():
+    cfg = _require_urdf("inspire_rh56dftp_unitree_right")
+    eng = DexEngine(cfg)
+    assert len(eng.joint_names) == 6
+    full = dict(zip(eng.robot_joint_names, eng.full_qpos(_settle(eng, hand_for("right", 0.8)))))
+    mimic = [(j.get("name"), m.get("joint"), float(m.get("multiplier")),
+              float(m.get("offset", 0.0)))
+             for j in ET.parse(eng.urdf_path).getroot().iter("joint") for m in j.findall("mimic")]
+    assert any(source in {n for n, *_ in mimic} for _, source, *_ in mimic)
+    for name, source, k, offset in mimic:
+        assert np.isclose(full[name], k * full[source] + offset)
 
 
 def test_full_qpos_fills_mimic_joints():

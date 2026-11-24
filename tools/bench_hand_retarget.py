@@ -59,13 +59,12 @@ def load_sequences(paths):
 class RobotProbe:
     def __init__(self, eng: DexEngine):
         self.eng = eng
-        self.model = pin.buildModelFromUrdf(eng.urdf_path)
+        self.model = eng.kinematics.model
         self.data = self.model.createData()
         names = eng.robot_joint_names
         self._qidx = np.array([self.model.idx_qs[self.model.getJointId(n)] for n in names])
-        cfg = eng.config.retargeting
-        self.tips = [self.model.getFrameId(n) for n in cfg["finger_tip_link_names"]]
-        self.wrist = self.model.getFrameId(cfg["wrist_link_name"])
+        self.tips = [self.model.getFrameId(n, pin.BODY) for n in eng.tip_frames]
+        self.wrist = self.model.getFrameId(eng.wrist_frame, pin.BODY)
         self.chains = [self._chain(t, k == 0) for k, t in enumerate(self.tips)]
         self._fk(
             eng.full_qpos(
@@ -74,10 +73,9 @@ class RobotProbe:
                 )
             )
         )
-        palm = [self.model.getFrameId(n) for n in eng.config.palm_links]
-        self.rot_palm = palm_frame(
-            self._pos(self.wrist), *(self._pos(f) for f in palm), side=eng.config.side
-        )
+        palm = [np.mean([self._pos(self.model.getFrameId(n, pin.BODY)) for n in links], axis=0)
+                for links in eng.config.palm_links]
+        self.rot_palm = palm_frame(self._pos(self.wrist), *palm, side=eng.config.side)
         self.length = float(np.linalg.norm(self._pos(self.tips[2]) - self._pos(self.wrist)))
 
     def _pos(self, fid):

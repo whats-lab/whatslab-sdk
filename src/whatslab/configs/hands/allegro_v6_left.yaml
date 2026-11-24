@@ -1,0 +1,17 @@
+name: allegro_v6_left
+side: left
+urdf: allegro_v6/allegro_v6_left.urdf
+palm_links: {index: Finger02_Link01, middle: Finger03_Link01, pinky: Finger05_Link01}
+link_offsets:
+  Finger01_Link04: [0.0575, -0.0011, -0.0144]
+  Finger02_Link04: [0.0014, 0.0438, -0.0154]
+  Finger03_Link04: [0.0438, -0.0014, -0.0154]
+  Finger04_Link04: [-0.0014, -0.0438, -0.0154]
+  Finger05_Link04: [-0.0407, -0.016, -0.0154]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: base_link
+  finger_tip_link_names: [Finger01_Link04, Finger02_Link04, Finger03_Link04, Finger04_Link04, Finger05_Link04]
+  low_pass_alpha: 0.5

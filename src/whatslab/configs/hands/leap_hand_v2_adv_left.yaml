@@ -1,0 +1,13 @@
+name: leap_hand_v2_adv_left
+side: left
+urdf: leap_hand_v2_adv/leap_hand_v2_adv_left.urdf
+palm_links: {index: axle_4_gear_together_mir_2, middle: axle_4_gear_together_mir_3, pinky: axle_4_gear_together_2}
+link_offsets:
+  no_finger_frame: [0.0, 0.088, -0.125]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: no_finger_frame
+  finger_tip_link_names: [realtip_5, realtip, realtip_2, realtip_3, realtip_4]
+  low_pass_alpha: 0.5

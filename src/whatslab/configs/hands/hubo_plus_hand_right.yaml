@@ -1,0 +1,17 @@
+name: hubo_plus_hand_right
+side: right
+urdf: hubo_plus_hand_thirdparty/hubo_plus_hand_thirdparty_right.urdf
+palm_links: {index: rightIndexProximal, middle: rightMiddleProximal, pinky: rightPinkyProximal}
+link_offsets:
+  rightThumbDistal: [0.0264, 0.0, 0.0]
+  rightIndexDistal: [0.0264, 0.0, 0.0]
+  rightMiddleDistal: [0.0264, 0.0, 0.0]
+  rightRingDistal: [0.0264, 0.0, 0.0]
+  rightPinkyDistal: [0.0264, 0.0, 0.0]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: Body_RWP
+  finger_tip_link_names: [rightThumbDistal, rightIndexDistal, rightMiddleDistal, rightRingDistal, rightPinkyDistal]
+  low_pass_alpha: 0.5

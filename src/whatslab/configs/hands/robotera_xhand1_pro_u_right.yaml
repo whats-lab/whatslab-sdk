@@ -1,0 +1,11 @@
+name: robotera_xhand1_pro_u_right
+side: right
+urdf: robotera_xhand1_pro_u/robotera_xhand1_pro_u_right.urdf
+palm_links: {index: right_hand_index_mcp0_link, middle: right_hand_mid_mcp0_link, pinky: right_hand_ltspalm_link}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_hand_link
+  finger_tip_link_names: [right_hand_thumb_top_link, right_hand_index_top_link, right_hand_mid_top_link, right_hand_ring_top_link, right_hand_pinky_top_link]
+  low_pass_alpha: 0.5

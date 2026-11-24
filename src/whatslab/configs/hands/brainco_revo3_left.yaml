@@ -1,0 +1,11 @@
+name: brainco_revo3_left
+side: left
+urdf: brainco_revo3/brainco_revo3_left.urdf
+palm_links: {index: left_index_MPR_Link, middle: left_middle_MPR_Link, pinky: left_little_MPR_Link}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: left_hand_base_link
+  finger_tip_link_names: [left_thumb_tip_Link, left_index_tip_Link, left_middle_tip_Link, left_ring_tip_Link, left_little_tip_Link]
+  low_pass_alpha: 0.5

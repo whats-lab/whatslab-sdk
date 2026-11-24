@@ -1,0 +1,15 @@
+name: dexhand_trs_left
+side: left
+urdf: dexhand_trs/dexhand_trs_left.urdf
+palm_links: {index: index_knuckle_1, middle: middle_knuckle_1, pinky: pinky_knuckle_1}
+fixed_joints:
+  wrist_pitch_lower: 0.0
+  wrist_yaw: 0.0
+  wrist_pitch_upper: 0.0
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: index_bulk_left_1
+  finger_tip_link_names: [thumb_tip_1, index_tip_1, middle_tip_1, ring_tip_1, pinky_tip_1]
+  low_pass_alpha: 0.5

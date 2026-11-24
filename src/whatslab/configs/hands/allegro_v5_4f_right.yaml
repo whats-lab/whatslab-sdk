@@ -1,0 +1,13 @@
+name: allegro_v5_4f_right
+side: right
+urdf: allegro_v5_4f/allegro_v5_4f_right_a.urdf
+palm_links: {index: link_0_0, middle: link_4_0, pinky: link_8_0}
+link_offsets:
+  palm_link: [0.0, 0.0, -0.095]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: palm_link
+  finger_tip_link_names: [link_15_0_tip, link_3_0_tip, link_7_0_tip, link_11_0_tip]
+  low_pass_alpha: 0.5

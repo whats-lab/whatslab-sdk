@@ -1,0 +1,11 @@
+name: agibot_omnihand_2025_left
+side: left
+urdf: agibot_omnihand_2025/agibot_omnihand_2025_left.urdf
+palm_links: {index: L_index_abad_link, middle: L_middle_pip_link, pinky: L_pinky_abad_link}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: L_palm
+  finger_tip_link_names: [L_thumb_tip, L_index_tip, L_middle_tip, L_ring_tip, L_pinky_tip]
+  low_pass_alpha: 0.5

@@ -1,0 +1,17 @@
+name: inspire_rh5dg2_left
+side: left
+urdf: inspire_rh5dg2/inspire_rh5dg2_left.urdf
+palm_links: {index: left_index_pitch, middle: left_middle_pitch, pinky: left_pinky_mcp}
+link_offsets:
+  left_thumb_dip: [0.0308, -0.0029, -0.0102]
+  left_index_dip: [0.0035, -0.0362, 0.0102]
+  left_middle_dip: [0.0035, -0.0384, 0.01]
+  left_ring_dip: [0.0035, -0.0362, 0.0102]
+  left_pinky_dip: [0.0035, -0.0352, 0.0102]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: left_hand_base
+  finger_tip_link_names: [left_thumb_dip, left_index_dip, left_middle_dip, left_ring_dip, left_pinky_dip]
+  low_pass_alpha: 0.5

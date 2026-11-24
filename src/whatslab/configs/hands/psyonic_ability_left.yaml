@@ -1,0 +1,17 @@
+name: psyonic_ability_left
+side: left
+urdf: psyonic_ability_official/psyonic_ability_official_left_large.urdf
+palm_links: {index: index_L1, middle: middle_L1, pinky: pinky_L1}
+link_offsets:
+  thumb_L2: [0.0651, 0.0205, -0.0046]
+  index_L2: [0.0392, -0.0217, 0.0004]
+  middle_L2: [0.0392, -0.0217, 0.0004]
+  ring_L2: [0.0392, -0.0217, 0.0004]
+  pinky_L2: [0.0392, -0.0217, 0.0004]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: base
+  finger_tip_link_names: [thumb_L2, index_L2, middle_L2, ring_L2, pinky_L2]
+  low_pass_alpha: 0.5

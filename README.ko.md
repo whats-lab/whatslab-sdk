@@ -47,15 +47,85 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 **DexPilot** — `dex:<이름>`. `<이름>` 은 `configs/hands/` 의 파일입니다(`dex:orca` 는 `orca_{side}`, 파일
 경로도 됩니다). 한쪽 손 설정으로 반대쪽 손도 입력을 거울상으로 바꿔 씁니다.
 
-| 손 | 엔진 이름 | 설정 |
-|---|---|---|
-| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (손목 관절 제외, 0 고정) |
-| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP·DIP −5..90° 제한) |
-| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
-| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (손가락 4개, 사람 새끼손가락 미사용) |
-| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (손가락 4개, 사람 새끼손가락 미사용) |
-| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (구동 6축, PIP 는 URDF mimic) |
-| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (구동 9축, 연동 관절은 URDF mimic) |
+`dexhand-description` 의 손가락 3개 이상인 손 전부에 설정이 있습니다(Panda 같은 2지 그리퍼는 제외). 묶음은 그
+저장소와 같습니다.
+
+**국내 손**
+
+| 손 | 엔진 이름 | 설정 | 비고 |
+|---|---|---|---|
+| Tesollo DG-5F-S (20-DoF) | `dex:dg5f_s` | `dg5f_s_{left,right}.yaml` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
+| Tesollo DG-5F-S 15-DoF | `dex:dg5f_s_15dof` | `dg5f_s_15dof_{left,right}.yaml` | 손가락 5개, 구동 15축; PIP·DIP −5..90° 제한 |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
+| Tesollo DG-3F-M | `dex:dg3f_m` | `dg3f_m.yaml` | 손가락 3개, 구동 12축; URDF 하나, 반대 손은 거울상 |
+| Tesollo DG-4F | `dex:dg4f` | `dg4f.yaml` | 손가락 4개, 구동 18축; mimic 4; URDF 하나, 반대 손은 거울상 |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| ROBOTIS HX5-D20 rev1 | `dex:robotis_rev1` | `robotis_rev1_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
+| Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |
+| Allegro Hand V5 (3 finger) | `dex:allegro_v5_3f` | `allegro_v5_3f.yaml` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
+| Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |
+| Allegro Hand V6 | `dex:allegro_v6` | `allegro_v6_{left,right}.yaml` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| WHATs LAB Base Hand | `dex:base_hand` | `base_hand_{left,right}.yaml` | 손가락 5개, 구동 21축 |
+
+**국내 휴머노이드 손**
+
+| 손 | 엔진 이름 | 설정 | 비고 |
+|---|---|---|---|
+| ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
+| HUBO+ hand (third-party model) | `dex:hubo_plus_hand` | `hubo_plus_hand_{left,right}.yaml` | 손가락 5개, 구동 15축; 말단 링크 + 손끝 오프셋 |
+
+**해외 손**
+
+| 손 | 엔진 이름 | 설정 | 비고 |
+|---|---|---|---|
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` | 손가락 5개, 구동 16축; 손목 관절 0 고정 |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
+| LEAP Hand V2 Advanced | `dex:leap_hand_v2_adv` | `leap_hand_v2_adv_{left,right}.yaml` | 손가락 5개, 구동 21축; 손목 오프셋 |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 4 |
+| PSYONIC Ability Hand (official, large) | `dex:psyonic_ability` | `psyonic_ability_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 4; 말단 링크 + 손끝 오프셋 |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` | 손가락 5개, 구동 9축; mimic 11 |
+| Shadow Hand | `dex:shadow` | `shadow_{left,right}.yaml` | 손가락 5개, 구동 22축; 손목 관절 0 고정 |
+| Inspire Hand | `dex:inspire` | `inspire_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6 |
+| Inspire RH56E2 | `dex:inspire_rh56e2` | `inspire_rh56e2_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| Inspire RH56F1 | `dex:inspire_rh56f1` | `inspire_rh56f1_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6 |
+| Inspire RH5DG2 | `dex:inspire_rh5dg2` | `inspire_rh5dg2_{left,right}.yaml` | 손가락 5개, 구동 13축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| LinkerHand L6 | `dex:linkerhand_l6` | `linkerhand_l6_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
+| LinkerHand O6 | `dex:linkerhand_o6` | `linkerhand_o6_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| LinkerHand L20 | `dex:linkerhand_l20` | `linkerhand_l20_{left,right}.yaml` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| LinkerHand L20 Lite | `dex:linkerhand_l20lite` | `linkerhand_l20lite_{left,right}.yaml` | 손가락 5개, 구동 10축; mimic 10; 말단 링크 + 손끝 오프셋 |
+| LinkerHand O7 | `dex:linkerhand_o7` | `linkerhand_o7_{left,right}.yaml` | 손가락 5개, 구동 7축; mimic 10; 말단 링크 + 손끝 오프셋 |
+| LinkerHand L25 | `dex:linkerhand_l25` | `linkerhand_l25_{left,right}.yaml` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| LinkerHand O20 | `dex:linkerhand_o20` | `linkerhand_o20_{left,right}.yaml` | 손가락 5개, 구동 16축; 말단 링크 + 손끝 오프셋 |
+| LinkerHand L30 | `dex:linkerhand_l30_right` | `linkerhand_l30_right.yaml` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| LinkerHand O30i | `dex:linkerhand_o30` | `linkerhand_o30_{left,right}.yaml` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| LinkerHand T12 | `dex:linkerhand_t12_right` | `linkerhand_t12_right.yaml` | 손가락 5개, 구동 14축; mimic 5; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| BrainCo Revo2 | `dex:brainco_revo2` | `brainco_revo2_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
+| BrainCo Revo3 | `dex:brainco_revo3` | `brainco_revo3_{left,right}.yaml` | 손가락 5개, 구동 21축 |
+| DexRobot DexHand021 | `dex:dexrobot_dexhand021` | `dexrobot_dexhand021_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| Sharpa Wave | `dex:sharpa_wave` | `sharpa_wave_{left,right}.yaml` | 손가락 5개, 구동 22축 |
+| Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| PaXini DexH13 | `dex:paxini_dexh13` | `paxini_dexh13_{left,right}.yaml` | 손가락 4개, 구동 16축; 말단 링크 + 손끝 오프셋 |
+| DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
+| Barrett Hand | `dex:barrett_hand` | `barrett_hand.yaml` | 손가락 3개, 구동 8축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| D'Claw gripper | `dex:dclaw_gripper` | `dclaw_gripper.yaml` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
+
+**해외 휴머노이드 손**
+
+| 손 | 엔진 이름 | 설정 | 비고 |
+|---|---|---|---|
+| Unitree Dex3-1 | `dex:unitree_dex3_1` | `unitree_dex3_1_{left,right}.yaml` | 손가락 3개, 구동 7축; 말단 링크 + 손끝 오프셋 |
+| Inspire RH56DFX (Unitree model) | `dex:inspire_rh56dfx_unitree` | `inspire_rh56dfx_unitree_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6 |
+| Inspire RH56DFQ (Unitree G1 model) | `dex:inspire_rh56dfq_unitree` | `inspire_rh56dfq_unitree_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| Inspire RH56DFTP (Unitree G1 model) | `dex:inspire_rh56dftp_unitree` | `inspire_rh56dftp_unitree_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| Unitree Dex5-1 | `dex:unitree_dex5_1` | `unitree_dex5_1_{left,right}.yaml` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| Unitree Dex5-S | `dex:unitree_dex5_s` | `unitree_dex5_s.yaml` | 손가락 5개, 구동 22축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| Unitree Dex2-5 | `dex:unitree_dex2_5` | `unitree_dex2_5_{left,right}.yaml` | 손가락 5개, 구동 10축; 말단 링크 + 손끝 오프셋 |
+| Fourier Hand 6-DoF | `dex:fourier_hand_6dof` | `fourier_hand_6dof_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
+| RobotEra XHAND1 (STAR1 model) | `dex:robotera_xhand1_star1` | `robotera_xhand1_star1_{left,right}.yaml` | 손가락 5개, 구동 12축 |
+| RobotEra XHAND1 Pro U | `dex:robotera_xhand1_pro_u` | `robotera_xhand1_pro_u_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| AgiBot OmniHand 2025 | `dex:agibot_omnihand_2025` | `agibot_omnihand_2025_{left,right}.yaml` | 손가락 5개, 구동 10축; mimic 6 |
+| AgiBot OmniHand 3 Lite S | `dex:agibot_omnihand_3_lite_s` | `agibot_omnihand_3_lite_s_{left,right}.yaml` | 손가락 3개, 구동 4축; mimic 3; 말단 링크 + 손끝 오프셋 |
 
 **GeoRT 소프트 프롬프트** — `geort:<이름>`. `<이름>` 은 `configs/geort/` 의 파일입니다(`.yaml` 로 끝나는
 경로도 됩니다). 학습된 모델이 패키지에 들어 있고(`retarget/geort/assets/geort_prompt.npz`, 약 5MB),
@@ -167,7 +237,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 14개), geort/ (2개)
+└── configs/          hands/ (DexPilot, 106개), geort/ (2개)
 ```
 
 ## 예제와 도구

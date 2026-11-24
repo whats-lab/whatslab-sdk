@@ -52,15 +52,85 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
 to `orca_{side}`; a file path also works). A config for one side serves the other side by
 mirroring the input.
 
-| Hand | Engine name | Config |
-|---|---|---|
-| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` (wrist joint excluded, held at 0) |
-| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` (PIP/DIP limited to −5..90°) |
-| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` |
-| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` (4 fingers; the human little finger is not used) |
-| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` (4 fingers; the human little finger is not used) |
-| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` (6 actuated joints; PIP follows the URDF mimic) |
-| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` (9 actuated joints; coupled joints follow the URDF mimic) |
+Configs for every hand in `dexhand-description` with three or more fingers (2-finger grippers such as the
+Panda gripper are not configured), grouped as in that repository:
+
+**Korean hands**
+
+| Hand | Engine name | Config | Notes |
+|---|---|---|---|
+| Tesollo DG-5F-S (20-DoF) | `dex:dg5f_s` | `dg5f_s_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
+| Tesollo DG-5F-S 15-DoF | `dex:dg5f_s_15dof` | `dg5f_s_15dof_{left,right}.yaml` | 5 fingers, 15 actuated; PIP/DIP limited to −5..90° |
+| Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
+| Tesollo DG-3F-M | `dex:dg3f_m` | `dg3f_m.yaml` | 3 fingers, 12 actuated; one URDF; the other side is mirrored |
+| Tesollo DG-4F | `dex:dg4f` | `dg4f.yaml` | 4 fingers, 18 actuated; 4 mimic; one URDF; the other side is mirrored |
+| ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 5 fingers, 20 actuated |
+| ROBOTIS HX5-D20 rev1 | `dex:robotis_rev1` | `robotis_rev1_{left,right}.yaml` | 5 fingers, 20 actuated |
+| Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
+| Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
+| Allegro Hand V5 (3 finger) | `dex:allegro_v5_3f` | `allegro_v5_3f.yaml` | 3 fingers, 9 actuated; one URDF; the other side is mirrored |
+| Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
+| Allegro Hand V6 | `dex:allegro_v6` | `allegro_v6_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
+| WHATs LAB Base Hand | `dex:base_hand` | `base_hand_{left,right}.yaml` | 5 fingers, 21 actuated |
+
+**Korean humanoid hands**
+
+| Hand | Engine name | Config | Notes |
+|---|---|---|---|
+| ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
+| HUBO+ hand (third-party model) | `dex:hubo_plus_hand` | `hubo_plus_hand_{left,right}.yaml` | 5 fingers, 15 actuated; tip offsets on distal links |
+
+**Foreign hands**
+
+| Hand | Engine name | Config | Notes |
+|---|---|---|---|
+| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` | 5 fingers, 16 actuated; wrist joint held at 0 |
+| LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
+| LEAP Hand V2 Advanced | `dex:leap_hand_v2_adv` | `leap_hand_v2_adv_{left,right}.yaml` | 5 fingers, 21 actuated; wrist offset |
+| PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` | 5 fingers, 6 actuated; 4 mimic |
+| PSYONIC Ability Hand (official, large) | `dex:psyonic_ability` | `psyonic_ability_{left,right}.yaml` | 5 fingers, 6 actuated; 4 mimic; tip offsets on distal links |
+| Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` | 5 fingers, 9 actuated; 11 mimic |
+| Shadow Hand | `dex:shadow` | `shadow_{left,right}.yaml` | 5 fingers, 22 actuated; wrist joints held at 0 |
+| Inspire Hand | `dex:inspire` | `inspire_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
+| Inspire RH56E2 | `dex:inspire_rh56e2` | `inspire_rh56e2_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
+| Inspire RH56F1 | `dex:inspire_rh56f1` | `inspire_rh56f1_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
+| Inspire RH5DG2 | `dex:inspire_rh5dg2` | `inspire_rh5dg2_{left,right}.yaml` | 5 fingers, 13 actuated; 5 mimic; tip offsets on distal links |
+| LinkerHand L6 | `dex:linkerhand_l6` | `linkerhand_l6_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
+| LinkerHand O6 | `dex:linkerhand_o6` | `linkerhand_o6_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic; tip offsets on distal links |
+| LinkerHand L20 | `dex:linkerhand_l20` | `linkerhand_l20_{left,right}.yaml` | 5 fingers, 16 actuated; 5 mimic; tip offsets on distal links |
+| LinkerHand L20 Lite | `dex:linkerhand_l20lite` | `linkerhand_l20lite_{left,right}.yaml` | 5 fingers, 10 actuated; 10 mimic; tip offsets on distal links |
+| LinkerHand O7 | `dex:linkerhand_o7` | `linkerhand_o7_{left,right}.yaml` | 5 fingers, 7 actuated; 10 mimic; tip offsets on distal links |
+| LinkerHand L25 | `dex:linkerhand_l25` | `linkerhand_l25_{left,right}.yaml` | 5 fingers, 16 actuated; 5 mimic; tip offsets on distal links |
+| LinkerHand O20 | `dex:linkerhand_o20` | `linkerhand_o20_{left,right}.yaml` | 5 fingers, 16 actuated; tip offsets on distal links |
+| LinkerHand L30 | `dex:linkerhand_l30_right` | `linkerhand_l30_right.yaml` | 5 fingers, 20 actuated; tip offsets on distal links; one URDF; the other side is mirrored |
+| LinkerHand O30i | `dex:linkerhand_o30` | `linkerhand_o30_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
+| LinkerHand T12 | `dex:linkerhand_t12_right` | `linkerhand_t12_right.yaml` | 5 fingers, 14 actuated; 5 mimic; tip offsets on distal links; one URDF; the other side is mirrored |
+| BrainCo Revo2 | `dex:brainco_revo2` | `brainco_revo2_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
+| BrainCo Revo3 | `dex:brainco_revo3` | `brainco_revo3_{left,right}.yaml` | 5 fingers, 21 actuated |
+| DexRobot DexHand021 | `dex:dexrobot_dexhand021` | `dexrobot_dexhand021_{left,right}.yaml` | 5 fingers, 20 actuated |
+| Sharpa Wave | `dex:sharpa_wave` | `sharpa_wave_{left,right}.yaml` | 5 fingers, 22 actuated |
+| Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 5 fingers, 20 actuated |
+| PaXini DexH13 | `dex:paxini_dexh13` | `paxini_dexh13_{left,right}.yaml` | 4 fingers, 16 actuated; tip offsets on distal links |
+| DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 5 fingers, 21 actuated; wrist joints held at 0 |
+| Barrett Hand | `dex:barrett_hand` | `barrett_hand.yaml` | 3 fingers, 8 actuated; tip offsets on distal links; one URDF; the other side is mirrored |
+| D'Claw gripper | `dex:dclaw_gripper` | `dclaw_gripper.yaml` | 3 fingers, 9 actuated; one URDF; the other side is mirrored |
+
+**Foreign humanoid hands**
+
+| Hand | Engine name | Config | Notes |
+|---|---|---|---|
+| Unitree Dex3-1 | `dex:unitree_dex3_1` | `unitree_dex3_1_{left,right}.yaml` | 3 fingers, 7 actuated; tip offsets on distal links |
+| Inspire RH56DFX (Unitree model) | `dex:inspire_rh56dfx_unitree` | `inspire_rh56dfx_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
+| Inspire RH56DFQ (Unitree G1 model) | `dex:inspire_rh56dfq_unitree` | `inspire_rh56dfq_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
+| Inspire RH56DFTP (Unitree G1 model) | `dex:inspire_rh56dftp_unitree` | `inspire_rh56dftp_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
+| Unitree Dex5-1 | `dex:unitree_dex5_1` | `unitree_dex5_1_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
+| Unitree Dex5-S | `dex:unitree_dex5_s` | `unitree_dex5_s.yaml` | 5 fingers, 22 actuated; tip offsets on distal links; one URDF; the other side is mirrored |
+| Unitree Dex2-5 | `dex:unitree_dex2_5` | `unitree_dex2_5_{left,right}.yaml` | 5 fingers, 10 actuated; tip offsets on distal links |
+| Fourier Hand 6-DoF | `dex:fourier_hand_6dof` | `fourier_hand_6dof_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
+| RobotEra XHAND1 (STAR1 model) | `dex:robotera_xhand1_star1` | `robotera_xhand1_star1_{left,right}.yaml` | 5 fingers, 12 actuated |
+| RobotEra XHAND1 Pro U | `dex:robotera_xhand1_pro_u` | `robotera_xhand1_pro_u_{left,right}.yaml` | 5 fingers, 20 actuated |
+| AgiBot OmniHand 2025 | `dex:agibot_omnihand_2025` | `agibot_omnihand_2025_{left,right}.yaml` | 5 fingers, 10 actuated; 6 mimic |
+| AgiBot OmniHand 3 Lite S | `dex:agibot_omnihand_3_lite_s` | `agibot_omnihand_3_lite_s_{left,right}.yaml` | 3 fingers, 4 actuated; 3 mimic; tip offsets on distal links |
 
 **GeoRT soft prompt** — `geort:<name>`, where `<name>` is a file in `configs/geort/` (a path
 ending in `.yaml` also works). The trained model ships with the package
@@ -177,7 +247,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 14 files), geort/ (2 files)
+└── configs/          hands/ (DexPilot, 106 files), geort/ (2 files)
 ```
 
 ## Examples & tools

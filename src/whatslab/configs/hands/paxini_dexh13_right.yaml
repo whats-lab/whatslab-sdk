@@ -1,0 +1,16 @@
+name: paxini_dexh13_right
+side: right
+urdf: paxini_dexh13/paxini_dexh13_right.urdf
+palm_links: {index: right_index_link_0, middle: right_middle_link_0, pinky: right_ring_link_0}
+link_offsets:
+  right_thumb_link_3: [0.036, -0.016, -0.0083]
+  right_index_link_3: [0.0274, -0.0143, 0.0001]
+  right_middle_link_3: [0.0274, -0.0143, 0.0001]
+  right_ring_link_3: [0.0274, -0.0143, 0.0001]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_palm_link
+  finger_tip_link_names: [right_thumb_link_3, right_index_link_3, right_middle_link_3, right_ring_link_3]
+  low_pass_alpha: 0.5

@@ -1,0 +1,17 @@
+name: unitree_dex2_5_right
+side: right
+urdf: unitree_dex2_5/unitree_dex2_5_right.urdf
+palm_links: {index: right_21_link, middle: right_31_link, pinky: right_51_link}
+link_offsets:
+  right_12_link: [0.0187, 0.0297, -0.0001]
+  right_22_link: [0.0297, 0.0187, 0.0001]
+  right_32_link: [0.0297, 0.0187, 0.0001]
+  right_42_link: [0.0297, 0.0187, 0.0001]
+  right_52_link: [0.0297, 0.0187, 0.0001]
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_0_link
+  finger_tip_link_names: [right_12_link, right_22_link, right_32_link, right_42_link, right_52_link]
+  low_pass_alpha: 0.5

@@ -142,7 +142,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 엔진이 이번 프레임을 못 풀면(`solve` 가 `None`) 직전 명령 유지(못 푼 이유는 엔진의 `last_failure` 를 옮긴 `last_failure`, 연속 실패의 첫 번에 경고 로그, 엔진 `reset()`). 예외는 잡지 않는다 — 설정 오류·배열 모양 오류는 그대로 올라온다, 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_failure: Optional[str]` 은 지금 프레임 기준(풀었거나 추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
 | `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints) -> Optional[np.ndarray]`, `last_failure: Optional[str]`, `reset()`. `solve` 가 `None` 이면 "이번 프레임을 풀 수 없다"는 뜻이고 사람이 읽을 이유가 `last_failure` 에 있다(풀면 `None` 으로 돌아간다). 프레임 단위 실패에 예외를 쓰지 않는다. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
-| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `reset()`. 손당 프레임 p50 약 0.6~0.9ms, p99 약 1~3ms(동봉 max_evals 10). |
+| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `kinematics`(`HandKinematics`, `link_offsets` 프레임 포함), `wrist_frame`·`tip_frames`(실제로 쓰는 손목·손끝 프레임 이름 — `link_offsets` 가 있으면 `<링크>_offset`), `reset()`. 손당 프레임 p50 약 0.6~0.9ms, p99 약 1~3ms(동봉 max_evals 10). |
 | `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 아래 표에 없는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
 | `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `HandKinematics(urdf)`(pinocchio 모델, URDF `<mimic>` 관절), `RetargetOptimizer`(`scipy.optimize.minimize(method="SLSQP", jac=True)`, 관절 한계 ±1e-3 을 `bounds` 로. `objective(ref, center)` 는 `f(x) -> (loss, grad)`. `solve(ref, start) -> x | None` — 수렴(status 0)했거나 반복 상한에 걸렸어도(status 9) `x` 가 유한하면 쓸 수 있는 해로 돌려주고, 그 밖의 종료(직선 탐색 실패·특이 행렬 등)나 유한하지 않은 `x` 는 `None`. 마지막 결과는 `last_result`(`OptimizeResult`)), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
@@ -155,17 +155,86 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 `dex:<이름>` 이 읽는 yaml. `<이름>.yaml` 을 먼저, 없으면 `<이름>_{side}.yaml` 을 찾는다.
 
-| `dex:` 이름 | URDF (models root 기준) | 손목 링크 → 손끝 링크 | 비고 |
-|---|---|---|---|
-| `orca` | `orca_hand/urdf/{side}.urdf` | Carpals → `{side}_sensor_*_distal` ×5 | 손목 관절 0 고정 |
-| `dg5f` | `tesollo_dg5f/dg5f_{side}.urdf` | `?l_dg_palm` → `?l_dg_[1-5]_tip` | PIP·DIP −5..90° |
-| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_{side}.urdf` | `hx5_d20_{side}_base` → `finger_end_{r,l}_link[1-5]` ×5 | URDF 에 센서 링크가 없어 손가락 끝 링크를 쓴다 |
-| `allegro` | `allegro_hand/allegro_hand_{side}.urdf` | `wrist` → `link_{15,11,7,3}.0_tip`(왼손) / `link_{15,3,7,11}.0_tip`(오른손) | 손가락 4개, 16축 |
-| `leap` | `leap_hand/leap_hand_{side}.urdf` | `base` → `{thumb,index,middle,ring}_tip_head` | 손가락 4개, 16축 |
-| `ability` | `ability_hand/ability_hand_{side}.urdf` | `base_link` → `{thumb,index,middle,ring,pinky}_tip` | 구동 6축, 손가락 q2 는 mimic |
-| `schunk` | `schunk_hand/schunk_svh_hand_{side}.urdf` | `{side}_hand_base_link` → `{th,ff,mf,rf,lf}tip` | 구동 9축, 나머지는 mimic |
+손가락 3개 이상인 `dexhand-description` 손 전부(2지 그리퍼 제외). 손끝 링크는 각 yaml 에 있다.
 
-allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names` 는 dex-retargeting
+**국내 손**
+
+| `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
+|---|---|---|---|
+| `dg5f_s` | `tesollo_dg5f_s/tesollo_dg5f_s_right.urdf` | `link_base` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
+| `dg5f_s_15dof` | `tesollo_dg5f_s/tesollo_dg5f_s_right_15dof.urdf` | `link_base` | 손가락 5개, 구동 15축; PIP·DIP −5..90° 제한 |
+| `dg5f` | `tesollo_dg5f/dg5f_right.urdf` | `rl_dg_palm` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
+| `dg3f_m` | `tesollo_dg3f_m/tesollo_dg3f_m.urdf` | `l_dg_base` | 손가락 3개, 구동 12축; URDF 하나, 반대 손은 거울상 |
+| `dg4f` | `tesollo_dg4f/tesollo_dg4f.urdf` | `l_dg_base` | 손가락 4개, 구동 18축; mimic 4; URDF 하나, 반대 손은 거울상 |
+| `robotis` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축 |
+| `robotis_rev1` | `robotis_hx5_d20_rev1/robotis_hx5_d20_rev1_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축 |
+| `allegro` | `allegro_hand/allegro_hand_right.urdf` | `wrist` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
+| `allegro_v5_4f` | `allegro_v5_4f/allegro_v5_4f_right_a.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
+| `allegro_v5_3f` | `allegro_v5_3f/allegro_v5_3f.urdf` | `palm_link` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
+| `allegro_v5_sense` | `allegro_v5_sense/allegro_v5_sense_right.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
+| `allegro_v6` | `allegro_v6/allegro_v6_right.urdf` | `base_link` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| `base_hand` | `base_hand/urdf/right.urdf` | `right_wrist` | 손가락 5개, 구동 21축 |
+
+**국내 휴머노이드 손**
+
+| `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
+|---|---|---|---|
+| `igris_c` | `igris_c_hand/igris_c_hand_right_coupled.urdf` | `r_palm` | 손가락 5개, 구동 6축; mimic 5 |
+| `hubo_plus_hand` | `hubo_plus_hand_thirdparty/hubo_plus_hand_thirdparty_right.urdf` | `Body_RWP` | 손가락 5개, 구동 15축; 말단 링크 + 손끝 오프셋 |
+
+**해외 손**
+
+| `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
+|---|---|---|---|
+| `orca` | `orca_hand/urdf/right.urdf` | `R-Carpals_8d1f1041` | 손가락 5개, 구동 16축; 손목 관절 0 고정 |
+| `leap` | `leap_hand/leap_hand_right.urdf` | `base` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
+| `leap_hand_v2_adv` | `leap_hand_v2_adv/leap_hand_v2_adv_right.urdf` | `no_finger_frame_mirror` | 손가락 5개, 구동 21축; 손목 오프셋 |
+| `ability` | `ability_hand/ability_hand_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 4 |
+| `psyonic_ability` | `psyonic_ability_official/psyonic_ability_official_right_large.urdf` | `base` | 손가락 5개, 구동 6축; mimic 4; 말단 링크 + 손끝 오프셋 |
+| `schunk` | `schunk_hand/schunk_svh_hand_right.urdf` | `right_hand_base_link` | 손가락 5개, 구동 9축; mimic 11 |
+| `shadow` | `shadow_hand/shadow_hand_right.urdf` | `ee_link` | 손가락 5개, 구동 22축; 손목 관절 0 고정 |
+| `inspire` | `inspire_hand/inspire_hand_right.urdf` | `base` | 손가락 5개, 구동 6축; mimic 6 |
+| `inspire_rh56e2` | `inspire_rh56e2/inspire_rh56e2_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| `inspire_rh56f1` | `inspire_rh56f1/inspire_rh56f1_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 6 |
+| `inspire_rh5dg2` | `inspire_rh5dg2/inspire_rh5dg2_right.urdf` | `right_hand_base` | 손가락 5개, 구동 13축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_l6` | `linkerhand_l6/linkerhand_l6_right.urdf` | `rh_hand_base_link` | 손가락 5개, 구동 6축; mimic 5 |
+| `linkerhand_o6` | `linkerhand_o6/linkerhand_o6_right.urdf` | `rh_hand_base_link` | 손가락 5개, 구동 6축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_l20` | `linkerhand_l20/linkerhand_l20_right.urdf` | `base_link` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_l20lite` | `linkerhand_l20lite/linkerhand_l20lite_right.urdf` | `hand_base_link` | 손가락 5개, 구동 10축; mimic 10; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_o7` | `linkerhand_o7/linkerhand_o7_right.urdf` | `hand_base_link` | 손가락 5개, 구동 7축; mimic 10; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_l25` | `linkerhand_l25/linkerhand_l25_right.urdf` | `hand_base_link` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_o20` | `linkerhand_o20/linkerhand_o20_right.urdf` | `hand_link` | 손가락 5개, 구동 16축; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_l30_right` | `linkerhand_l30/linkerhand_l30_right.urdf` | `base_link` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| `linkerhand_o30` | `linkerhand_o30/linkerhand_o30_right.urdf` | `hand_base_link` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| `linkerhand_t12_right` | `linkerhand_t12/linkerhand_t12_right.urdf` | `linkerhand_t12_right` | 손가락 5개, 구동 14축; mimic 5; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| `brainco_revo2` | `brainco_revo2/brainco_revo2_right.urdf` | `right_base_link` | 손가락 5개, 구동 6축; mimic 5 |
+| `brainco_revo3` | `brainco_revo3/brainco_revo3_right.urdf` | `right_hand_base_link` | 손가락 5개, 구동 21축 |
+| `dexrobot_dexhand021` | `dexrobot_dexhand021/dexrobot_dexhand021_right.urdf` | `right_hand_base` | 손가락 5개, 구동 20축 |
+| `sharpa_wave` | `sharpa_wave/sharpa_wave_right.urdf` | `right_hand_C_MC` | 손가락 5개, 구동 22축 |
+| `wuji_hand` | `wuji_hand/wuji_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 20축 |
+| `paxini_dexh13` | `paxini_dexh13/paxini_dexh13_right.urdf` | `right_palm_link` | 손가락 4개, 구동 16축; 말단 링크 + 손끝 오프셋 |
+| `dexhand_trs` | `dexhand_trs/dexhand_trs_right.urdf` | `index_bulk_1` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
+| `barrett_hand` | `barrett_hand/bhand_model.urdf` | `base_link` | 손가락 3개, 구동 8축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| `dclaw_gripper` | `dclaw_gripper/dclaw_gripper.urdf` | `base_link` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
+
+**해외 휴머노이드 손**
+
+| `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
+|---|---|---|---|
+| `unitree_dex3_1` | `unitree_dex3_1/unitree_dex3_1_right.urdf` | `right_hand_palm_link` | 손가락 3개, 구동 7축; 말단 링크 + 손끝 오프셋 |
+| `inspire_rh56dfx_unitree` | `inspire_rh56dfx_unitree/inspire_rh56dfx_unitree_right.urdf` | `R_hand_base_link` | 손가락 5개, 구동 6축; mimic 6 |
+| `inspire_rh56dfq_unitree` | `inspire_rh56dfq_unitree/inspire_rh56dfq_unitree_right.urdf` | `R_hand_base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| `inspire_rh56dftp_unitree` | `inspire_rh56dftp_unitree/inspire_rh56dftp_unitree_right.urdf` | `right_base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
+| `unitree_dex5_1` | `unitree_dex5_1/unitree_dex5_1_right.urdf` | `base_link00` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| `unitree_dex5_s` | `unitree_dex5_s/unitree_dex5_s.urdf` | `right_palm_link` | 손가락 5개, 구동 22축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
+| `unitree_dex2_5` | `unitree_dex2_5/unitree_dex2_5_right.urdf` | `right_0_link` | 손가락 5개, 구동 10축; 말단 링크 + 손끝 오프셋 |
+| `fourier_hand_6dof` | `fourier_hand_6dof/fourier_hand_6dof_right.urdf` | `R_hand_base_link` | 손가락 5개, 구동 6축; mimic 5 |
+| `robotera_xhand1_star1` | `robotera_xhand1_star1/robotera_xhand1_star1_right.urdf` | `right_hand_link` | 손가락 5개, 구동 12축 |
+| `robotera_xhand1_pro_u` | `robotera_xhand1_pro_u/robotera_xhand1_pro_u_right.urdf` | `right_hand_link` | 손가락 5개, 구동 20축 |
+| `agibot_omnihand_2025` | `agibot_omnihand_2025/agibot_omnihand_2025_right.urdf` | `R_palm` | 손가락 5개, 구동 10축; mimic 6 |
+| `agibot_omnihand_3_lite_s` | `agibot_omnihand_3_lite_s/agibot_omnihand_3_lite_s_right.urdf` | `base_link` | 손가락 3개, 구동 4축; mimic 3; 말단 링크 + 손끝 오프셋 |
+
+allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ability·schunk 의 `target_joint_names`)는 dex-retargeting
 `configs/teleop/<hand>_{left,right}_dexpilot.yml` 그대로다. `scaling_factor`·`low_pass_alpha` 는
 그 config 값(1.0~1.6, 0.2) 대신 다른 손과 같은 규칙(길이비, 0.5)을 쓴다.
 
@@ -173,13 +242,14 @@ allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names`
 |---|---|
 | `side` | 이 URDF 가 어느 손인가(`left`/`right`). |
 | `urdf` | models root 기준 URDF 경로. |
-| `palm_links` | `{index, middle, pinky}` — q=0 에서 손바닥 프레임을 잡을 MCP 링크(손가락 4개인 손은 `pinky` 에 약지). z = 손목 링크 → 중지 MCP, y = 소지 → 검지(오른손; 왼손은 반대), x = y × z. 사람 쪽도 같은 규칙(MANO 0·5·9·17)으로 매 프레임 잡아 사람 → 로봇 루트 회전을 만든다. |
+| `palm_links` | `{index, middle, pinky}` — q=0 에서 손바닥 프레임을 잡을 MCP 링크(손가락 4개인 손은 `pinky` 에 약지). z = 손목 링크 → 중지 MCP, y = 소지 → 검지(오른손; 왼손은 반대), x = y × z. 사람 쪽도 같은 규칙(MANO 0·5·9·17)으로 매 프레임 잡아 사람 → 로봇 루트 회전을 만든다. 값은 링크 하나 또는 링크 목록(위치 평균)이다 — 손가락 3개인 손은 `pinky` 에 중지, `middle` 에 검지·중지 목록을 주고, 그리퍼는 손가락 뿌리(또는 펴진 손끝) 평균을 준다. |
 | `mano_to_root.rpy` | (선택) 위 자동 정렬 대신 고정 MANO → 루트 회전(xyz 오일러, rad). |
+| `link_offsets` | `{링크: [x, y, z]}` — 그 링크 프레임에서 오프셋만큼 옮긴 프레임 `<링크>_offset` 을 만들어 `wrist_link_name`·`finger_tip_link_names` 의 그 링크 대신 쓴다. 손끝 링크가 없는 URDF 는 말단 링크 + 메쉬 끝점 오프셋을, 원점이 손가락 뿌리 높이에 있는 손바닥(Allegro V5, LEAP V2 Adv)은 손목 오프셋을 준다. |
 | `fixed_joints` | `{관절: rad}` — 리타게팅에서 빼고 고정한다. ORCA 손목 관절은 손 리타게팅 대상이 아니라 0 으로 둔다. |
 | `joint_limits_deg` | `{관절 이름 glob: [lo, hi]}` — 최적화 한계를 덮어쓴다. DG-5F 손가락 PIP·DIP 는 URDF 가 ±90° 라 역방향으로 꺾는 해가 나와 −5..90° 로 자른다. |
 | `human_hand_length` | 사람 손목 → 중지 끝(m, 기본 0.19). `retargeting.scaling_factor` 가 없으면 로봇 같은 길이(q=0)를 이것으로 나눠 쓴다. |
-| `max_evals` | 틱당 SLSQP 반복 상한(scipy `maxiter`, 동봉값 10, 없으면 100). 반복마다 목적함수 평가가 1~2번이다. 지연 상한을 두려는 값이다 — 동봉 14개 config 에서 20 과 품질 지표(핀치 거리·오차, 뼈 각도, \|dq\| p95, 한계 비율)가 노이즈 안이고 실패가 없으면서 손당 p50 이 약 0.3 ms 줄어 10 으로 정했다. 값을 바꾸면 일부 프레임의 해가 크게 달라질 수 있다(비볼록 문제) — 바꾸면 벤치로 다시 확인한다. |
-| `retargeting` | 최적화 설정. 키는 아래 표. `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(URDF `<mimic>` 으로 채운다 — ability·schunk). `DexEngine(..., 키=값)` 으로 덮어쓸 수 있다. |
+| `max_evals` | 틱당 SLSQP 반복 상한(scipy `maxiter`, 동봉값 10, 없으면 100). 반복마다 목적함수 평가가 1~2번이다. 지연 상한을 두려는 값이다 — 처음 동봉한 14개 config 에서 20 과 품질 지표(핀치 거리·오차, 뼈 각도, \|dq\| p95, 한계 비율)가 노이즈 안이고 실패가 없으면서 손당 p50 이 약 0.3 ms 줄어 10 으로 정했다. 값을 바꾸면 일부 프레임의 해가 크게 달라질 수 있다(비볼록 문제) — 바꾸면 벤치로 다시 확인한다. |
+| `retargeting` | 최적화 설정. 키는 아래 표. `target_joint_names` 를 안 주면 `fixed_joints` 와 mimic 관절을 뺀 전 관절이다. mimic 관절은 URDF `<mimic>` 으로 채우고(mimic 의 mimic 도 원래 구동 관절까지 따라간다), `target_joint_names` 에 넣으면 오류다. `DexEngine(..., 키=값)` 으로 덮어쓸 수 있다. |
 
 `retargeting` 키(dex-retargeting 0.5.0 `RetargetingConfig` 의 같은 이름 키와 뜻이 같다. 위치 리타게팅·자유 관절·
 `urdf_path`·`has_joint_limits`·`ignore_mimic_joint` 는 없다):
@@ -189,7 +259,7 @@ allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names`
 | `type` | `DexPilot` | `DexPilot` / `Vector` / `Position`(대소문자 무관). |
 | `wrist_link_name` | 필수 | 사람 손목에 대응하는 로봇 링크. |
 | `finger_tip_link_names` | DexPilot·Position 필수 | 엄지부터 손끝 링크 2~5개. 사람 쪽은 MANO 4·8·12·16·20 에 차례로 대응. |
-| `target_joint_names` | 고정 관절을 뺀 전 관절 | 최적화 변수(구동 관절). |
+| `target_joint_names` | 고정·mimic 관절을 뺀 전 관절 | 최적화 변수(구동 관절). |
 | `vector_weight` | 0 | `type: DexPilot`(또는 `Position`)에 더하는 벡터 항 가중치. 목적함수 = DexPilot + `vector_weight`·(벡터 항 평균 Huber). `type: Vector` 에서는 주지 않는다(주항 가중치 1). |
 | `position_weight` | 0 | `Position` 항 가중치. 같은 규칙으로 `type: Position` 에서는 주지 않는다. |
 | `target_origin_link_names` / `target_task_link_names` | 손목 ×n / 손끝 | 벡터 항의 시작·끝 링크(같은 길이). `type: Vector` 나 `vector_weight > 0` 에서만 쓴다. |
