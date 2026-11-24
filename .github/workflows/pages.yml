@@ -1,0 +1,64 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - name: Resolve dexhand-description pin from pyproject.toml
+        id: hands
+        shell: python
+        run: |
+          import os
+          import re
+          import tomllib
+
+          extras = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]
+          spec = next(d for d in extras["hand"] if d.startswith("dexhand-description"))
+          url = spec.split("@", 1)[1].strip()
+          m = re.fullmatch(r"git\+https://github\.com/([^/]+/[^@/]+?)(?:\.git)?(?:@(.+))?", url)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"repo={m.group(1)}\nref={m.group(2) or ''}\n")
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.hands.outputs.repo }}
+          ref: ${{ steps.hands.outputs.ref }}
+          path: _hands
+      - name: Build whatslab-sdk wheel
+        run: uv build --wheel --out-dir dist
+      - name: Build site
+        run: |
+          uv venv --python 3.12 _venv
+          uv pip install --python _venv dist/*.whl
+          _venv/bin/python site/build.py --repo _hands --out _site --wheel "$(ls dist/*.whl)" \
+            --repo-url "${{ github.server_url }}/${{ steps.hands.outputs.repo }}" \
+            --ref "$(git -C _hands rev-parse HEAD)"
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

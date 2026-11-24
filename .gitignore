@@ -25,3 +25,5 @@ hand_retarget_compare*.png
 hand_retarget_compare*.mp4
 
 tools/bench_arm_ik.py
+
+_site/

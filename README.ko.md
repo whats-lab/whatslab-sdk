@@ -48,6 +48,8 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 경로도 됩니다). 한쪽 손 설정으로 반대쪽 손도 입력을 거울상으로 바꿔 씁니다.
 
 `dexhand-description` 의 손 전부(사람 손 모양 4·5손가락 손)에 설정이 있습니다. 묶음은 그 저장소와 같습니다.
+모든 손의 DexPilot 리타게팅은 **[whats-lab.github.io/whatslab-sdk](https://whats-lab.github.io/whatslab-sdk/)** 에서
+브라우저로 볼 수 있습니다.
 
 **국내 손**
 
@@ -241,6 +243,16 @@ python tools/bench_hand_retarget.py --help                               # 리�
 
 테스트는 `pip install -e '.[all,dev]' && pytest`, 린트는 `ruff check .` 로 돌립니다(ruff 로 PEP 8 검사:
 pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
+
+손 미리보기 사이트(`site/`, `.github/workflows/pages.yml` 로 배포)는 `dexterous-hand-urdf` 체크아웃으로
+로컬에서 `_site/` 에 빌드합니다.
+
+```bash
+uv build --wheel --out-dir dist
+uv run --no-project --with dist/whatslab_sdk-1.0.0-py3-none-any.whl python site/build.py \
+    --repo ../dexterous-hand-urdf --wheel dist/whatslab_sdk-1.0.0-py3-none-any.whl
+python -m http.server -d _site
+```
 
 ## 문서
 

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dexterous Hand URDF</title>
+<meta name="description" content="Browse dexterous robot hand URDF models and watch them retarget human hand motions with DexPilot.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+    "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+    "urdf-loader": "https://cdn.jsdelivr.net/npm/urdf-loader@0.13.1/src/URDFLoader.js"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="https://github.com/whats-lab/dexterous-hand-urdf">dexterous-hand-urdf</a>
+  <nav class="tabs" aria-label="Mode">
+    <button type="button" data-mode="motion" aria-pressed="true">Motions</button>
+    <button type="button" data-mode="live" aria-pressed="false">Live camera</button>
+  </nav>
+  <button class="hands-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Hands</button>
+</header>
+
+<main class="layout">
+  <aside id="sidebar" class="sidebar">
+    <label class="search">
+      <span class="visually-hidden">Search hands</span>
+      <input id="search" type="search" placeholder="Search name, maker, license" autocomplete="off">
+    </label>
+    <div id="hand-list" class="hand-list"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="viewport">
+      <canvas id="view"></canvas>
+      <p id="status" class="status" role="status"></p>
+      <div id="live-panel" class="live-panel" hidden>
+        <video id="cam" playsinline muted></video>
+        <p id="live-note" class="live-note" role="status"></p>
+        <p class="live-note">Tracking is approximate: the camera gives 21 hand points, and the 26 OpenXR joints the retargeter expects are filled in (metacarpals interpolated, joint orientations from bone directions). Video stays in this browser.</p>
+        <button id="live-start" type="button" class="primary">Start camera</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="row" id="motion-row">
+        <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
+      </div>
+      <div class="row transport" id="transport">
+        <button id="play" type="button" class="icon-btn" aria-label="Pause">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z"/><path class="i-play" d="M4 2.5v11l9-5.5z"/></svg>
+        </button>
+        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position">
+        <output id="time" class="mono">0.00 s</output>
+        <label class="field">Speed
+          <select id="speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+      </div>
+      <div class="row options">
+        <div class="segmented small" id="side" role="radiogroup" aria-label="Side">
+          <button type="button" role="radio" data-side="right">Right</button>
+          <button type="button" role="radio" data-side="left">Left</button>
+        </div>
+        <div class="segmented small" id="human" role="radiogroup" aria-label="Human hand">
+          <button type="button" role="radio" data-human="off">Robot only</button>
+          <button type="button" role="radio" data-human="beside">Human beside</button>
+          <button type="button" role="radio" data-human="overlay">Human overlay</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="info" id="info"></aside>
+</main>
+</body>
+</html>

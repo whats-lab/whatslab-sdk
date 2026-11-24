@@ -54,7 +54,8 @@ to `orca_{side}`; a file path also works). A config for one side serves the othe
 mirroring the input.
 
 Configs for every hand in `dexhand-description` (human-shaped hands with 4 or 5 fingers), grouped as in
-that repository:
+that repository. Every hand is previewed with DexPilot retargeting in the browser at
+**[whats-lab.github.io/whatslab-sdk](https://whats-lab.github.io/whatslab-sdk/)**.
 
 **Korean hands**
 
@@ -254,6 +255,16 @@ python tools/bench_hand_retarget.py --help                               # retar
 
 Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with `ruff check .`
 (PEP 8 through ruff: pycodestyle, pep8-naming, isort and pyflakes; line length 99).
+
+The hand preview site (`site/`, deployed by `.github/workflows/pages.yml`) builds locally from a
+`dexterous-hand-urdf` checkout into `_site/`:
+
+```bash
+uv build --wheel --out-dir dist
+uv run --no-project --with dist/whatslab_sdk-1.0.0-py3-none-any.whl python site/build.py \
+    --repo ../dexterous-hand-urdf --wheel dist/whatslab_sdk-1.0.0-py3-none-any.whl
+python -m http.server -d _site
+```
 
 ## Documentation
 
