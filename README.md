@@ -52,8 +52,8 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
 to `orca_{side}`; a file path also works). A config for one side serves the other side by
 mirroring the input.
 
-Configs for every hand in `dexhand-description` with three or more fingers (2-finger grippers such as the
-Panda gripper are not configured), grouped as in that repository:
+Configs for every hand in `dexhand-description` (human-shaped hands with 4 or 5 fingers), grouped as in
+that repository:
 
 **Korean hands**
 
@@ -62,16 +62,11 @@ Panda gripper are not configured), grouped as in that repository:
 | Tesollo DG-5F-S (20-DoF) | `dex:dg5f_s` | `dg5f_s_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
 | Tesollo DG-5F-S 15-DoF | `dex:dg5f_s_15dof` | `dg5f_s_15dof_{left,right}.yaml` | 5 fingers, 15 actuated; PIP/DIP limited to −5..90° |
 | Tesollo DG-5F | `dex:dg5f` | `dg5f_{left,right}.yaml` | 5 fingers, 20 actuated; PIP/DIP limited to −5..90° |
-| Tesollo DG-3F-M | `dex:dg3f_m` | `dg3f_m.yaml` | 3 fingers, 12 actuated; one URDF; the other side is mirrored |
-| Tesollo DG-4F | `dex:dg4f` | `dg4f.yaml` | 4 fingers, 18 actuated; 4 mimic; one URDF; the other side is mirrored |
 | ROBOTIS HX5-D20 | `dex:robotis` | `robotis_{left,right}.yaml` | 5 fingers, 20 actuated |
-| ROBOTIS HX5-D20 rev1 | `dex:robotis_rev1` | `robotis_rev1_{left,right}.yaml` | 5 fingers, 20 actuated |
 | Allegro Hand | `dex:allegro` | `allegro_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
 | Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
-| Allegro Hand V5 (3 finger) | `dex:allegro_v5_3f` | `allegro_v5_3f.yaml` | 3 fingers, 9 actuated; one URDF; the other side is mirrored |
 | Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
 | Allegro Hand V6 | `dex:allegro_v6` | `allegro_v6_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
-| WHATs LAB Base Hand | `dex:base_hand` | `base_hand_{left,right}.yaml` | 5 fingers, 21 actuated |
 
 **Korean humanoid hands**
 
@@ -88,7 +83,6 @@ Panda gripper are not configured), grouped as in that repository:
 | LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
 | LEAP Hand V2 Advanced | `dex:leap_hand_v2_adv` | `leap_hand_v2_adv_{left,right}.yaml` | 5 fingers, 21 actuated; wrist offset |
 | PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` | 5 fingers, 6 actuated; 4 mimic |
-| PSYONIC Ability Hand (official, large) | `dex:psyonic_ability` | `psyonic_ability_{left,right}.yaml` | 5 fingers, 6 actuated; 4 mimic; tip offsets on distal links |
 | Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` | 5 fingers, 9 actuated; 11 mimic |
 | Shadow Hand | `dex:shadow` | `shadow_{left,right}.yaml` | 5 fingers, 22 actuated; wrist joints held at 0 |
 | Inspire Hand | `dex:inspire` | `inspire_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
@@ -112,16 +106,11 @@ Panda gripper are not configured), grouped as in that repository:
 | Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 5 fingers, 20 actuated |
 | PaXini DexH13 | `dex:paxini_dexh13` | `paxini_dexh13_{left,right}.yaml` | 4 fingers, 16 actuated; tip offsets on distal links |
 | DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 5 fingers, 21 actuated; wrist joints held at 0 |
-| Barrett Hand | `dex:barrett_hand` | `barrett_hand.yaml` | 3 fingers, 8 actuated; tip offsets on distal links; one URDF; the other side is mirrored |
-| D'Claw gripper | `dex:dclaw_gripper` | `dclaw_gripper.yaml` | 3 fingers, 9 actuated; one URDF; the other side is mirrored |
 
 **Foreign humanoid hands**
 
 | Hand | Engine name | Config | Notes |
 |---|---|---|---|
-| Unitree Dex3-1 | `dex:unitree_dex3_1` | `unitree_dex3_1_{left,right}.yaml` | 3 fingers, 7 actuated; tip offsets on distal links |
-| Inspire RH56DFX (Unitree model) | `dex:inspire_rh56dfx_unitree` | `inspire_rh56dfx_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
-| Inspire RH56DFQ (Unitree G1 model) | `dex:inspire_rh56dfq_unitree` | `inspire_rh56dfq_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
 | Inspire RH56DFTP (Unitree G1 model) | `dex:inspire_rh56dftp_unitree` | `inspire_rh56dftp_unitree_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
 | Unitree Dex5-1 | `dex:unitree_dex5_1` | `unitree_dex5_1_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
 | Unitree Dex5-S | `dex:unitree_dex5_s` | `unitree_dex5_s.yaml` | 5 fingers, 22 actuated; tip offsets on distal links; one URDF; the other side is mirrored |
@@ -130,7 +119,6 @@ Panda gripper are not configured), grouped as in that repository:
 | RobotEra XHAND1 (STAR1 model) | `dex:robotera_xhand1_star1` | `robotera_xhand1_star1_{left,right}.yaml` | 5 fingers, 12 actuated |
 | RobotEra XHAND1 Pro U | `dex:robotera_xhand1_pro_u` | `robotera_xhand1_pro_u_{left,right}.yaml` | 5 fingers, 20 actuated |
 | AgiBot OmniHand 2025 | `dex:agibot_omnihand_2025` | `agibot_omnihand_2025_{left,right}.yaml` | 5 fingers, 10 actuated; 6 mimic |
-| AgiBot OmniHand 3 Lite S | `dex:agibot_omnihand_3_lite_s` | `agibot_omnihand_3_lite_s_{left,right}.yaml` | 3 fingers, 4 actuated; 3 mimic; tip offsets on distal links |
 
 **GeoRT soft prompt** — `geort:<name>`, where `<name>` is a file in `configs/geort/` (a path
 ending in `.yaml` also works). The trained model ships with the package
@@ -149,7 +137,7 @@ The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are
 dexhand-description yet.
 
 Training: `whatslab-geort-train` (`pip install '.[train]'`) builds the training data from
-`configs/geort_train/<hand>.yaml` (56 right hands with 5, 4 or 3 fingers) and trains and exports a model
+`configs/geort_train/<hand>.yaml` (44 right hands with 5 or 4 fingers) and trains and exports a model
 on any GPU host; see [API.md](docs/API.md). The training code and the bundled model are based on
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT) (CC BY-NC 4.0) and are for
 **non-commercial use** only. Human hand-motion data is not included.
@@ -257,7 +245,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 106 files), geort/ (2 files), geort_train/ (56 files)
+└── configs/          hands/ (DexPilot, 87 files), geort/ (2 files), geort_train/ (44 files)
 ```
 
 ## Examples & tools

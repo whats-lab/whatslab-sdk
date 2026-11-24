@@ -155,7 +155,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 `dex:<이름>` 이 읽는 yaml. `<이름>.yaml` 을 먼저, 없으면 `<이름>_{side}.yaml` 을 찾는다.
 
-손가락 3개 이상인 `dexhand-description` 손 전부(2지 그리퍼 제외). 손끝 링크는 각 yaml 에 있다.
+`dexhand-description` 손 전부(사람 손 모양 4·5손가락 손만 지원). 손끝 링크는 각 yaml 에 있다.
 
 **국내 손**
 
@@ -164,16 +164,11 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `dg5f_s` | `tesollo_dg5f_s/tesollo_dg5f_s_right.urdf` | `link_base` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
 | `dg5f_s_15dof` | `tesollo_dg5f_s/tesollo_dg5f_s_right_15dof.urdf` | `link_base` | 손가락 5개, 구동 15축; PIP·DIP −5..90° 제한 |
 | `dg5f` | `tesollo_dg5f/dg5f_right.urdf` | `rl_dg_palm` | 손가락 5개, 구동 20축; PIP·DIP −5..90° 제한 |
-| `dg3f_m` | `tesollo_dg3f_m/tesollo_dg3f_m.urdf` | `l_dg_base` | 손가락 3개, 구동 12축; URDF 하나, 반대 손은 거울상 |
-| `dg4f` | `tesollo_dg4f/tesollo_dg4f.urdf` | `l_dg_base` | 손가락 4개, 구동 18축; mimic 4; URDF 하나, 반대 손은 거울상 |
 | `robotis` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축 |
-| `robotis_rev1` | `robotis_hx5_d20_rev1/robotis_hx5_d20_rev1_right.urdf` | `hx5_d20_right_base` | 손가락 5개, 구동 20축 |
 | `allegro` | `allegro_hand/allegro_hand_right.urdf` | `wrist` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | `allegro_v5_4f` | `allegro_v5_4f/allegro_v5_4f_right_a.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
-| `allegro_v5_3f` | `allegro_v5_3f/allegro_v5_3f.urdf` | `palm_link` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
 | `allegro_v5_sense` | `allegro_v5_sense/allegro_v5_sense_right.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | `allegro_v6` | `allegro_v6/allegro_v6_right.urdf` | `base_link` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
-| `base_hand` | `base_hand/urdf/right.urdf` | `right_wrist` | 손가락 5개, 구동 21축 |
 
 **국내 휴머노이드 손**
 
@@ -190,7 +185,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `leap` | `leap_hand/leap_hand_right.urdf` | `base` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | `leap_hand_v2_adv` | `leap_hand_v2_adv/leap_hand_v2_adv_right.urdf` | `no_finger_frame_mirror` | 손가락 5개, 구동 21축; 손목 오프셋 |
 | `ability` | `ability_hand/ability_hand_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 4 |
-| `psyonic_ability` | `psyonic_ability_official/psyonic_ability_official_right_large.urdf` | `base` | 손가락 5개, 구동 6축; mimic 4; 말단 링크 + 손끝 오프셋 |
 | `schunk` | `schunk_hand/schunk_svh_hand_right.urdf` | `right_hand_base_link` | 손가락 5개, 구동 9축; mimic 11 |
 | `shadow` | `shadow_hand/shadow_hand_right.urdf` | `ee_link` | 손가락 5개, 구동 22축; 손목 관절 0 고정 |
 | `inspire` | `inspire_hand/inspire_hand_right.urdf` | `base` | 손가락 5개, 구동 6축; mimic 6 |
@@ -214,16 +208,11 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `wuji_hand` | `wuji_hand/wuji_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 20축 |
 | `paxini_dexh13` | `paxini_dexh13/paxini_dexh13_right.urdf` | `right_palm_link` | 손가락 4개, 구동 16축; 말단 링크 + 손끝 오프셋 |
 | `dexhand_trs` | `dexhand_trs/dexhand_trs_right.urdf` | `index_bulk_1` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
-| `barrett_hand` | `barrett_hand/bhand_model.urdf` | `base_link` | 손가락 3개, 구동 8축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
-| `dclaw_gripper` | `dclaw_gripper/dclaw_gripper.urdf` | `base_link` | 손가락 3개, 구동 9축; URDF 하나, 반대 손은 거울상 |
 
 **해외 휴머노이드 손**
 
 | `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
 |---|---|---|---|
-| `unitree_dex3_1` | `unitree_dex3_1/unitree_dex3_1_right.urdf` | `right_hand_palm_link` | 손가락 3개, 구동 7축; 말단 링크 + 손끝 오프셋 |
-| `inspire_rh56dfx_unitree` | `inspire_rh56dfx_unitree/inspire_rh56dfx_unitree_right.urdf` | `R_hand_base_link` | 손가락 5개, 구동 6축; mimic 6 |
-| `inspire_rh56dfq_unitree` | `inspire_rh56dfq_unitree/inspire_rh56dfq_unitree_right.urdf` | `R_hand_base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
 | `inspire_rh56dftp_unitree` | `inspire_rh56dftp_unitree/inspire_rh56dftp_unitree_right.urdf` | `right_base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
 | `unitree_dex5_1` | `unitree_dex5_1/unitree_dex5_1_right.urdf` | `base_link00` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
 | `unitree_dex5_s` | `unitree_dex5_s/unitree_dex5_s.urdf` | `right_palm_link` | 손가락 5개, 구동 22축; 말단 링크 + 손끝 오프셋; URDF 하나, 반대 손은 거울상 |
@@ -232,7 +221,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `robotera_xhand1_star1` | `robotera_xhand1_star1/robotera_xhand1_star1_right.urdf` | `right_hand_link` | 손가락 5개, 구동 12축 |
 | `robotera_xhand1_pro_u` | `robotera_xhand1_pro_u/robotera_xhand1_pro_u_right.urdf` | `right_hand_link` | 손가락 5개, 구동 20축 |
 | `agibot_omnihand_2025` | `agibot_omnihand_2025/agibot_omnihand_2025_right.urdf` | `R_palm` | 손가락 5개, 구동 10축; mimic 6 |
-| `agibot_omnihand_3_lite_s` | `agibot_omnihand_3_lite_s/agibot_omnihand_3_lite_s_right.urdf` | `base_link` | 손가락 3개, 구동 4축; mimic 3; 말단 링크 + 손끝 오프셋 |
 
 allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ability·schunk 의 `target_joint_names`)는 dex-retargeting
 `configs/teleop/<hand>_{left,right}_dexpilot.yml` 그대로다. `scaling_factor`·`low_pass_alpha` 는
@@ -242,7 +230,7 @@ allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ab
 |---|---|
 | `side` | 이 URDF 가 어느 손인가(`left`/`right`). |
 | `urdf` | models root 기준 URDF 경로. |
-| `palm_links` | `{index, middle, pinky}` — q=0 에서 손바닥 프레임을 잡을 MCP 링크(손가락 4개인 손은 `pinky` 에 약지). z = 손목 링크 → 중지 MCP, y = 소지 → 검지(오른손; 왼손은 반대), x = y × z. 사람 쪽도 같은 규칙(MANO 0·5·9·17)으로 매 프레임 잡아 사람 → 로봇 루트 회전을 만든다. 값은 링크 하나 또는 링크 목록(위치 평균)이다 — 손가락 3개인 손은 `pinky` 에 중지, `middle` 에 검지·중지 목록을 주고, 그리퍼는 손가락 뿌리(또는 펴진 손끝) 평균을 준다. |
+| `palm_links` | `{index, middle, pinky}` — q=0 에서 손바닥 프레임을 잡을 MCP 링크(손가락 4개인 손은 `pinky` 에 약지). z = 손목 링크 → 중지 MCP, y = 소지 → 검지(오른손; 왼손은 반대), x = y × z. 사람 쪽도 같은 규칙(MANO 0·5·9·17)으로 매 프레임 잡아 사람 → 로봇 루트 회전을 만든다. 값은 링크 하나 또는 링크 목록(위치 평균)이다. |
 | `mano_to_root.rpy` | (선택) 위 자동 정렬 대신 고정 MANO → 루트 회전(xyz 오일러, rad). |
 | `link_offsets` | `{링크: [x, y, z]}` — 그 링크 프레임에서 오프셋만큼 옮긴 프레임 `<링크>_offset` 을 만들어 `wrist_link_name`·`finger_tip_link_names` 의 그 링크 대신 쓴다. 손끝 링크가 없는 URDF 는 말단 링크 + 메쉬 끝점 오프셋을, 원점이 손가락 뿌리 높이에 있는 손바닥(Allegro V5, LEAP V2 Adv)은 손목 오프셋을 준다. |
 | `fixed_joints` | `{관절: rad}` — 리타게팅에서 빼고 고정한다. ORCA 손목 관절은 손 리타게팅 대상이 아니라 0 으로 둔다. |
@@ -342,8 +330,8 @@ whatslab-geort-train eval --model s2.npz --hands all --human H.npz  # 손끝 오
 | `collision` | `{margin_mm, pairs: [[[링크…], [링크…]], …]}` 엄지와 손바닥·검지·중지 사이 여유(메시 표면 점) |
 | `scale`, `tip_scale`, `abd_scale` | (선택) 사람→로봇 크기(기본: q=0 로봇 중지 길이 / 사람 중지 길이 p95), 손별 손끝·벌림 손실 배율(벌림 관절이 없는 커플링 손은 `abd_scale: 0`) |
 
-손가락이 4개면 thumb·index·middle·ring 에 매핑하고 사람 새끼손가락은 쓰지 않는다. 3개면 thumb + index + middle
-(손바닥은 위 규칙으로 세 번째 MCP 점을 만든다). 2손가락 그리퍼는 지원하지 않는다.
+손가락이 4개면 thumb·index·middle·ring 에 매핑하고 사람 새끼손가락은 쓰지 않는다. 사람 손 모양 4·5손가락 손만
+지원한다.
 
 ## whatslab.core — 계약(타입 + Protocol), 의존성 0
 
