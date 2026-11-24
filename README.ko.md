@@ -67,7 +67,6 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | 손 | 엔진 이름 | 설정 | 비고 |
 |---|---|---|---|
 | ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
-| HUBO+ hand (third-party model) | `dex:hubo_plus_hand` | `hubo_plus_hand_{left,right}.yaml` | 손가락 5개, 구동 15축; 말단 링크 + 손끝 오프셋 |
 
 **해외 손**
 
@@ -80,9 +79,6 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` | 손가락 5개, 구동 9축; mimic 11 |
 | Shadow Hand | `dex:shadow` | `shadow_{left,right}.yaml` | 손가락 5개, 구동 22축; 손목 관절 0 고정 |
 | Inspire Hand | `dex:inspire` | `inspire_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6 |
-| Inspire RH56E2 | `dex:inspire_rh56e2` | `inspire_rh56e2_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
-| Inspire RH56F1 | `dex:inspire_rh56f1` | `inspire_rh56f1_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 6 |
-| Inspire RH5DG2 | `dex:inspire_rh5dg2` | `inspire_rh5dg2_{left,right}.yaml` | 손가락 5개, 구동 13축; mimic 5; 말단 링크 + 손끝 오프셋 |
 | LinkerHand L6 | `dex:linkerhand_l6` | `linkerhand_l6_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
 | LinkerHand O6 | `dex:linkerhand_o6` | `linkerhand_o6_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5; 말단 링크 + 손끝 오프셋 |
 | LinkerHand L20 | `dex:linkerhand_l20` | `linkerhand_l20_{left,right}.yaml` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
@@ -98,7 +94,6 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | DexRobot DexHand021 | `dex:dexrobot_dexhand021` | `dexrobot_dexhand021_{left,right}.yaml` | 손가락 5개, 구동 20축 |
 | Sharpa Wave | `dex:sharpa_wave` | `sharpa_wave_{left,right}.yaml` | 손가락 5개, 구동 22축 |
 | Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 손가락 5개, 구동 20축 |
-| PaXini DexH13 | `dex:paxini_dexh13` | `paxini_dexh13_{left,right}.yaml` | 손가락 4개, 구동 16축; 말단 링크 + 손끝 오프셋 |
 | DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
 
 **해외 휴머노이드 손**
@@ -129,7 +124,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 모델에는 Allegro·DG-5F-S 프롬프트도 들어 있지만, 아직 dexhand-description 에 없는 URDF 를 기준으로
 학습했습니다.
 
-학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 44개)로
+학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 39개)로
 학습 데이터를 만들고 아무 GPU 호스트에서 학습·내보내기를 합니다([API.md](docs/API.md)). 학습 코드와 동봉 모델은
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT)(CC BY-NC 4.0)를 바탕으로 하며 **비상업 용도로만**
 쓸 수 있습니다. 사람 손 동작 데이터는 포함하지 않습니다.
@@ -233,7 +228,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 87개), geort/ (2개), geort_train/ (44개)
+└── configs/          hands/ (DexPilot, 77개), geort/ (2개), geort_train/ (39개)
 ```
 
 ## 예제와 도구

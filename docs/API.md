@@ -175,7 +175,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
 |---|---|---|---|
 | `igris_c` | `igris_c_hand/igris_c_hand_right_coupled.urdf` | `r_palm` | 손가락 5개, 구동 6축; mimic 5 |
-| `hubo_plus_hand` | `hubo_plus_hand_thirdparty/hubo_plus_hand_thirdparty_right.urdf` | `Body_RWP` | 손가락 5개, 구동 15축; 말단 링크 + 손끝 오프셋 |
 
 **해외 손**
 
@@ -188,9 +187,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `schunk` | `schunk_hand/schunk_svh_hand_right.urdf` | `right_hand_base_link` | 손가락 5개, 구동 9축; mimic 11 |
 | `shadow` | `shadow_hand/shadow_hand_right.urdf` | `ee_link` | 손가락 5개, 구동 22축; 손목 관절 0 고정 |
 | `inspire` | `inspire_hand/inspire_hand_right.urdf` | `base` | 손가락 5개, 구동 6축; mimic 6 |
-| `inspire_rh56e2` | `inspire_rh56e2/inspire_rh56e2_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 6; 말단 링크 + 손끝 오프셋 |
-| `inspire_rh56f1` | `inspire_rh56f1/inspire_rh56f1_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 6 |
-| `inspire_rh5dg2` | `inspire_rh5dg2/inspire_rh5dg2_right.urdf` | `right_hand_base` | 손가락 5개, 구동 13축; mimic 5; 말단 링크 + 손끝 오프셋 |
 | `linkerhand_l6` | `linkerhand_l6/linkerhand_l6_right.urdf` | `rh_hand_base_link` | 손가락 5개, 구동 6축; mimic 5 |
 | `linkerhand_o6` | `linkerhand_o6/linkerhand_o6_right.urdf` | `rh_hand_base_link` | 손가락 5개, 구동 6축; mimic 5; 말단 링크 + 손끝 오프셋 |
 | `linkerhand_l20` | `linkerhand_l20/linkerhand_l20_right.urdf` | `base_link` | 손가락 5개, 구동 16축; mimic 5; 말단 링크 + 손끝 오프셋 |
@@ -206,7 +202,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `dexrobot_dexhand021` | `dexrobot_dexhand021/dexrobot_dexhand021_right.urdf` | `right_hand_base` | 손가락 5개, 구동 20축 |
 | `sharpa_wave` | `sharpa_wave/sharpa_wave_right.urdf` | `right_hand_C_MC` | 손가락 5개, 구동 22축 |
 | `wuji_hand` | `wuji_hand/wuji_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 20축 |
-| `paxini_dexh13` | `paxini_dexh13/paxini_dexh13_right.urdf` | `right_palm_link` | 손가락 4개, 구동 16축; 말단 링크 + 손끝 오프셋 |
 | `dexhand_trs` | `dexhand_trs/dexhand_trs_right.urdf` | `index_bulk_1` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
 
 **해외 휴머노이드 손**
@@ -314,7 +309,6 @@ URDF 와 DexPilot config(손끝 링크, 손바닥 링크)로 블록을 만든다
 |---|---|
 | `robotis`(HX5) | 손끝 p95 6.5 → 18.6 mm. 가중치를 낮추면 역행이 돌아온다(0.0025: 9.2 mm, 역행 127°) |
 | `allegro_v5_4f` | 역행 59 → 91° |
-| `hubo_plus_hand` | 엄지 뿌리 표가 프레임마다 튄다(떨림 p95 0.003 → 20°) |
 | `unitree_dex2_5` | 떨림 p95 0.004 → 0.2~1.0° |
 | `linkerhand_o7` | 펴진 손 드리프트 0.02 → 28° |
 | `linkerhand_l20lite` | 역행 43 → 54°(왼손) |

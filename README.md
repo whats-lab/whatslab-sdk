@@ -74,7 +74,6 @@ that repository:
 | Hand | Engine name | Config | Notes |
 |---|---|---|---|
 | ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
-| HUBO+ hand (third-party model) | `dex:hubo_plus_hand` | `hubo_plus_hand_{left,right}.yaml` | 5 fingers, 15 actuated; tip offsets on distal links |
 
 **Foreign hands**
 
@@ -87,9 +86,6 @@ that repository:
 | Schunk SVH | `dex:schunk` | `schunk_{left,right}.yaml` | 5 fingers, 9 actuated; 11 mimic |
 | Shadow Hand | `dex:shadow` | `shadow_{left,right}.yaml` | 5 fingers, 22 actuated; wrist joints held at 0 |
 | Inspire Hand | `dex:inspire` | `inspire_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
-| Inspire RH56E2 | `dex:inspire_rh56e2` | `inspire_rh56e2_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic; tip offsets on distal links |
-| Inspire RH56F1 | `dex:inspire_rh56f1` | `inspire_rh56f1_{left,right}.yaml` | 5 fingers, 6 actuated; 6 mimic |
-| Inspire RH5DG2 | `dex:inspire_rh5dg2` | `inspire_rh5dg2_{left,right}.yaml` | 5 fingers, 13 actuated; 5 mimic; tip offsets on distal links |
 | LinkerHand L6 | `dex:linkerhand_l6` | `linkerhand_l6_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
 | LinkerHand O6 | `dex:linkerhand_o6` | `linkerhand_o6_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic; tip offsets on distal links |
 | LinkerHand L20 | `dex:linkerhand_l20` | `linkerhand_l20_{left,right}.yaml` | 5 fingers, 16 actuated; 5 mimic; tip offsets on distal links |
@@ -105,7 +101,6 @@ that repository:
 | DexRobot DexHand021 | `dex:dexrobot_dexhand021` | `dexrobot_dexhand021_{left,right}.yaml` | 5 fingers, 20 actuated |
 | Sharpa Wave | `dex:sharpa_wave` | `sharpa_wave_{left,right}.yaml` | 5 fingers, 22 actuated |
 | Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 5 fingers, 20 actuated |
-| PaXini DexH13 | `dex:paxini_dexh13` | `paxini_dexh13_{left,right}.yaml` | 4 fingers, 16 actuated; tip offsets on distal links |
 | DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 5 fingers, 21 actuated; wrist joints held at 0 |
 
 **Foreign humanoid hands**
@@ -138,7 +133,7 @@ The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are
 dexhand-description yet.
 
 Training: `whatslab-geort-train` (`pip install '.[train]'`) builds the training data from
-`configs/geort_train/<hand>.yaml` (44 right hands with 5 or 4 fingers) and trains and exports a model
+`configs/geort_train/<hand>.yaml` (39 right hands with 5 or 4 fingers) and trains and exports a model
 on any GPU host; see [API.md](docs/API.md). The training code and the bundled model are based on
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT) (CC BY-NC 4.0) and are for
 **non-commercial use** only. Human hand-motion data is not included.
@@ -246,7 +241,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 87 files), geort/ (2 files), geort_train/ (44 files)
+└── configs/          hands/ (DexPilot, 77 files), geort/ (2 files), geort_train/ (39 files)
 ```
 
 ## Examples & tools
