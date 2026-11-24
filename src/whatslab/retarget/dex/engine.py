@@ -14,7 +14,13 @@ from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX, HandInputError
-from .optimizer import HandKinematics, RetargetOptimizer, VectorTerm, dexpilot_pairs
+from .optimizer import (
+    SOLVE_ERRORS,
+    HandKinematics,
+    RetargetOptimizer,
+    VectorTerm,
+    dexpilot_pairs,
+)
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
@@ -110,6 +116,8 @@ class DexHandConfig:
 
 
 class DexEngine:
+    solve_errors = SOLVE_ERRORS
+
     def __init__(
         self,
         config,
