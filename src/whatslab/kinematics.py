@@ -29,6 +29,43 @@ def origin_matrix(el) -> np.ndarray:
     return tf
 
 
+COUPLING_KEYS = frozenset({"source", "multiplier", "offset"})
+
+
+def check_coupling_cycles(mimic: Dict[str, Tuple[str, float, float]]) -> None:
+    for start in mimic:
+        seen = [start]
+        src = mimic[start][0]
+        while src in mimic:
+            if src in seen:
+                raise ValueError(f"couplings: 결합이 순환한다 {' → '.join(seen + [src])}")
+            seen.append(src)
+            src = mimic[src][0]
+
+
+def parse_couplings(raw) -> Dict[str, Tuple[str, float, float]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"couplings: {{종속 관절: {{source, multiplier, offset}}}} 이어야 한다 — "
+                         f"받은 값 {raw!r}")
+    out = {}
+    for name, spec in raw.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"couplings.{name}: 키-값 목록이어야 한다 — 받은 값 {spec!r}")
+        unknown = set(spec) - COUPLING_KEYS
+        if unknown:
+            raise ValueError(f"couplings.{name}: 모르는 키 {sorted(unknown)}")
+        if "source" not in spec:
+            raise ValueError(f"couplings.{name}: source 가 필요하다")
+        if str(spec["source"]) == str(name):
+            raise ValueError(f"couplings.{name}: 자기 자신을 source 로 둘 수 없다")
+        out[str(name)] = (str(spec["source"]), float(spec.get("multiplier", 1.0)),
+                          float(spec.get("offset", 0.0)))
+    check_coupling_cycles(out)
+    return out
+
+
 def _skew(a: np.ndarray) -> np.ndarray:
     k = np.zeros((len(a), 3, 3))
     k[:, 0, 1], k[:, 0, 2], k[:, 1, 2] = -a[:, 2], a[:, 1], -a[:, 0]
@@ -135,12 +172,17 @@ class Kinematics:
         return [(j, parent, offset) for j in joints]
 
     def _resolve_mimic(self, joints) -> None:
-        mimic = {}
+        self._urdf_mimic = {}
         for j in joints:
             m = j.find("mimic")
             if m is not None:
-                mimic[j.get("name")] = (m.get("joint"), float(m.get("multiplier", 1.0)),
-                                        float(m.get("offset", 0.0)))
+                self._urdf_mimic[j.get("name")] = (m.get("joint"), float(m.get("multiplier", 1.0)),
+                                                   float(m.get("offset", 0.0)))
+        self._mimic = dict(self._urdf_mimic)
+        self._apply_mimic()
+
+    def _apply_mimic(self) -> None:
+        mimic = self._mimic
         resolved = []
         for name in mimic:
             src, mult, off = mimic[name]
@@ -155,6 +197,19 @@ class Kinematics:
         self.mimic_multipliers = np.array([m[2] for m in resolved])
         self.mimic_offsets = np.array([m[3] for m in resolved])
         self.actuated_joint_names = [n for n in self.joint_names if n not in mimic]
+
+    def couple(self, couplings: Dict[str, Tuple[str, float, float]]) -> None:
+        unknown = sorted({n for name, (src, _, _) in couplings.items() for n in (name, src)
+                          if n not in self.joint_names})
+        if unknown:
+            raise ValueError(f"couplings: URDF 에 없는 움직이는 관절 {unknown}")
+        clash = sorted(n for n in couplings if n in self._urdf_mimic)
+        if clash:
+            raise ValueError(f"couplings: URDF mimic 관절과 겹친다 {clash}")
+        mimic = {**self._mimic, **couplings}
+        check_coupling_cycles(mimic)
+        self._mimic = mimic
+        self._apply_mimic()
 
     @property
     def dof(self) -> int:

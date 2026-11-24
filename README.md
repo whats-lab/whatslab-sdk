@@ -74,7 +74,7 @@ that repository. Every hand is previewed with DexPilot retargeting in the browse
 
 | Hand | Engine name | Config | Notes |
 |---|---|---|---|
-| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 11 actuated; tip offsets on distal links |
+| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 6 actuated; 5 passive distal joints held at 0; tip offsets on distal links |
 
 **Foreign hands**
 
