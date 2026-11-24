@@ -37,8 +37,8 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
   AirGlove (through Spine) or from Quest hand tracking (headset browser, WebXR)
 - Two retargeting engines:
   - DexPilot vector retargeting (numpy port of
-    [dex-retargeting](https://github.com/dexsuite/dex-retargeting), no torch), optionally combined
-    with wrist→fingertip vector terms, 1–2 ms per hand per frame, any robot hand with a URDF
+    [dex-retargeting](https://github.com/dexsuite/dex-retargeting), no torch), 1–2 ms per hand
+    per frame, any robot hand with a URDF
   - the **GeoRT soft-prompt** network: one forward pass in numpy, about 0.2 ms, one trained
     model shared by several robot hands
 - Output is `{side: {joint_name: rad}}`, ready to publish; an optional `SafetyFilter` clamps

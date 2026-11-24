@@ -378,18 +378,13 @@ def test_huber_vector_loss_gradient_matches_finite_difference():
     _fd_check(loss, robot.ravel(), grad.ravel())
 
 
-OBJECTIVES = (
-    ("orca_right", {}),
-    ("dg5f_right", {"vector_weight": 0.5, "position_weight": 0.3}),
-    ("ability_right", {"type": "Vector"}),
-    ("schunk_right", {"type": "Position", "vector_weight": 2.0}),
-)
+OBJECTIVES = ("orca_right", "dg5f_right", "ability_right", "schunk_right")
 
 
-@pytest.mark.parametrize("name,overrides", OBJECTIVES)
-def test_objective_gradient_matches_finite_difference(name, overrides):
+@pytest.mark.parametrize("name", OBJECTIVES)
+def test_objective_gradient_matches_finite_difference(name):
     _require_urdf(name)
-    eng = DexEngine(name, normal_delta=0.0, **overrides)
+    eng = DexEngine(name, normal_delta=0.0)
     ref = eng.reference(eng.human_keypoints(synthetic_right_hand(0.6)))
     lim = eng.joint_limits
     x = lim[:, 0] + np.random.default_rng(1).uniform(0.2, 0.8, len(lim)) * (lim[:, 1] - lim[:, 0])
@@ -397,60 +392,28 @@ def test_objective_gradient_matches_finite_difference(name, overrides):
     _fd_check(lambda v: f(v)[0], x, f(x)[1])
 
 
-def _loss_and_grad(eng, x, curl=0.6):
-    ref = eng.reference(eng.human_keypoints(hand_for(eng.config.side, curl)))
-    return eng.optimizer.objective(ref, x)(x)
-
-
-@pytest.mark.parametrize("name", ("orca_right", "ability_right"))
-def test_position_alias_is_wrist_origin_vector_loss(name):
-    cfg = _require_urdf(name)
-    rt = cfg.retargeting
-    tips = rt["finger_tip_link_names"]
-    position = DexEngine(name, type="Position")
-    vector = DexEngine(name, type="Vector",
-                       target_origin_link_names=[rt["wrist_link_name"]] * len(tips),
-                       target_task_link_names=tips,
-                       target_link_human_indices=[[0] * len(tips),
-                                                  [4 * (i + 1) for i in range(len(tips))]])
-    assert position.type == "POSITION" and vector.type == "VECTOR"
-    x = position.joint_limits.mean(1)
-    a, b = _loss_and_grad(position, x), _loss_and_grad(vector, x)
-    assert a[0] > 0.0
-    assert np.isclose(a[0], b[0]) and np.allclose(a[1], b[1])
-
-
-def test_combined_objective_is_weighted_sum():
-    _require_urdf("dg5f_right")
-    x = DexEngine("dg5f_right").joint_limits.mean(1)
-    dex = _loss_and_grad(DexEngine("dg5f_right"), x)
-    vec = _loss_and_grad(DexEngine("dg5f_right", type="Vector"), x)
-    pos = _loss_and_grad(DexEngine("dg5f_right", type="Position"), x)
-    both = _loss_and_grad(DexEngine("dg5f_right", vector_weight=0.5, position_weight=0.25), x)
-    assert np.isclose(both[0], dex[0] + 0.5 * vec[0] + 0.25 * pos[0])
-    assert np.allclose(both[1], dex[1] + 0.5 * vec[1] + 0.25 * pos[1])
-
-
-def test_combined_objective_solves():
-    _require_urdf("dg5f_right")
-    eng = DexEngine("dg5f_right", vector_weight=0.5)
-    assert eng.type == "DEXPILOT"
-    q = _settle(eng, hand_for("right", 1.0))
-    lim = eng.joint_limits
-    assert np.all(np.isfinite(q)) and np.all(q >= lim[:, 0] - 2e-3)
-    assert _tip_wrist_mean(eng, q) < 0.85 * _tip_wrist_mean(eng, _settle(
-        DexEngine("dg5f_right", vector_weight=0.5), hand_for("right", 0.0)))
-
-
 @pytest.mark.parametrize("overrides,match", (
-    ({"type": "Pose"}, "DexPilot|Vector|Position"),
-    ({"type": "Vector", "vector_weight": 1.0}, "vector_weight"),
-    ({"target_task_link_names": ["rl_dg_1_tip"]}, "vector_weight > 0"),
+    ({"type": "Vector"}, "DexPilot"),
+    ({"type": "Position"}, "DexPilot"),
 ))
-def test_retargeting_type_and_weight_validation(overrides, match):
+def test_only_dexpilot_type_is_accepted(overrides, match):
     _require_urdf("dg5f_right")
     with pytest.raises(ValueError, match=match):
         DexEngine("dg5f_right", **overrides)
+
+
+@pytest.mark.parametrize("key", ("vector_weight", "position_weight", "huber_delta",
+                                 "target_origin_link_names", "target_task_link_names",
+                                 "target_link_human_indices"))
+def test_vector_objective_keys_fail_at_load(key):
+    cfg = _require_urdf("dg5f_right")
+    with pytest.raises(TypeError, match=key):
+        DexEngine("dg5f_right", **{key: 0.5})
+    d = {"name": "x", "side": "right", "urdf": cfg.urdf, "palm_links": dict(
+        zip(("index", "middle", "pinky"), cfg.palm_links)),
+        "retargeting": {**cfg.retargeting, key: 0.5}}
+    with pytest.raises(ValueError, match=key):
+        DexHandConfig.from_dict(d)
 
 
 def test_sdk_import_does_not_import_torch():

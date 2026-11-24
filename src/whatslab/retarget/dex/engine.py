@@ -14,19 +14,14 @@ from whatslab.kinematics import Kinematics
 from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX
-from .optimizer import RetargetOptimizer, VectorTerm, dexpilot_pairs
+from .optimizer import RetargetOptimizer, dexpilot_pairs
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
-RETARGETING_TYPES = ("dexpilot", "vector", "position")
 _DEX_KEYS = frozenset({
     "type", "wrist_link_name", "finger_tip_link_names", "target_joint_names",
-    "target_origin_link_names", "target_task_link_names", "target_link_human_indices",
-    "vector_weight", "position_weight", "scaling_factor", "normal_delta", "huber_delta",
-    "project_dist", "escape_dist", "low_pass_alpha",
+    "scaling_factor", "normal_delta", "project_dist", "escape_dist", "low_pass_alpha",
 })
-_VECTOR_LINK_KEYS = ("target_origin_link_names", "target_task_link_names",
-                     "target_link_human_indices")
 _DEFAULT_HUMAN_HAND_LENGTH = 0.19
 _MANO_TIP_STEP = 4
 
@@ -141,10 +136,8 @@ class DexEngine:
             raise FileNotFoundError(f"{cfg.name}: URDF 없음 {self.urdf_path}")
 
         rt = {**cfg.retargeting, **overrides}
-        kind = str(rt.get("type", "DexPilot")).lower()
-        if kind not in RETARGETING_TYPES:
-            raise ValueError(f"{cfg.name}: retargeting.type 은 DexPilot|Vector|Position: {kind!r}")
-        self.type = kind.upper()
+        if str(rt.get("type", "DexPilot")).lower() != "dexpilot":
+            raise ValueError(f"{cfg.name}: retargeting.type 은 DexPilot 만 된다: {rt['type']!r}")
         kin = Kinematics(self.urdf_path)
         missing = [n for n in cfg.fixed_joints if n not in kin.joint_names]
         if missing:
@@ -177,56 +170,24 @@ class DexEngine:
             else Rotation.from_euler("xyz", cfg.mano_to_root_rpy).as_matrix()
         )
         tips = [shifted.get(n, n) for n in rt.get("finger_tip_link_names") or []]
+        if not tips:
+            raise ValueError(f"{cfg.name}: retargeting.finger_tip_link_names 가 필요하다")
         if rt.get("scaling_factor") is None:
-            ref = tips[2] if len(tips) > 2 else (rt.get("target_task_link_names") or [wrist])[-1]
+            ref = tips[2] if len(tips) > 2 else tips[-1]
             rt["scaling_factor"] = float(
                 np.linalg.norm(pos(ref) - pos(wrist)) / cfg.human_hand_length
             )
         self.scaling_factor = float(rt["scaling_factor"])
 
-        weights = {k: float(rt.get(f"{k}_weight", 0.0)) for k in ("vector", "position")}
-        if kind in weights:
-            if f"{kind}_weight" in rt:
-                raise ValueError(
-                    f"{cfg.name}: type {rt['type']} 에는 {kind}_weight 를 주지 않는다"
-                )
-            weights[kind] = 1.0
-        given = [k for k in _VECTOR_LINK_KEYS if k in rt]
-        if given and weights["vector"] == 0.0:
-            raise ValueError(
-                f"{cfg.name}: {given} 는 type Vector 나 vector_weight > 0 에서만 쓴다"
-            )
-        uses_tips = kind == "dexpilot" or weights["position"] > 0.0 or (
-            weights["vector"] > 0.0 and "target_task_link_names" not in rt
-        )
-        if uses_tips and not tips:
-            raise ValueError(f"{cfg.name}: retargeting.finger_tip_link_names 가 필요하다")
-        tip_human = [_MANO_TIP_STEP * (i + 1) for i in range(len(tips))]
-        human: List[List[int]] = [[], []]
-        terms: List[VectorTerm] = []
-        huber = float(rt.get("huber_delta", 2e-2))
-        if kind == "dexpilot":
-            o, t = dexpilot_pairs(len(tips))
-            human = [[_MANO_TIP_STEP * i for i in o], [_MANO_TIP_STEP * i for i in t]]
-        if weights["vector"] > 0.0:
-            origins = rt.get("target_origin_link_names") or [wrist] * len(tips)
-            tasks = rt.get("target_task_link_names") or tips
-            idx = rt.get("target_link_human_indices") or [[0] * len(tips), tip_human]
-            if not (len(origins) == len(tasks) == len(idx[0]) == len(idx[1])):
-                raise ValueError(f"{cfg.name}: vector 링크·human indices 길이가 다르다")
-            terms.append(VectorTerm(list(origins), list(tasks), weights["vector"], huber))
-            human = [human[0] + [int(i) for i in idx[0]], human[1] + [int(i) for i in idx[1]]]
-        if weights["position"] > 0.0:
-            terms.append(VectorTerm([wrist] * len(tips), tips, weights["position"], huber))
-            human = [human[0] + [0] * len(tips), human[1] + tip_human]
-        self._human_idx = np.array(human, dtype=int)
+        o, t = dexpilot_pairs(len(tips))
+        self._human_idx = _MANO_TIP_STEP * np.array([o, t], dtype=int)
 
         self.optimizer = RetargetOptimizer(
             kin,
             target_joints,
             q0,
-            (wrist, tips) if kind == "dexpilot" else None,
-            terms,
+            wrist,
+            tips,
             scaling=self.scaling_factor,
             normal_delta=float(rt.get("normal_delta", 4e-3)),
             project_dist=float(rt.get("project_dist", 0.03)),

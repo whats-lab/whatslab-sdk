@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -33,14 +32,6 @@ def dexpilot_pairs(num_fingers: int) -> Tuple[List[int], List[int]]:
     origin = [j for i in range(1, num_fingers) for j in range(i + 1, num_fingers + 1)]
     task = [i for i in range(1, num_fingers) for _ in range(i + 1, num_fingers + 1)]
     return origin + [0] * num_fingers, task + list(range(1, num_fingers + 1))
-
-
-@dataclass
-class VectorTerm:
-    origin_links: List[str]
-    task_links: List[str]
-    weight: float
-    huber_delta: float
 
 
 class DexPilotState:
@@ -98,8 +89,8 @@ class RetargetOptimizer:
         kin: Kinematics,
         target_joint_names: Sequence[str],
         base_qpos: np.ndarray,
-        dexpilot_links: Tuple[str, List[str]] | None,
-        vector_terms: Sequence[VectorTerm],
+        wrist: str,
+        tips: Sequence[str],
         scaling: float,
         normal_delta: float,
         project_dist: float,
@@ -129,26 +120,12 @@ class RetargetOptimizer:
         self.scaling = scaling
         self.normal_delta = normal_delta
 
-        origins: List[str] = []
-        tasks: List[str] = []
-        self.dexpilot = None
-        if dexpilot_links is not None:
-            wrist, tips = dexpilot_links
-            self.dexpilot = DexPilotState(len(tips), project_dist, escape_dist)
-            links = [wrist] + list(tips)
-            o, t = dexpilot_pairs(len(tips))
-            origins += [links[i] for i in o]
-            tasks += [links[i] for i in t]
-        self.num_dexpilot_rows = len(origins)
-        weights, deltas = [], [DEXPILOT_HUBER_DELTA] * len(origins)
-        for term in vector_terms:
-            m = len(term.origin_links)
-            origins += term.origin_links
-            tasks += term.task_links
-            weights += [term.weight / m] * m
-            deltas += [term.huber_delta] * m
-        self.vector_weight = np.array(weights)
-        self.huber_delta = np.array(deltas)
+        self.dexpilot = DexPilotState(len(tips), project_dist, escape_dist)
+        chain_links = [wrist] + list(tips)
+        o, t = dexpilot_pairs(len(tips))
+        origins = [chain_links[i] for i in o]
+        tasks = [chain_links[i] for i in t]
+        self.huber_delta = np.full(len(origins), DEXPILOT_HUBER_DELTA)
         links = list(dict.fromkeys(origins + tasks))
         self.frame_ids = kin.frame_ids(links)
         self.origin_idx = np.array([links.index(n) for n in origins], dtype=int)
@@ -169,18 +146,10 @@ class RetargetOptimizer:
         self.max_iter = max_evals
 
     def reset(self) -> None:
-        if self.dexpilot is not None:
-            self.dexpilot.reset()
+        self.dexpilot.reset()
 
     def targets(self, ref: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        ref = np.asarray(ref, dtype=np.float32)
-        n = self.num_dexpilot_rows
-        vec_target = (ref[n:] * self.scaling).astype(np.float32)
-        if self.dexpilot is None:
-            return vec_target, self.vector_weight
-        dex_target, dex_weight = self.dexpilot.update(ref[:n], self.scaling)
-        return (np.concatenate([dex_target, vec_target]),
-                np.concatenate([dex_weight, self.vector_weight]))
+        return self.dexpilot.update(np.asarray(ref, dtype=np.float32), self.scaling)
 
     def full_qpos(self, x: np.ndarray) -> np.ndarray:
         qpos = self.base_qpos.copy()
