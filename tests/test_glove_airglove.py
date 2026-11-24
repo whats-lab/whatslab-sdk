@@ -327,40 +327,39 @@ def test_library_version_parse():
     assert _library_version("1.0.3") >= MIN_LIBRARY
 
 
-def test_end_to_end_against_spine_replayer():
+def test_end_to_end_against_spine_replayer(running, request):
     replayer, capture = _core_files()
     port = _free_port_pair()
-    rx = AirGloveReceiver(glove_port=port, client_port=port + 2)
-    rx.start()
+    rx = running(AirGloveReceiver(glove_port=port, client_port=port + 2))
     proc = subprocess.Popen([sys.executable, replayer, capture, "--port", str(port + 2),
                              "--client-port", str(port)],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    try:
-        samples = {s: _wait(lambda s=s: (lambda x: x if x.tracked else None)(rx.get(s)), 5.0)
-                   for s in ("left", "right")}
-        for side, s in samples.items():
-            assert s is not None, f"{side}: 리플레이어 프레임 수신 실패"
-            xj = s.hand.xr_joints
-            assert xj.shape == (26, 8) and np.all(np.isfinite(xj))
-            assert np.allclose(xj[XR_WRIST, 0:4], [0, 0, 0, 1], atol=1e-5)
-            assert np.allclose(xj[XR_WRIST, 4:7], 0.0, atol=1e-6)
-            assert np.allclose(np.linalg.norm(xj[:, 0:4], axis=1), 1.0, atol=1e-4)
-            tip = XR_JOINT_NAMES.index("middle_tip")
-            assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
-        assert _wait(lambda: rx.spine_protocol() == 3, 3.0)
-        assert _wait(lambda: rx.connected("right") and rx.connected("left"), 3.0)
-        assert rx.send_haptic("right", [0, 2, 9]) is True
-        result = _wait(lambda: rx._client.haptics_result(Side.RIGHT), 2.0)
-        assert result is not None and result[0] is True
-        assert rx.send_haptic("right", []) is True
-        time.sleep(0.3)
-    finally:
-        rx.stop()
-        proc.terminate()
-        killer = threading.Timer(5.0, proc.kill)
-        killer.start()
-        out, _ = proc.communicate()
-        killer.cancel()
+    request.addfinalizer(proc.wait)
+    request.addfinalizer(proc.kill)
+    samples = {s: _wait(lambda s=s: (lambda x: x if x.tracked else None)(rx.get(s)), 5.0)
+               for s in ("left", "right")}
+    for side, s in samples.items():
+        assert s is not None, f"{side}: 리플레이어 프레임 수신 실패"
+        xj = s.hand.xr_joints
+        assert xj.shape == (26, 8) and np.all(np.isfinite(xj))
+        assert np.allclose(xj[XR_WRIST, 0:4], [0, 0, 0, 1], atol=1e-5)
+        assert np.allclose(xj[XR_WRIST, 4:7], 0.0, atol=1e-6)
+        assert np.allclose(np.linalg.norm(xj[:, 0:4], axis=1), 1.0, atol=1e-4)
+        tip = XR_JOINT_NAMES.index("middle_tip")
+        assert 0.10 < np.linalg.norm(xj[tip, 4:7]) < 0.25
+    assert _wait(lambda: rx.spine_protocol() == 3, 3.0)
+    assert _wait(lambda: rx.connected("right") and rx.connected("left"), 3.0)
+    assert rx.send_haptic("right", [0, 2, 9]) is True
+    result = _wait(lambda: rx._client.haptics_result(Side.RIGHT), 2.0)
+    assert result is not None and result[0] is True
+    assert rx.send_haptic("right", []) is True
+    time.sleep(0.3)
+    rx.stop()
+    proc.terminate()
+    killer = threading.Timer(5.0, proc.kill)
+    killer.start()
+    out, _ = proc.communicate()
+    killer.cancel()
     assert "haptics right: [0, 2, 3, 0, 0]" in out
     assert "haptics right: [0, 0, 0, 0, 0]" in out
 

@@ -30,7 +30,7 @@ function log(text, bad) { logEl.textContent = text; logEl.className = bad ? "bad
 function dropSocket() {
   if (!ws) return;
   ws.onclose = ws.onerror = ws.onopen = null;
-  try { ws.close(); } catch (e) {}
+  ws.close();
   ws = null;
   stalledSince = 0;
 }
@@ -98,11 +98,11 @@ function onFrame(t, frame) {
 async function requestSession() {
   const opts = { requiredFeatures: ["local-floor"], optionalFeatures: ["hand-tracking"] };
   if (await navigator.xr.isSessionSupported("immersive-ar")) {
-    try {
-      const s = await navigator.xr.requestSession("immersive-ar", opts);
+    const s = await navigator.xr.requestSession("immersive-ar", opts).catch(() => null);
+    if (s) {
       passthrough = true;
       return s;
-    } catch (err) {}
+    }
   }
   passthrough = false;
   return navigator.xr.requestSession("immersive-vr", opts);
@@ -113,11 +113,9 @@ async function start() {
   goEl.disabled = true;
   dropSocket();
   sent = dropped = reconnects = lastReport = reconnectAt = 0;
-  try {
-    session = await requestSession();
-  } catch (err) {
-    log("세션 시작 실패: " + err, true); goEl.disabled = false; return;
-  }
+  const failure = (err) => { log("세션 시작 실패: " + err, true); return null; };
+  session = await requestSession().catch(failure);
+  if (!session) { goEl.disabled = false; return; }
   session.addEventListener("end", () => {
     session = null; goEl.disabled = false; dropSocket();
     log(`세션 종료 — 전송 ${sent} 드롭 ${dropped} 재연결 ${reconnects}`);

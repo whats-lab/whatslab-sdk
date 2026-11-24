@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import signal
+import threading
 import time
 
 import numpy as np
@@ -57,38 +59,37 @@ def main():
     print(f"[run] joint_names({len(ctrl.joint_names)}): {ctrl.joint_names}", flush=True)
 
     period, last_log, q_prev, dq_max = 1.0 / args.rate, 0.0, None, 0.0
-    try:
-        while True:
-            q = m.get_q()[args.side]
-            tracked = all(n in q for n in ctrl.joint_names)
-            now = time.monotonic()
-            qv = np.array([q[n] for n in ctrl.joint_names]) if tracked else None
-            if qv is not None:
-                if q_prev is not None:
-                    dq_max = max(dq_max, float(np.abs(qv - q_prev).max()))
-                q_prev = qv
-            if viz_robot is not None and tracked:
-                viz_robot.update(ctrl.engine.full_qpos(qv) if dex else qv)
-            if now - last_log > 0.2:
-                last_log = now
-                if not tracked:
-                    print("[no-signal] 글러브 손 프레임 수신 없음", flush=True)
-                elif dq_max < 1e-4:
-                    print(
-                        "[정지] 글러브는 붙었지만 손이 안 움직인다 —"
-                        f" q = {np.round(qv, 3).tolist()}",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"[추적] |dq|max {dq_max:.3f}  q = {np.round(qv, 3).tolist()}", flush=True
-                    )
-                dq_max = 0.0
-            time.sleep(period)
-    except KeyboardInterrupt:
-        print("\n[stop] 종료")
-    finally:
-        m.stop()
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    while not stop.is_set():
+        q = m.get_q()[args.side]
+        tracked = all(n in q for n in ctrl.joint_names)
+        now = time.monotonic()
+        qv = np.array([q[n] for n in ctrl.joint_names]) if tracked else None
+        if qv is not None:
+            if q_prev is not None:
+                dq_max = max(dq_max, float(np.abs(qv - q_prev).max()))
+            q_prev = qv
+        if viz_robot is not None and tracked:
+            viz_robot.update(ctrl.engine.full_qpos(qv) if dex else qv)
+        if now - last_log > 0.2:
+            last_log = now
+            if not tracked:
+                print("[no-signal] 글러브 손 프레임 수신 없음", flush=True)
+            elif dq_max < 1e-4:
+                print(
+                    "[정지] 글러브는 붙었지만 손이 안 움직인다 —"
+                    f" q = {np.round(qv, 3).tolist()}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[추적] |dq|max {dq_max:.3f}  q = {np.round(qv, 3).tolist()}", flush=True
+                )
+            dq_max = 0.0
+        time.sleep(period)
+    print("\n[stop] 종료")
+    m.stop()
 
 
 if __name__ == "__main__":

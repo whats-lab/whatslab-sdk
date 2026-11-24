@@ -98,17 +98,13 @@ def test_hand_goes_stale():
     assert not rx.get("left").tracked
 
 
-def test_hand_roundtrip_over_socket():
-    hands = WebXRHandReceiver(port=0, tls=False)
-    hands.start()
-    try:
-        j25 = _to_world25(_hand26(5), np.array([0.0, 1.0, -0.3]), [0.0, 0.0, 0.0, 1.0])
-        with connect(f"ws://127.0.0.1:{hands.port}/ws") as ws:
-            ws.send(json.dumps({"t": 1, "hands": {"right": j25.reshape(-1).tolist()}}))
-            assert _wait(lambda: hands.get("right").tracked)
-        assert hands.get("right").hand.xr_joints.shape == (XR_JOINT_COUNT, XR_JOINT_FIELDS)
-    finally:
-        hands.stop()
+def test_hand_roundtrip_over_socket(running):
+    hands = running(WebXRHandReceiver(port=0, tls=False))
+    j25 = _to_world25(_hand26(5), np.array([0.0, 1.0, -0.3]), [0.0, 0.0, 0.0, 1.0])
+    with connect(f"ws://127.0.0.1:{hands.port}/ws") as ws:
+        ws.send(json.dumps({"t": 1, "hands": {"right": j25.reshape(-1).tolist()}}))
+        assert _wait(lambda: hands.get("right").tracked)
+    assert hands.get("right").hand.xr_joints.shape == (XR_JOINT_COUNT, XR_JOINT_FIELDS)
 
 
 def test_page_requests_hand_tracking():

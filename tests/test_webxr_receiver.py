@@ -37,14 +37,9 @@ def _insecure():
 
 
 @pytest.fixture
-def server():
+def server(running):
     got = []
-    srv = WebXRServer(got.append, 0, tls=False)
-    srv.start()
-    try:
-        yield srv, got
-    finally:
-        srv.stop()
+    return running(WebXRServer(got.append, 0, tls=False)), got
 
 
 def test_message_roundtrip(server):
@@ -54,19 +49,15 @@ def test_message_roundtrip(server):
         assert _wait(lambda: got == [{"t": 1.0}])
 
 
-def test_bad_message_closes_only_that_connection():
+def test_bad_message_closes_only_that_connection(running):
     good = []
-    srv = WebXRServer(good.append, 0, tls=False)
-    srv.start()
-    try:
-        with connect(f"ws://127.0.0.1:{srv.port}/ws") as bad:
-            bad.send("not json")
-            assert _wait(lambda: bad.state.name == "CLOSED")
-        with connect(f"ws://127.0.0.1:{srv.port}/ws") as ws:
-            ws.send(json.dumps({"ok": 1}))
-            assert _wait(lambda: good == [{"ok": 1}])
-    finally:
-        srv.stop()
+    srv = running(WebXRServer(good.append, 0, tls=False))
+    with connect(f"ws://127.0.0.1:{srv.port}/ws") as bad:
+        bad.send("not json")
+        assert _wait(lambda: bad.state.name == "CLOSED")
+    with connect(f"ws://127.0.0.1:{srv.port}/ws") as ws:
+        ws.send(json.dumps({"ok": 1}))
+        assert _wait(lambda: good == [{"ok": 1}])
 
 
 def test_page_is_served_and_other_paths_are_404(server):
@@ -79,16 +70,12 @@ def test_page_is_served_and_other_paths_are_404(server):
     assert e.value.code == 404
 
 
-def test_restart_keeps_ephemeral_port():
-    srv = WebXRServer(lambda msg: None, 0, tls=False)
-    srv.start()
+def test_restart_keeps_ephemeral_port(running):
+    srv = running(WebXRServer(lambda msg: None, 0, tls=False))
     port = srv.port
     srv.stop()
     srv.start()
-    try:
-        assert srv.port == port and srv.is_running
-    finally:
-        srv.stop()
+    assert srv.port == port and srv.is_running
 
 
 def test_start_and_stop_are_idempotent():
@@ -102,36 +89,29 @@ def test_start_and_stop_are_idempotent():
     assert not srv.is_running
 
 
-def test_connection_from_before_restart_is_not_dispatched():
+def test_connection_from_before_restart_is_not_dispatched(running, request):
     got = []
-    srv = WebXRServer(got.append, 0, tls=False)
-    srv.start()
+    srv = running(WebXRServer(got.append, 0, tls=False))
     old = connect(f"ws://127.0.0.1:{srv.port}/ws")
+    request.addfinalizer(old.close)
     srv.stop()
     srv.start()
-    try:
-        old.send(json.dumps({"stale": 1}))
-        with connect(f"ws://127.0.0.1:{srv.port}/ws") as new:
-            new.send(json.dumps({"fresh": 1}))
-            assert _wait(lambda: {"fresh": 1} in got)
-        time.sleep(0.1)
-        assert {"stale": 1} not in got
-    finally:
-        old.close()
-        srv.stop()
+    old.send(json.dumps({"stale": 1}))
+    with connect(f"ws://127.0.0.1:{srv.port}/ws") as new:
+        new.send(json.dumps({"fresh": 1}))
+        assert _wait(lambda: {"fresh": 1} in got)
+    time.sleep(0.1)
+    assert {"stale": 1} not in got
 
 
 def test_busy_port_raises():
-    blocker = socket.socket()
-    blocker.bind(("0.0.0.0", 0))
-    blocker.listen(1)
-    try:
+    with socket.socket() as blocker:
+        blocker.bind(("0.0.0.0", 0))
+        blocker.listen(1)
         srv = WebXRServer(lambda msg: None, blocker.getsockname()[1], tls=False)
         with pytest.raises(OSError):
             srv.start()
         assert not srv.is_running
-    finally:
-        blocker.close()
 
 
 def _page() -> str:
@@ -178,32 +158,24 @@ def test_tls_cert_is_cached(tmp_path):
     assert pathlib.Path(cert2).read_bytes() == first
 
 
-def test_wss_roundtrip_and_https_page(tmp_path):
+def test_wss_roundtrip_and_https_page(tmp_path, running):
     cert, key = _cert(tmp_path)
     got = []
-    srv = WebXRServer(got.append, 0, tls=True, certfile=cert, keyfile=key)
-    srv.start()
-    try:
-        assert srv.scheme == "https"
-        page = urllib.request.urlopen(f"https://127.0.0.1:{srv.port}/", timeout=5,
-                                      context=_insecure()).read()
-        assert b"getJointPose" in page
-        with connect(f"wss://127.0.0.1:{srv.port}/ws", ssl=_insecure()) as ws:
-            ws.send(json.dumps({"secure": 1}))
-            assert _wait(lambda: {"secure": 1} in got)
-    finally:
-        srv.stop()
+    srv = running(WebXRServer(got.append, 0, tls=True, certfile=cert, keyfile=key))
+    assert srv.scheme == "https"
+    page = urllib.request.urlopen(f"https://127.0.0.1:{srv.port}/", timeout=5,
+                                  context=_insecure()).read()
+    assert b"getJointPose" in page
+    with connect(f"wss://127.0.0.1:{srv.port}/ws", ssl=_insecure()) as ws:
+        ws.send(json.dumps({"secure": 1}))
+        assert _wait(lambda: {"secure": 1} in got)
 
 
-def test_plain_http_client_is_rejected_by_tls_server(tmp_path):
+def test_plain_http_client_is_rejected_by_tls_server(tmp_path, running):
     cert, key = _cert(tmp_path)
-    srv = WebXRServer(lambda msg: None, 0, tls=True, certfile=cert, keyfile=key)
-    srv.start()
-    try:
-        with pytest.raises(OSError):
-            urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/", timeout=3).read()
-    finally:
-        srv.stop()
+    srv = running(WebXRServer(lambda msg: None, 0, tls=True, certfile=cert, keyfile=key))
+    with pytest.raises(OSError):
+        urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/", timeout=3).read()
 
 
 class _UdpSocket:
@@ -231,30 +203,18 @@ def test_preferred_ip_is_the_routed_source_address(monkeypatch):
     assert tls.preferred_ip() == "127.0.0.1"
 
 
-def test_tls_url_uses_lan_ip_not_localhost(tmp_path):
+def test_tls_url_uses_lan_ip_not_localhost(tmp_path, running):
     from whatslab.receiver.webxr.tls import preferred_ip
     cert, key = _cert(tmp_path)
-    rx = WebXRHandReceiver(port=0, tls=True, certfile=cert, keyfile=key)
-    rx.start()
-    try:
-        assert rx.url.startswith(f"https://{preferred_ip()}:")
-    finally:
-        rx.stop()
+    rx = running(WebXRHandReceiver(port=0, tls=True, certfile=cert, keyfile=key))
+    assert rx.url.startswith(f"https://{preferred_ip()}:")
 
 
-def test_plain_url_uses_localhost_for_adb_reverse():
-    rx = WebXRHandReceiver(port=0, tls=False)
-    rx.start()
-    try:
-        assert rx.url.startswith("http://localhost:")
-    finally:
-        rx.stop()
+def test_plain_url_uses_localhost_for_adb_reverse(running):
+    rx = running(WebXRHandReceiver(port=0, tls=False))
+    assert rx.url.startswith("http://localhost:")
 
 
-def test_tls_is_on_by_default():
-    rx = WebXRHandReceiver(port=0)
-    rx.start()
-    try:
-        assert rx.url.startswith("https://")
-    finally:
-        rx.stop()
+def test_tls_is_on_by_default(running):
+    rx = running(WebXRHandReceiver(port=0))
+    assert rx.url.startswith("https://")

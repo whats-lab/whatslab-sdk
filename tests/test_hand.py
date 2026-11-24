@@ -1,3 +1,6 @@
+import importlib
+import sys
+
 import numpy as np
 import pytest
 
@@ -16,21 +19,21 @@ def test_unknown_engine_rejected(name):
         engine_of(name)
 
 
-def test_retarget_package_import_is_light():
-    import importlib
-    import sys
+def _retarget_modules():
+    return [m for m in sys.modules if m.startswith("whatslab.retarget")]
 
-    def ours():
-        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
 
-    saved = {m: sys.modules.pop(m) for m in ours()}
-    try:
-        importlib.import_module("whatslab.retarget")
-        assert "whatslab.retarget.dex" not in sys.modules
-    finally:
-        for m in ours():
-            del sys.modules[m]
-        sys.modules.update(saved)
+@pytest.fixture
+def fresh_retarget():
+    saved = {m: sys.modules.pop(m) for m in _retarget_modules()}
+    yield importlib.import_module("whatslab.retarget")
+    for m in _retarget_modules():
+        del sys.modules[m]
+    sys.modules.update(saved)
+
+
+def test_retarget_package_import_is_light(fresh_retarget):
+    assert "whatslab.retarget.dex" not in sys.modules
 
 
 def _geort_model_or_skip():
@@ -68,23 +71,10 @@ def test_geort_ignores_urdf_root():
     assert len(ctrl.joint_names) == 16
 
 
-def test_dex_preprocess_import_is_light():
-    import importlib
-    import sys
-
-    def ours():
-        return [m for m in sys.modules if m.startswith("whatslab.retarget")]
-
-    saved = {m: sys.modules.pop(m) for m in ours()}
-    try:
-        retarget = importlib.import_module("whatslab.retarget")
-        assert callable(retarget.xr_to_mano) and callable(retarget.mirror_xr_joints)
-        assert "whatslab.retarget.dex.preprocess" in sys.modules
-        assert "whatslab.retarget.dex.engine" not in sys.modules
-    finally:
-        for m in ours():
-            del sys.modules[m]
-        sys.modules.update(saved)
+def test_dex_preprocess_import_is_light(fresh_retarget):
+    assert callable(fresh_retarget.xr_to_mano) and callable(fresh_retarget.mirror_xr_joints)
+    assert "whatslab.retarget.dex.preprocess" in sys.modules
+    assert "whatslab.retarget.dex.engine" not in sys.modules
 
 
 class _Source:
