@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 receiver = ["airglove-client @ git+https://github.com/whats-lab/AirGlove-Client.git@v1.0.0#subdirectory=python"]
-hand     = ["pin", "dex-retargeting>=0.4.6", "torch", "six",
+hand     = ["pin>=2.7", "nlopt>=2.7.1",
             "dexhand-description @ git+https://github.com/whats-lab/dexterous-hand-urdf.git"]
 viz      = ["viser", "trimesh", "pin"]
 webxr    = ["websockets>=13", "cryptography"]
@@ -37,7 +37,8 @@ where = ["src"]
 include = ["whatslab*"]
 
 [tool.setuptools.package-data]
-whatslab = ["configs/**", "receiver/webxr/static/*.html", "retarget/geort/assets/*.npz"]
+whatslab = ["configs/**", "receiver/webxr/static/*.html", "retarget/geort/assets/*.npz",
+            "retarget/dex/THIRD_PARTY_LICENSE"]
 
 [tool.setuptools.exclude-package-data]
 whatslab = ["**/__pycache__/**", "**/*.py[cod]"]

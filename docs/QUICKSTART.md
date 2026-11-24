@@ -11,7 +11,7 @@
 
 | | |
 |---|---|
-| 파이썬 | 3.10 이상 (DexPilot 엔진은 3.13 미만) |
+| 파이썬 | 3.10 이상 |
 | 글러브 입력 | AirGlove + **Spine 3.0.0** (같은 PC, UDP 4040) |
 | 또는 맨손 입력 | Quest 헤드셋 브라우저(WebXR) — 앱 설치 없음 |
 | 로봇 손 | 없어도 된다 — 시각화로 먼저 확인한다 |
@@ -30,7 +30,7 @@ $PY -m pytest -q
 ```
 
 실패 없이 끝나면 정상이다. skip 은 선택 의존성(일부 URDF 등)이 없어서 나는 것이다.
-GeoRT 엔진(`geort:`)만 쓸 거면 `.[receiver,viz]`(Quest 맨손도 쓰면 `,webxr`)로 충분하다 — torch 가 딸려오지 않는다.
+GeoRT 엔진(`geort:`)만 쓸 거면 `.[receiver,viz]`(Quest 맨손도 쓰면 `,webxr`)로 충분하다.
 
 ---
 

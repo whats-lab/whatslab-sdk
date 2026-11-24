@@ -1,29 +1,34 @@
 from __future__ import annotations
 
-import copy
 import fnmatch
-import logging
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pinocchio as pin
 import yaml
-from dex_retargeting.retargeting_config import RetargetingConfig
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX, HandInputError
+from .optimizer import HandKinematics, RetargetOptimizer, VectorTerm, dexpilot_pairs
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
-_DEX_KEYS = frozenset(f.name for f in fields(RetargetingConfig))
+RETARGETING_TYPES = ("dexpilot", "vector", "position")
+_DEX_KEYS = frozenset({
+    "type", "wrist_link_name", "finger_tip_link_names", "target_joint_names",
+    "target_origin_link_names", "target_task_link_names", "target_link_human_indices",
+    "vector_weight", "position_weight", "scaling_factor", "normal_delta", "huber_delta",
+    "project_dist", "escape_dist", "low_pass_alpha",
+})
+_VECTOR_LINK_KEYS = ("target_origin_link_names", "target_task_link_names",
+                     "target_link_human_indices")
 _DEFAULT_HUMAN_HAND_LENGTH = 0.19
-
-logging.getLogger("dex_retargeting.yourdfpy").setLevel(logging.ERROR)
+_MANO_TIP_STEP = 4
 
 
 def hand_config_names() -> List[str]:
@@ -73,7 +78,7 @@ class DexHandConfig:
         rt = dict(d.get("retargeting") or {})
         unknown = set(rt) - _DEX_KEYS
         if unknown:
-            raise ValueError(f"retargeting 에 dex-retargeting 이 모르는 키: {sorted(unknown)}")
+            raise ValueError(f"retargeting 에 모르는 키: {sorted(unknown)}")
         palm = d.get("palm_links") or {}
         if not {"index", "middle", "pinky"} <= set(palm):
             raise ValueError(f"palm_links 에 index/middle/pinky 가 필요하다: {sorted(palm)}")
@@ -123,27 +128,28 @@ class DexEngine:
         if unknown:
             raise TypeError(
                 f"DexEngine 가 모르는 인자: {sorted(unknown)} — "
-                f"dex-retargeting RetargetingConfig 필드만 덮어쓸 수 있다"
+                f"retargeting 키만 덮어쓸 수 있다: {sorted(_DEX_KEYS)}"
             )
         self.urdf_path = os.path.join(urdf_root or models_root(), cfg.urdf)
         if not os.path.isfile(self.urdf_path):
             raise FileNotFoundError(f"{cfg.name}: URDF 없음 {self.urdf_path}")
 
-        rt = copy.deepcopy(cfg.retargeting)
-        rt.update(overrides)
-        rt["urdf_path"] = self.urdf_path
-        rt.setdefault("type", "DexPilot")
-        model = pin.buildModelFromUrdf(self.urdf_path)
-        dof_names = [n for i, n in enumerate(model.names) if model.nqs[i] > 0]
-        missing = [n for n in cfg.fixed_joints if n not in dof_names]
+        rt = {**cfg.retargeting, **overrides}
+        kind = str(rt.get("type", "DexPilot")).lower()
+        if kind not in RETARGETING_TYPES:
+            raise ValueError(f"{cfg.name}: retargeting.type 은 DexPilot|Vector|Position: {kind!r}")
+        self.type = kind.upper()
+        kin = HandKinematics(self.urdf_path)
+        missing = [n for n in cfg.fixed_joints if n not in kin.joint_names]
         if missing:
             raise ValueError(f"{cfg.name}: fixed_joints 가 URDF 에 없다 {missing}")
-        if rt.get("target_joint_names") is None:
-            rt["target_joint_names"] = [n for n in dof_names if n not in cfg.fixed_joints]
-        q0 = pin.neutral(model)
+        target_joints = rt.get("target_joint_names")
+        if target_joints is None:
+            target_joints = [n for n in kin.joint_names if n not in cfg.fixed_joints]
+        q0 = pin.neutral(kin.model)
         for n, v in cfg.fixed_joints.items():
-            q0[model.idx_qs[model.getJointId(n)]] = v
-        pos = self._frame_positions(model, q0)
+            q0[kin.joint_names.index(n)] = v
+        pos = self._frame_positions(kin.model, q0)
         wrist = rt.get("wrist_link_name")
         if wrist is None:
             raise ValueError(f"{cfg.name}: retargeting.wrist_link_name 이 필요하다")
@@ -153,33 +159,70 @@ class DexEngine:
             if cfg.mano_to_root_rpy is None
             else Rotation.from_euler("xyz", cfg.mano_to_root_rpy).as_matrix()
         )
-        tips = rt.get("finger_tip_link_names") or []
+        tips = list(rt.get("finger_tip_link_names") or [])
         if rt.get("scaling_factor") is None:
-            ref = tips[2] if len(tips) > 2 else (rt.get("target_link_names") or [wrist])[-1]
+            ref = tips[2] if len(tips) > 2 else (rt.get("target_task_link_names") or [wrist])[-1]
             rt["scaling_factor"] = float(
                 np.linalg.norm(pos(ref) - pos(wrist)) / cfg.human_hand_length
             )
         self.scaling_factor = float(rt["scaling_factor"])
-        self._wrist_root = pos(wrist)
 
-        self._seq = RetargetingConfig.from_dict(rt).build()
-        opt = self._seq.optimizer
-        self.type = opt.retargeting_type
-        self.joint_names: List[str] = list(opt.target_joint_names)
-        dof = opt.robot.dof_joint_names
-        self._fixed_qpos = np.array(
-            [cfg.fixed_joints.get(dof[i], 0.0) for i in opt.idx_pin2fixed], dtype=float
+        weights = {k: float(rt.get(f"{k}_weight", 0.0)) for k in ("vector", "position")}
+        if kind in weights:
+            if f"{kind}_weight" in rt:
+                raise ValueError(
+                    f"{cfg.name}: type {rt['type']} 에는 {kind}_weight 를 주지 않는다"
+                )
+            weights[kind] = 1.0
+        given = [k for k in _VECTOR_LINK_KEYS if k in rt]
+        if given and weights["vector"] == 0.0:
+            raise ValueError(
+                f"{cfg.name}: {given} 는 type Vector 나 vector_weight > 0 에서만 쓴다"
+            )
+        uses_tips = kind == "dexpilot" or weights["position"] > 0.0 or (
+            weights["vector"] > 0.0 and "target_task_link_names" not in rt
         )
-        self._idx_target = np.asarray(opt.idx_pin2target, dtype=int)
-        self._apply_limits(cfg.joint_limits)
+        if uses_tips and not tips:
+            raise ValueError(f"{cfg.name}: retargeting.finger_tip_link_names 가 필요하다")
+        tip_human = [_MANO_TIP_STEP * (i + 1) for i in range(len(tips))]
+        human: List[List[int]] = [[], []]
+        terms: List[VectorTerm] = []
+        huber = float(rt.get("huber_delta", 2e-2))
+        if kind == "dexpilot":
+            o, t = dexpilot_pairs(len(tips))
+            human = [[_MANO_TIP_STEP * i for i in o], [_MANO_TIP_STEP * i for i in t]]
+        if weights["vector"] > 0.0:
+            origins = rt.get("target_origin_link_names") or [wrist] * len(tips)
+            tasks = rt.get("target_task_link_names") or tips
+            idx = rt.get("target_link_human_indices") or [[0] * len(tips), tip_human]
+            if not (len(origins) == len(tasks) == len(idx[0]) == len(idx[1])):
+                raise ValueError(f"{cfg.name}: vector 링크·human indices 길이가 다르다")
+            terms.append(VectorTerm(list(origins), list(tasks), weights["vector"], huber))
+            human = [human[0] + [int(i) for i in idx[0]], human[1] + [int(i) for i in idx[1]]]
+        if weights["position"] > 0.0:
+            terms.append(VectorTerm([wrist] * len(tips), tips, weights["position"], huber))
+            human = [human[0] + [0] * len(tips), human[1] + tip_human]
+        self._human_idx = np.array(human, dtype=int)
+
+        self.optimizer = RetargetOptimizer(
+            kin,
+            target_joints,
+            q0,
+            (wrist, tips) if kind == "dexpilot" else None,
+            terms,
+            scaling=self.scaling_factor,
+            normal_delta=float(rt.get("normal_delta", 4e-3)),
+            project_dist=float(rt.get("project_dist", 0.03)),
+            escape_dist=float(rt.get("escape_dist", 0.05)),
+        )
+        self.kinematics = kin
+        self.joint_names: List[str] = list(target_joints)
+        self.low_pass_alpha = float(rt.get("low_pass_alpha", 0.1))
+        self._smoothed: Optional[np.ndarray] = None
+        self._apply_limits(kin.joint_limits[self.optimizer.idx_target], cfg.joint_limits)
         self.max_evals = cfg.max_evals if max_evals is None else int(max_evals)
         if self.max_evals:
-            opt.opt.set_maxeval(self.max_evals)
-        self._human_idx = (
-            None
-            if opt.target_link_human_indices is None
-            else np.asarray(opt.target_link_human_indices, dtype=int)
-        )
+            self.optimizer.set_max_evals(self.max_evals)
 
     @staticmethod
     def _frame_positions(model, q):
@@ -193,8 +236,8 @@ class DexEngine:
 
         return pos
 
-    def _apply_limits(self, overrides: Dict[str, Tuple[float, float]]) -> None:
-        lim = np.array(self._seq.joint_limits, dtype=float)
+    def _apply_limits(self, lim: np.ndarray, overrides: Dict[str, Tuple[float, float]]) -> None:
+        lim = np.array(lim, dtype=float)
         for pat, (lo, hi) in overrides.items():
             hit = [i for i, n in enumerate(self.joint_names) if fnmatch.fnmatchcase(n, pat)]
             if not hit:
@@ -203,13 +246,13 @@ class DexEngine:
                 )
             for i in hit:
                 lim[i] = np.radians([lo, hi])
-        self._seq.optimizer.set_joint_limit(lim)
-        self._seq.joint_limits = lim
-        self._seq.last_qpos = lim.mean(1).astype(np.float32)
+        self.optimizer.set_joint_limits(lim)
+        self._limits = lim
+        self._last = lim.mean(1).astype(np.float32)
 
     @property
     def joint_limits(self) -> np.ndarray:
-        return np.array(self._seq.joint_limits, dtype=float)
+        return self._limits.copy()
 
     def human_keypoints(self, xr_joints) -> np.ndarray:
         xr = mirror_xr_joints(xr_joints) if self.mirror else xr_joints
@@ -221,38 +264,35 @@ class DexEngine:
         return mano @ rot.T
 
     def reference(self, keypoints: np.ndarray) -> np.ndarray:
-        if self.type == "POSITION":
-            return self._wrist_root + self.scaling_factor * keypoints[self._human_idx]
         return keypoints[self._human_idx[1]] - keypoints[self._human_idx[0]]
 
     def solve(self, xr_joints) -> np.ndarray:
         kp = self.human_keypoints(xr_joints)
         if not np.all(np.isfinite(kp)):
             raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")
-        q = self._seq.retarget(self.reference(kp), fixed_qpos=self._fixed_qpos)
-        q = np.asarray(q, dtype=float)[self._idx_target]
+        start = np.clip(self._last, self._limits[:, 0], self._limits[:, 1])
+        self._last = self.optimizer.solve(self.reference(kp), start)
+        full = self.optimizer.full_qpos(self._last)
+        if 0.0 <= self.low_pass_alpha <= 1.0:
+            if self._smoothed is not None:
+                full = self._smoothed + self.low_pass_alpha * (full - self._smoothed)
+            self._smoothed = full
+        q = full[self.optimizer.idx_target]
         if not np.all(np.isfinite(q)):
-            raise HandInputError("dex-retargeting 해가 유한하지 않다")
+            raise HandInputError("리타게팅 해가 유한하지 않다")
         return q
 
     def full_qpos(self, q: np.ndarray) -> np.ndarray:
-        out = np.zeros(self._seq.optimizer.robot.dof)
-        out[self._seq.optimizer.idx_pin2fixed] = self._fixed_qpos
-        out[self._idx_target] = np.asarray(q, dtype=float)
-        adaptor = self._seq.optimizer.adaptor
-        return out if adaptor is None else adaptor.forward_qpos(out)
+        return self.optimizer.full_qpos(np.asarray(q, dtype=float))
 
     @property
     def robot_joint_names(self) -> List[str]:
-        return list(self._seq.optimizer.robot.dof_joint_names)
+        return list(self.kinematics.joint_names)
 
     def reset(self) -> None:
-        self._seq.reset()
-        if self._seq.filter is not None:
-            self._seq.filter.reset()
-        proj = getattr(self._seq.optimizer, "projected", None)
-        if proj is not None:
-            proj[:] = False
+        self._last = self._limits.mean(1).astype(np.float32)
+        self._smoothed = None
+        self.optimizer.reset()
 
 
 __all__ = [

@@ -130,8 +130,9 @@ from whatslab.retarget import HandRetargeter, DexEngine
 엔진은 둘이고 입력은 같다 — `HandPose.xr_joints` `(26, 8)`(OpenXR 26관절). `config` 의
 접두사로 고른다. 그 밖의 이름은 `ValueError`.
 
-- **`dex:<이름>`** — dex-retargeting(0.4.6 이상)의 DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). URDF 만 있으면
-  되고 `hand` extra(pinocchio·dex-retargeting·torch)가 필요하다.
+- **`dex:<이름>`** — DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). dex-retargeting 0.5.0 의 최적화기를 numpy 로
+  옮긴 자체 구현(`dex.optimizer`, MIT 고지는 `dex/THIRD_PARTY_LICENSE`)이라 torch 를 쓰지 않는다. 손목→손끝 벡터
+  항을 가중합으로 더할 수 있다(아래 `retargeting` 키). URDF 만 있으면 되고 `hand` extra(pinocchio·nlopt)가 필요하다.
 - **`geort:<이름>`** — GeoRT 소프트 프롬프트 신경망(numpy 만). `configs/geort/<이름>.yaml` 또는 yaml 경로.
   학습된 모델 npz 가 필요하다(아래 `whatslab.retarget.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
   오른손 모델(동봉 전부)은 왼손 사람 입력을 반전해 풀 수 있지만 왼손 로봇 손은 구동하지 못한다.
@@ -141,9 +142,10 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 못 풀면(`HandInputError` — geort 의 `GeortInputError` 도 이것이다. 다른 예외는 그대로 올라온다) 직전 명령 유지(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_error` 는 지금 프레임 기준(추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
 | `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints)`, `reset()`. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
-| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `scaling_factor`, `reset()`. 손당 프레임 p50 1~2ms, p99 약 4ms. |
-| `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 dex-retargeting 이 모르는 키가 있으면 `ValueError`. |
+| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `reset()`. 손당 프레임 p50 1~2ms, p99 약 4ms. |
+| `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 아래 표에 없는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
+| `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `HandKinematics(urdf)`(pinocchio 모델, URDF `<mimic>` 관절), `RetargetOptimizer`(nlopt SLSQP, `objective(ref, center)` 는 nlopt 목적함수 `f(x, grad)`), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
 | `dex.preprocess` 모듈 | DexPilot 입력 전처리 — 아래 `xr_to_mano`·`mirror_xr_joints` 와 `palm_frame`·`mano_palm_frame`(손바닥 좌표계), `xr_wrist_positions`. |
 | `xr_to_mano(xr_joints)` | OpenXR 26 → MANO 21 손목 상대 위치. 인덱스 `[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`, 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`(양손 같음 — 손목 공간 위치를 손목 회전으로 한 번 더 풀어 손목 자세와 무관하다). |
 | `mirror_xr_joints(xr_joints)` | 손목 공간 x 축 거울상(왼손 ↔ 오른손). 두 번 하면 원래대로. |
@@ -178,7 +180,30 @@ allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names`
 | `joint_limits_deg` | `{관절 이름 glob: [lo, hi]}` — 최적화 한계를 덮어쓴다. DG-5F 손가락 PIP·DIP 는 URDF 가 ±90° 라 역방향으로 꺾는 해가 나와 −5..90° 로 자른다. |
 | `human_hand_length` | 사람 손목 → 중지 끝(m, 기본 0.19). `retargeting.scaling_factor` 가 없으면 로봇 같은 길이(q=0)를 이것으로 나눠 쓴다. |
 | `max_evals` | 틱당 SLSQP 평가 상한(동봉값 20). 무제한과 결과는 거의 같고 p99 지연만 줄인다. |
-| `retargeting` | dex-retargeting `RetargetingConfig` 그대로(`type`, `wrist_link_name`, `finger_tip_link_names`, `low_pass_alpha`, …). `urdf_path` 는 위 `urdf` 로 채우고 `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(dex-retargeting 이 mimic 으로 채운다 — ability·schunk). |
+| `retargeting` | 최적화 설정. 키는 아래 표. `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(URDF `<mimic>` 으로 채운다 — ability·schunk). `DexEngine(..., 키=값)` 으로 덮어쓸 수 있다. |
+
+`retargeting` 키(dex-retargeting 0.5.0 `RetargetingConfig` 의 같은 이름 키와 뜻이 같다. 위치 리타게팅·자유 관절·
+`urdf_path`·`has_joint_limits`·`ignore_mimic_joint` 는 없다):
+
+| 키 | 기본 | 뜻 |
+|---|---|---|
+| `type` | `DexPilot` | `DexPilot` / `Vector` / `Position`(대소문자 무관). |
+| `wrist_link_name` | 필수 | 사람 손목에 대응하는 로봇 링크. |
+| `finger_tip_link_names` | DexPilot·Position 필수 | 엄지부터 손끝 링크 2~5개. 사람 쪽은 MANO 4·8·12·16·20 에 차례로 대응. |
+| `target_joint_names` | 고정 관절을 뺀 전 관절 | 최적화 변수(구동 관절). |
+| `vector_weight` | 0 | `type: DexPilot`(또는 `Position`)에 더하는 벡터 항 가중치. 목적함수 = DexPilot + `vector_weight`·(벡터 항 평균 Huber). `type: Vector` 에서는 주지 않는다(주항 가중치 1). |
+| `position_weight` | 0 | `Position` 항 가중치. 같은 규칙으로 `type: Position` 에서는 주지 않는다. |
+| `target_origin_link_names` / `target_task_link_names` | 손목 ×n / 손끝 | 벡터 항의 시작·끝 링크(같은 길이). `type: Vector` 나 `vector_weight > 0` 에서만 쓴다. |
+| `target_link_human_indices` | `[[0,…], [4, 8, …]]` | 벡터 항의 `[시작, 끝]` MANO 21 인덱스 `(2, m)`. 위 링크를 직접 주면 같이 준다. DexPilot 쌍의 사람 인덱스는 항상 기본(손끝 ×4)이다. |
+| `scaling_factor` | 길이비 | 사람 벡터에 곱하는 배율(핀치 투영 벡터 제외). 없으면 `human_hand_length` 로 계산. |
+| `huber_delta` | 0.02 | Vector·Position 항의 Huber δ(m). DexPilot 항은 0.03 고정(upstream 과 같다). |
+| `normal_delta` | 0.004 | 직전 해로 당기는 정규화 계수 — 기울기에만 `2·normal_delta·(x − 직전)` 로 들어간다(upstream 과 같다). 모든 type 에 적용. |
+| `project_dist` / `escape_dist` | 0.03 / 0.05 | DexPilot 핀치 투영: 엄지–손가락 사람 거리가 `project_dist` 미만이면 투영을 켜고 `escape_dist` 초과면 끈다. |
+| `low_pass_alpha` | 0.1 | 출력 1차 저역통과(`y += α(x − y)`). 0~1 밖이면 끈다. |
+
+`Position` 은 별도 최적화기가 아니라 벡터 항의 별칭이다: 시작 = 손목 링크(손가락마다), 끝 = 손끝 링크, 사람 목표 =
+MANO 손목→손끝 벡터 × `scaling_factor`. 그래서 `type: Position` 의 손실은 링크·인덱스를 손목→손끝으로 준
+`type: Vector` 와 같다. upstream 의 위치 리타게팅(손목 자유 관절, 절대 위치)과는 다르다.
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 

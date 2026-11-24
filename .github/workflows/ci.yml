@@ -26,8 +26,5 @@ jobs:
           python-version: ${{ matrix.python }}
           activate-environment: true
       - name: Install
-        run: >
-          uv pip install -e '.[all,dev]'
-          --extra-index-url https://download.pytorch.org/whl/cpu
-          --index-strategy unsafe-best-match
+        run: uv pip install -e '.[all,dev]'
       - run: pytest -q

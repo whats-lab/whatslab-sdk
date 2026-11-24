@@ -34,7 +34,7 @@ receiver, retarget ← hand.py
   `core.types` connect them.
 - Every input arrives as an OpenXR 26-joint `(26, 8)` array (`HandPose.xr_joints`, wrist-relative).
   A new input device converts to this format.
-- Heavy optional dependencies (dex-retargeting, torch, pin, viser) are imported only by the modules
+- Heavy optional dependencies (pin, nlopt, viser) are imported only by the modules
   that use them. The GeoRT path of `whatslab.retarget` must import with numpy alone.
 
 ### Retargeting engines
@@ -77,8 +77,6 @@ pytest -q
 CI (`.github/workflows/ci.yml`) runs ruff and the tests on Python 3.10 and 3.12 for every PR.
 
 - Changes come with tests. A bug fix starts with a test that reproduces the bug.
-- The full test run occasionally ends in a segfault. It is a known issue in the path dex-retargeting
-  uses to read URDFs (yourdfpy → pytransform3d), not in this repository; re-run and it passes.
 - On hardware: the glove with `examples/airglove_hand.py --viz`; Quest hand tracking by passing a
   `WebXRHandReceiver` to `HandModel(hand_source=…)` and opening the printed URL in the headset browser.
 

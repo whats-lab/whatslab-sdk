@@ -36,8 +36,9 @@ of it** — the SDK gives hand joints relative to the wrist; get the wrist pose 
 - One hand input for every source: the OpenXR 26-joint hand (`HandPose.xr_joints`), from the
   AirGlove (through Spine) or from Quest hand tracking (headset browser, WebXR)
 - Two retargeting engines:
-  - DexPilot vector retargeting ([dex-retargeting](https://github.com/dexsuite/dex-retargeting)),
-    1–2 ms per hand per frame, any robot hand with a URDF
+  - DexPilot vector retargeting (numpy port of
+    [dex-retargeting](https://github.com/dexsuite/dex-retargeting), no torch), optionally combined
+    with wrist→fingertip vector terms, 1–2 ms per hand per frame, any robot hand with a URDF
   - the **GeoRT soft-prompt** network: one forward pass in numpy, about 0.2 ms, one trained
     model shared by several robot hands
 - Output is `{side: {joint_name: rad}}`, ready to publish; an optional `SafetyFilter` clamps
@@ -92,15 +93,14 @@ pip install -e '.[all]'   # editable, for development
 |---|---|---|
 | `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
-| `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | the DexPilot engine |
+| `hand` | `pin`, `nlopt`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
 
-GeoRT inference (`geort:`) needs only numpy. dex-retargeting 0.4.6 is the last release for
-numpy 1 and 0.5.0 is the first for numpy 2, so pip picks the one that matches your
-environment; it needs `torch` (CPU is enough — add
-`--extra-index-url https://download.pytorch.org/whl/cpu` to skip the large CUDA build) and needs `nlopt<2.8`, `pin>=2.7` and
-Python < 3.13. numpy has no upper bound: numpy-1 environments (Isaac Sim 5.1, for example) pin
-`numpy<2` and `dex-retargeting<0.5` on their side. URDFs and meshes come from
+GeoRT inference (`geort:`) needs only numpy. The DexPilot engine carries its own numpy port of
+the dex-retargeting optimizer, so it needs neither torch nor dex-retargeting — only `pin>=2.7`
+and `nlopt>=2.7.1`, both with wheels up to Python 3.14. numpy has no upper bound: nlopt 2.8 and
+later need numpy 2, so numpy-1 environments (Isaac Sim 5.1, for example) pin `numpy<2` and
+`nlopt<2.8` on their side. URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
 `hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
 
@@ -203,7 +203,9 @@ Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with 
 
 whatslab builds on excellent open-source work:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio) (kinematics),
-[dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT),
+[dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT —
+the DexPilot engine's optimizer is a numpy port of it; see
+[THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE)),
 [GeoRT](https://zhaohengyin.github.io/geort) (geometric hand retargeting, which the soft-prompt
 model's training builds on),
 and [viser](https://github.com/nerfstudio-project/viser) (web 3D visualization).

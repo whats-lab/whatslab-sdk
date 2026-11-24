@@ -33,7 +33,7 @@ receiver, retarget ← hand.py
 - `receiver` 와 `retarget` 은 서로 모른다. 둘을 잇는 것은 `core.types` 의 `InputSample`·`HandPose` 뿐이다.
 - 모든 입력은 OpenXR 26관절 `(26, 8)` 배열(`HandPose.xr_joints`, 손목 기준)로 들어온다. 새 입력 장치도 이
   형식으로 바꿔서 넣는다.
-- 무거운 선택 의존성(dex-retargeting, torch, pin, viser)은 그것을 쓰는 모듈에서만 import 한다.
+- 무거운 선택 의존성(pin, nlopt, viser)은 그것을 쓰는 모듈에서만 import 한다.
   `whatslab.retarget` 의 GeoRT 경로는 numpy 만으로 import 돼야 한다.
 
 ### 리타게팅 엔진
@@ -73,8 +73,6 @@ pytest -q
 CI(`.github/workflows/ci.yml`)가 PR 마다 ruff 와 테스트를 Python 3.10·3.12 에서 돌린다.
 
 - 변경은 테스트와 함께 넣는다. 버그 수정은 그 버그를 재현하는 테스트부터 쓴다.
-- 전체 테스트가 가끔 segfault 로 끝난다. dex-retargeting 이 URDF 를 읽는 경로(yourdfpy → pytransform3d)에서
-  나는 기존 문제이고 이 저장소 코드 때문이 아니다. 다시 돌려서 통과하면 된다.
 - 실기 확인: 글러브는 `examples/airglove_hand.py --viz`, Quest 맨손은 `WebXRHandReceiver` 를
   `HandModel(hand_source=…)` 에 넣어 헤드셋 브라우저로 연다.
 

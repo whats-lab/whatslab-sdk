@@ -35,8 +35,8 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 - 모든 입력이 같은 손 형식: OpenXR 26관절(`HandPose.xr_joints`). AirGlove(Spine 경유)와 Quest
   핸드트래킹(헤드셋 브라우저 WebXR) 모두 이 형식으로 들어옵니다.
 - 리타게팅 엔진 두 가지
-  - DexPilot 벡터 리타게팅([dex-retargeting](https://github.com/dexsuite/dex-retargeting)) — 손당 프레임
-    1~2ms, URDF 가 있는 로봇 손이면 어느 것이든
+  - DexPilot 벡터 리타게팅([dex-retargeting](https://github.com/dexsuite/dex-retargeting) 의 numpy 이식,
+    torch 없음, 손목→손끝 벡터 항을 섞을 수 있음) — 손당 프레임 1~2ms, URDF 가 있는 로봇 손이면 어느 것이든
   - **GeoRT 소프트 프롬프트** 신경망 — numpy 순전파 한 번(약 0.2ms), 학습 모델 하나를 여러 로봇 손이 공유
 - 출력은 `{side: {관절 이름: rad}}` 로 바로 발행할 수 있고, 선택으로 `SafetyFilter` 가 위치·속도를 제한합니다.
 - 순수 Python, ROS 의존 없음. 의존 방향이 한쪽으로 정해져 있습니다
@@ -87,14 +87,13 @@ pip install -e '.[all]'   # 개발용 editable
 |---|---|---|
 | `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
-| `hand` | `pin`, `dex-retargeting>=0.4.6`, `torch`, `dexhand-description` | DexPilot 엔진 |
+| `hand` | `pin`, `nlopt`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
 
-GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. dex-retargeting 은 0.4.6 이 numpy 1 의 마지막, 0.5.0 이
-numpy 2 의 첫 릴리스라 pip 가 환경에 맞는 쪽을 고릅니다. `torch` 가 필요하고(CPU 판으로 충분하다 — 큰 CUDA 판을 피하려면
-`--extra-index-url https://download.pytorch.org/whl/cpu` 를 붙인다)
-`nlopt<2.8`, `pin>=2.7`, Python 3.13 미만이 필요합니다. numpy 상한은 두지 않습니다 — numpy 1 환경(예:
-Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `dex-retargeting<0.5` 를 고정합니다. URDF·메쉬는 별도 패키지
+GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. DexPilot 엔진은 dex-retargeting 최적화기를 numpy 로 옮긴
+자체 구현이라 torch·dex-retargeting 이 필요 없고 `pin>=2.7`, `nlopt>=2.7.1` 만 씁니다(둘 다 Python 3.14 까지
+휠이 있습니다). numpy 상한은 두지 않습니다 — nlopt 2.8 부터 numpy 2 가 필요하므로 numpy 1 환경(예:
+Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `nlopt<2.8` 을 고정합니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
 다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
 
@@ -193,7 +192,8 @@ pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
 
 whatslab 은 훌륭한 오픈소스 위에 만들었습니다:
 [Pinocchio](https://github.com/stack-of-tasks/pinocchio)(기구학),
-[dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT),
+[dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT — DexPilot 엔진의
+최적화기는 이것을 numpy 로 옮긴 것이다. [THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE) 참고),
 [GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅, 소프트 프롬프트 모델 학습의 바탕),
 [viser](https://github.com/nerfstudio-project/viser)(웹 3D 시각화).
 
