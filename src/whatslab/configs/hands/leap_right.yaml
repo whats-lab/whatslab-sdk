@@ -3,7 +3,7 @@ side: right
 urdf: leap_hand/leap_hand_right.urdf
 palm_links: {index: pip, middle: pip_2, pinky: pip_3}
 human_hand_length: 0.19
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: base

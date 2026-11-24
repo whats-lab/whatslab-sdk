@@ -5,7 +5,7 @@ palm_links: {index: I-PP_bacbd481, middle: M-PP_08efa608, pinky: P-PP_1d411b9b}
 fixed_joints:
   R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e: 0.0
 human_hand_length: 0.19
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: R-Carpals_8d1f1041

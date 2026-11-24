@@ -3,7 +3,7 @@ side: right
 urdf: robotis_hx5_d20/urdf/hx5_d20_right.urdf
 palm_links: {index: finger_r_link6, middle: finger_r_link10, pinky: finger_r_link18}
 human_hand_length: 0.19
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: hx5_d20_right_base

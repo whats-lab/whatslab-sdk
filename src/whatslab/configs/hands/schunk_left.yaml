@@ -3,7 +3,7 @@ side: left
 urdf: schunk_hand/schunk_svh_hand_left.urdf
 palm_links: {index: left_hand_l, middle: left_hand_k, pinky: left_hand_i}
 human_hand_length: 0.19
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: left_hand_base_link

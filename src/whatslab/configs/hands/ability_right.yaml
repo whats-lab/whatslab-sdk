@@ -3,7 +3,7 @@ side: right
 urdf: ability_hand/ability_hand_right.urdf
 palm_links: {index: index_L1, middle: middle_L1, pinky: pinky_L1}
 human_hand_length: 0.19
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: base_link

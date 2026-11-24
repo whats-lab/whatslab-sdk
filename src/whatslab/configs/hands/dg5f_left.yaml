@@ -5,7 +5,7 @@ palm_links: {index: ll_dg_2_2, middle: ll_dg_3_2, pinky: ll_dg_5_3}
 human_hand_length: 0.19
 joint_limits_deg:
   "lj_dg_[2-5]_[34]": [-5.0, 90.0]
-max_evals: 20
+max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: ll_dg_palm
