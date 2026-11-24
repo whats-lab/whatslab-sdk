@@ -1,0 +1,66 @@
+name: proception_prohand_gen2_right
+urdf: proception_prohand_gen2/proception_prohand_gen2_right.urdf
+wrist: {link: R_right_forearm_palm}
+palm: {index: R_right_forearm_gen2611_prox, middle: R_right_forearm_gen2612_prox, ring: R_right_forearm_prox}
+fingers:
+- name: thumb
+  link: R_right_forearm_thumb_dist
+  offset: [0.0025, 0.0265, 0.0]
+  joints: [R_t0_TM_abd, R_t1_TM, R_t2_MCP, R_t3_DIP]
+- name: index
+  link: R_right_forearm_gen2611_dist
+  offset: [-0.0011, -0.0274, -0.0005]
+  joints: [R_i0_CMC_abd, R_i1_MCP, R_i2_PIP, R_i3_DIP]
+- name: middle
+  link: R_right_forearm_gen2612_dist
+  offset: [-0.0011, -0.0274, -0.0005]
+  joints: [R_m0_CMC_abd, R_m1_MCP, R_m2_PIP, R_m3_DIP]
+- name: ring
+  link: R_right_forearm_dist
+  offset: [-0.0011, -0.0274, -0.0005]
+  joints: [R_r0_CMC_abd, R_r1_MCP, R_r2_PIP, R_r3_DIP]
+- name: little
+  link: R_right_forearm_pinky_dist
+  offset: [-0.0008, -0.0267, -0.0003]
+  joints: [R_p0_CMC_abd, R_p1_MCP, R_p2_PIP, R_p3_DIP]
+limits_deg:
+  R_i0_CMC_abd: [-20.0, 20.0]
+  R_i1_MCP: [0.0, 90.0]
+  R_i2_PIP: [0.0, 90.0]
+  R_i3_DIP: [0.0, 90.0]
+  R_m0_CMC_abd: [-15.0, 15.0]
+  R_m1_MCP: [0.0, 90.0]
+  R_m2_PIP: [0.0, 90.0]
+  R_m3_DIP: [0.0, 90.0]
+  R_r0_CMC_abd: [-15.0, 15.0]
+  R_r1_MCP: [0.0, 90.0]
+  R_r2_PIP: [0.0, 90.0]
+  R_r3_DIP: [0.0, 90.0]
+  R_p0_CMC_abd: [-20.0, 20.0]
+  R_p1_MCP: [0.0, 90.0]
+  R_p2_PIP: [0.0, 90.0]
+  R_p3_DIP: [0.0, 90.0]
+posture:
+  R_t2_MCP: {thumb.mcp: 1.0}
+  R_t3_DIP: {thumb.ip: 1.0}
+  R_i1_MCP: {index.mcp: 1.0}
+  R_i2_PIP: {index.pip: 1.0}
+  R_i3_DIP: {index.dip: 1.0}
+  R_m1_MCP: {middle.mcp: 1.0}
+  R_m2_PIP: {middle.pip: 1.0}
+  R_m3_DIP: {middle.dip: 1.0}
+  R_r1_MCP: {ring.mcp: 1.0}
+  R_r2_PIP: {ring.pip: 1.0}
+  R_r3_DIP: {ring.dip: 1.0}
+  R_p1_MCP: {little.mcp: 1.0}
+  R_p2_PIP: {little.pip: 1.0}
+  R_p3_DIP: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [R_right_forearm_thumb_prox, R_right_forearm_thumb_dist]
+    - [R_right_forearm_palm]
+  - - [R_right_forearm_thumb_prox]
+    - [R_right_forearm_gen2611_prox, R_right_forearm_gen2611_med, R_right_forearm_gen2612_prox]
+  - - [R_right_forearm_thumb_dist]
+    - [R_right_forearm_gen2611_prox, R_right_forearm_gen2612_prox]

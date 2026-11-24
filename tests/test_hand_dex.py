@@ -26,7 +26,9 @@ from whatslab.retarget.dex.optimizer import huber_vector_loss
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
-           "ability_left", "schunk_right", "schunk_left")
+           "ability_left", "schunk_right", "schunk_left", "rysen_apex_hand_right",
+           "rysen_apex_hand_left", "wuji_hand2_right", "wuji_hand2_left",
+           "proception_prohand_gen2_right", "proception_prohand_gen2_left")
 RIGHT_MCP_X = {"index": -0.025, "middle": -0.005, "ring": 0.015, "pinky": 0.033}
 SEG = (0.045, 0.026, 0.021)
 FLEX = np.radians((80.0, 95.0, 60.0))

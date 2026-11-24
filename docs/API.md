@@ -203,6 +203,9 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `dexrobot_dexhand021` | `dexrobot_dexhand021/dexrobot_dexhand021_right.urdf` | `right_hand_base` | 손가락 5개, 구동 20축 |
 | `sharpa_wave` | `sharpa_wave/sharpa_wave_right.urdf` | `right_hand_C_MC` | 손가락 5개, 구동 22축 |
 | `wuji_hand` | `wuji_hand/wuji_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 20축 |
+| `wuji_hand2` | `wuji_hand2/wuji_hand2_right.urdf` | `r_wrist` | Wuji Hand 2.1. 손가락 5개, 구동 20축; URDF 루트 `r_mount`(팔 플랜지)는 쓰지 않는다 |
+| `rysen_apex_hand` | `rysen_apex_hand/rysen_apex_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 16축; mimic 5 |
+| `proception_prohand_gen2` | `proception_prohand_gen2/proception_prohand_gen2_right.urdf` | `R_right_forearm_palm` | 손가락 5개, 구동 20축; 팔뚝 포함 URDF, 손목 관절 2개(`R_wrist_abd`, `R_wrist_flex`) 0 고정; 말단 링크 + 손끝 오프셋. 메시는 Proception 독점 라이선스(재배포 금지) |
 | `dexhand_trs` | `dexhand_trs/dexhand_trs_right.urdf` | `index_bulk_1` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
 
 **해외 휴머노이드 손**

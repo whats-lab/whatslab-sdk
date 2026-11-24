@@ -1,0 +1,53 @@
+name: rysen_apex_hand_right
+urdf: rysen_apex_hand/rysen_apex_hand_right.urdf
+wrist: {link: right_palm_link}
+palm: {index: right_index_link1, middle: right_middle_link1, ring: right_ring_link1}
+fingers:
+- name: thumb
+  link: right_thumb_tip
+  joints: [right_thumb_j0, right_thumb_j1, right_thumb_j2, right_thumb_j3]
+- name: index
+  link: right_index_tip
+  joints: [right_index_j0, right_index_j1, right_index_j2]
+- name: middle
+  link: right_middle_tip
+  joints: [right_middle_j0, right_middle_j1, right_middle_j2]
+- name: ring
+  link: right_ring_tip
+  joints: [right_ring_j0, right_ring_j1, right_ring_j2]
+- name: little
+  link: right_pinky_tip
+  joints: [right_pinky_j0, right_pinky_j1, right_pinky_j2]
+limits_deg:
+  right_index_j0: [-20.0, 20.0]
+  right_index_j1: [0.0, 90.0]
+  right_index_j2: [0.0, 90.0]
+  right_middle_j0: [-20.0, 20.0]
+  right_middle_j1: [0.0, 90.0]
+  right_middle_j2: [0.0, 90.0]
+  right_ring_j0: [-20.0, 20.0]
+  right_ring_j1: [0.0, 90.0]
+  right_ring_j2: [0.0, 90.0]
+  right_pinky_j0: [-20.0, 20.0]
+  right_pinky_j1: [0.0, 90.0]
+  right_pinky_j2: [0.0, 90.0]
+posture:
+  right_thumb_j2: {thumb.mcp: 1.0}
+  right_thumb_j3: {thumb.ip: 0.5}
+  right_index_j1: {index.mcp: 1.0}
+  right_index_j2: {index.pip: 0.5, index.dip: 0.5}
+  right_middle_j1: {middle.mcp: 1.0}
+  right_middle_j2: {middle.pip: 0.5, middle.dip: 0.5}
+  right_ring_j1: {ring.mcp: 1.0}
+  right_ring_j2: {ring.pip: 0.5, ring.dip: 0.5}
+  right_pinky_j1: {little.mcp: 1.0}
+  right_pinky_j2: {little.pip: 0.5, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_link3, right_thumb_link4, right_thumb_tip]
+    - [right_palm_link]
+  - - [right_thumb_link3, right_thumb_link4]
+    - [right_index_link1, right_index_link2, right_index_link3, right_middle_link1, right_middle_link2]
+  - - [right_thumb_tip]
+    - [right_index_link1, right_index_link2, right_middle_link1]

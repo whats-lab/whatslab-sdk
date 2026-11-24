@@ -97,6 +97,9 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | DexRobot DexHand021 | `dex:dexrobot_dexhand021` | `dexrobot_dexhand021_{left,right}.yaml` | 손가락 5개, 구동 20축 |
 | Sharpa Wave | `dex:sharpa_wave` | `sharpa_wave_{left,right}.yaml` | 손가락 5개, 구동 22축 |
 | Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 손가락 5개, 구동 20축 |
+| Wuji Hand 2 (2.1) | `dex:wuji_hand2` | `wuji_hand2_{left,right}.yaml` | 손가락 5개, 구동 20축; URDF 루트는 팔 플랜지 마운트, 손목 링크 `r_wrist` |
+| Rysen Apex Hand | `dex:rysen_apex_hand` | `rysen_apex_hand_{left,right}.yaml` | 손가락 5개, 구동 16축; mimic 5 |
+| Proception ProHand Gen2 | `dex:proception_prohand_gen2` | `proception_prohand_gen2_{left,right}.yaml` | 손가락 5개, 구동 20축; 손목 관절 2개 0 고정; 말단 링크 + 손끝 오프셋 |
 | DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
 
 **해외 휴머노이드 손**
@@ -127,7 +130,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 모델에는 Allegro·DG-5F-S 프롬프트도 들어 있지만, 아직 dexhand-description 에 없는 URDF 를 기준으로
 학습했습니다.
 
-학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 40개)로
+학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 43개)로
 학습 데이터를 만들고 아무 GPU 호스트에서 학습·내보내기를 합니다([API.md](docs/API.md)). 학습 코드와 동봉 모델은
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT)(CC BY-NC 4.0)를 바탕으로 하며 **비상업 용도로만**
 쓸 수 있습니다. 사람 손 동작 데이터는 포함하지 않습니다.
@@ -231,7 +234,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 79개), geort/ (2개), geort_train/ (40개)
+└── configs/          hands/ (DexPilot, 85개), geort/ (2개), geort_train/ (43개)
 ```
 
 ## 예제와 도구

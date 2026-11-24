@@ -1,0 +1,34 @@
+name: rysen_apex_hand_left
+side: left
+urdf: rysen_apex_hand/rysen_apex_hand_left.urdf
+palm_links: {index: left_index_link1, middle: left_middle_link1, pinky: left_pinky_link1}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: left_palm_link
+  finger_tip_link_names: [left_thumb_tip, left_index_tip, left_middle_tip, left_ring_tip, left_pinky_tip]
+  low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    left_thumb_j2: {thumb.mcp: 1.0}
+    left_thumb_j3: {thumb.ip: 0.5}
+    left_index_j0: {index.spread: -1.0}
+    left_index_j1: {index.mcp: 1.0}
+    left_index_j2: {index.pip: 0.5, index.dip: 0.5}
+    left_middle_j0: {middle.spread: -1.0}
+    left_middle_j1: {middle.mcp: 1.0}
+    left_middle_j2: {middle.pip: 0.5, middle.dip: 0.5}
+    left_ring_j0: {ring.spread: -1.0}
+    left_ring_j1: {ring.mcp: 1.0}
+    left_ring_j2: {ring.pip: 0.5, ring.dip: 0.5}
+    left_pinky_j0: {little.spread: -1.0}
+    left_pinky_j1: {little.mcp: 1.0}
+    left_pinky_j2: {little.pip: 0.5, little.dip: 0.5}
+  thumb_base:
+    joints: [left_thumb_j0, left_thumb_j1]
+    bone: [left_thumb_link1, left_thumb_link2]
+    flex_joint: left_thumb_j2
+    step_deg: 2.0
+    axis_weight: 0.5

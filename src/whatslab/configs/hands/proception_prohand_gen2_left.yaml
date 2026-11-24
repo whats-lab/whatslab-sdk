@@ -1,0 +1,47 @@
+name: proception_prohand_gen2_left
+side: left
+urdf: proception_prohand_gen2/proception_prohand_gen2_left.urdf
+palm_links: {index: L_left_forearm_gen2611_prox, middle: L_left_forearm_gen2612_prox, pinky: L_left_forearm_pinky_prox}
+link_offsets:
+  L_left_forearm_thumb_dist: [-0.0025, -0.0265, 0.0]
+  L_left_forearm_gen2611_dist: [-0.0011, -0.0274, -0.0005]
+  L_left_forearm_gen2612_dist: [-0.0011, -0.0274, -0.0005]
+  L_left_forearm_dist: [-0.0011, -0.0274, -0.0005]
+  L_left_forearm_pinky_dist: [-0.0008, -0.0267, -0.0003]
+fixed_joints:
+  L_wrist_abd: 0.0
+  L_wrist_flex: 0.0
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: L_left_forearm_palm
+  finger_tip_link_names: [L_left_forearm_thumb_dist, L_left_forearm_gen2611_dist, L_left_forearm_gen2612_dist, L_left_forearm_dist, L_left_forearm_pinky_dist]
+  low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    L_t2_MCP: {thumb.mcp: 1.0}
+    L_t3_DIP: {thumb.ip: 1.0}
+    L_i0_CMC_abd: {index.spread: -1.0}
+    L_i1_MCP: {index.mcp: 1.0}
+    L_i2_PIP: {index.pip: 1.0}
+    L_i3_DIP: {index.dip: 1.0}
+    L_m0_CMC_abd: {middle.spread: -1.0}
+    L_m1_MCP: {middle.mcp: 1.0}
+    L_m2_PIP: {middle.pip: 1.0}
+    L_m3_DIP: {middle.dip: 1.0}
+    L_r0_CMC_abd: {ring.spread: -1.0}
+    L_r1_MCP: {ring.mcp: 1.0}
+    L_r2_PIP: {ring.pip: 1.0}
+    L_r3_DIP: {ring.dip: 1.0}
+    L_p0_CMC_abd: {little.spread: -1.0}
+    L_p1_MCP: {little.mcp: 1.0}
+    L_p2_PIP: {little.pip: 1.0}
+    L_p3_DIP: {little.dip: 1.0}
+  thumb_base:
+    joints: [L_t0_TM_abd, L_t1_TM]
+    bone: [L_left_forearm_thumb_meta, L_left_forearm_thumb_prox]
+    flex_joint: L_t2_MCP
+    step_deg: 2.0
+    axis_weight: 0.5

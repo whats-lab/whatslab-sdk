@@ -1,0 +1,61 @@
+name: wuji_hand2_right
+urdf: wuji_hand2/wuji_hand2_right.urdf
+wrist: {link: r_wrist}
+palm: {index: r_index_finger_proximal, middle: r_middle_finger_proximal, ring: r_ring_finger_proximal}
+fingers:
+- name: thumb
+  link: r_thumb_tip
+  joints: [r_thumb_cmc_flex, r_thumb_cmc_abd, r_thumb_mcp, r_thumb_ip]
+- name: index
+  link: r_index_finger_tip
+  joints: [r_index_finger_mcp_flex, r_index_finger_mcp_abd, r_index_finger_pip, r_index_finger_dip]
+- name: middle
+  link: r_middle_finger_tip
+  joints: [r_middle_finger_mcp_flex, r_middle_finger_mcp_abd, r_middle_finger_pip, r_middle_finger_dip]
+- name: ring
+  link: r_ring_finger_tip
+  joints: [r_ring_finger_mcp_flex, r_ring_finger_mcp_abd, r_ring_finger_pip, r_ring_finger_dip]
+- name: little
+  link: r_pinky_tip
+  joints: [r_pinky_mcp_flex, r_pinky_mcp_abd, r_pinky_pip, r_pinky_dip]
+limits_deg:
+  r_thumb_mcp: [0.0, 90.0]
+  r_thumb_ip: [0.0, 90.0]
+  r_index_finger_mcp_flex: [0.0, 90.0]
+  r_index_finger_mcp_abd: [-20.0, 20.0]
+  r_index_finger_pip: [0.0, 90.0]
+  r_index_finger_dip: [0.0, 90.0]
+  r_middle_finger_mcp_flex: [0.0, 90.0]
+  r_middle_finger_mcp_abd: [-20.0, 20.0]
+  r_middle_finger_pip: [0.0, 90.0]
+  r_middle_finger_dip: [0.0, 90.0]
+  r_ring_finger_mcp_flex: [0.0, 90.0]
+  r_ring_finger_mcp_abd: [-20.0, 20.0]
+  r_ring_finger_pip: [0.0, 90.0]
+  r_ring_finger_dip: [0.0, 90.0]
+  r_pinky_mcp_flex: [0.0, 90.0]
+  r_pinky_mcp_abd: [-20.0, 20.0]
+  r_pinky_pip: [0.0, 90.0]
+  r_pinky_dip: [0.0, 90.0]
+posture:
+  r_thumb_mcp: {thumb.mcp: 1.0}
+  r_thumb_ip: {thumb.ip: 1.0}
+  r_index_finger_mcp_flex: {index.mcp: 1.0}
+  r_index_finger_pip: {index.pip: 1.0}
+  r_index_finger_dip: {index.dip: 1.0}
+  r_middle_finger_mcp_flex: {middle.mcp: 1.0}
+  r_middle_finger_pip: {middle.pip: 1.0}
+  r_middle_finger_dip: {middle.dip: 1.0}
+  r_ring_finger_mcp_flex: {ring.mcp: 1.0}
+  r_ring_finger_pip: {ring.pip: 1.0}
+  r_ring_finger_dip: {ring.dip: 1.0}
+  r_pinky_mcp_flex: {little.mcp: 1.0}
+  r_pinky_pip: {little.pip: 1.0}
+  r_pinky_dip: {little.dip: 1.0}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [r_thumb_middle, r_thumb_distal]
+    - [r_wrist]
+  - - [r_thumb_middle, r_thumb_distal]
+    - [r_index_finger_proximal_abd, r_index_finger_middle, r_index_finger_distal, r_middle_finger_proximal_abd, r_middle_finger_middle]
