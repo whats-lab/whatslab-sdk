@@ -163,12 +163,14 @@ pip install -e '.[all]'   # editable, for development
 |---|---|---|
 | `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
-| `hand` | `pin`, `dexhand-description` | the DexPilot engine |
-| `viz` | `viser`, `trimesh`, `pycollada`, `pin` | robot-hand visualization |
+| `hand` | `dexhand-description` | the DexPilot engine (URDF assets) |
+| `viz` | `viser`, `trimesh`, `pycollada` | robot-hand visualization |
 
 GeoRT inference (`geort:`) needs only numpy. The DexPilot engine carries its own numpy port of
-the dex-retargeting optimizer, so it needs neither torch nor dex-retargeting — only `pin>=2.7`
-(wheels up to Python 3.14); SLSQP comes from scipy, a base dependency. numpy has no upper bound.
+the dex-retargeting optimizer and its own numpy URDF kinematics (`whatslab.kinematics`), so it
+needs neither torch, dex-retargeting nor pinocchio — numpy, scipy (SLSQP) and pyyaml only, which also
+makes it pure Python (Python 3.10–3.14, and Pyodide). numpy has no upper bound. `pin` is a `dev`
+dependency only: the tests check the kinematics against pinocchio when it is installed.
 URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
 `hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
@@ -271,7 +273,7 @@ Run the tests with `pip install -e '.[all,dev]' && pytest`, and the linter with 
 ## Acknowledgments
 
 whatslab builds on excellent open-source work:
-[Pinocchio](https://github.com/stack-of-tasks/pinocchio) (kinematics),
+[Pinocchio](https://github.com/stack-of-tasks/pinocchio) (reference kinematics in the tests),
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting) (DexPilot hand retargeting, MIT —
 the DexPilot engine's optimizer is a numpy port of it; see
 [THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE)),

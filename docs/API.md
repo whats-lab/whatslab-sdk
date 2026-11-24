@@ -132,7 +132,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 - **`dex:<이름>`** — DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). dex-retargeting 0.5.0 의 최적화기를 numpy 로
   옮긴 자체 구현(`dex.optimizer`, MIT 고지는 `dex/THIRD_PARTY_LICENSE`)이라 torch 를 쓰지 않는다. 손목→손끝 벡터
-  항을 가중합으로 더할 수 있다(아래 `retargeting` 키). URDF 만 있으면 되고 `hand` extra(pinocchio)가 필요하다. SLSQP 는 scipy 의 것을 쓴다.
+  항을 가중합으로 더할 수 있다(아래 `retargeting` 키). URDF 만 있으면 되고 기구학은 `whatslab.kinematics`(numpy)라 pinocchio 가 필요 없다. SLSQP 는 scipy 의 것을 쓴다.
 - **`geort:<이름>`** — GeoRT 소프트 프롬프트 신경망(numpy 만). `configs/geort/<이름>.yaml` 또는 yaml 경로.
   학습된 모델 npz 가 필요하다(아래 `whatslab.retarget.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
   오른손 모델(동봉 전부)은 왼손 사람 입력을 반전해 풀 수 있지만 왼손 로봇 손은 구동하지 못한다.
@@ -142,10 +142,10 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 엔진이 이번 프레임을 못 풀면(`solve` 가 `None`) 직전 명령 유지(못 푼 이유는 엔진의 `last_failure` 를 옮긴 `last_failure`, 연속 실패의 첫 번에 경고 로그, 엔진 `reset()`). 예외는 잡지 않는다 — 설정 오류·배열 모양 오류는 그대로 올라온다, 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_failure: Optional[str]` 은 지금 프레임 기준(풀었거나 추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
 | `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints) -> Optional[np.ndarray]`, `last_failure: Optional[str]`, `reset()`. `solve` 가 `None` 이면 "이번 프레임을 풀 수 없다"는 뜻이고 사람이 읽을 이유가 `last_failure` 에 있다(풀면 `None` 으로 돌아간다). 프레임 단위 실패에 예외를 쓰지 않는다. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
-| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `kinematics`(`HandKinematics`, `link_offsets` 프레임 포함), `wrist_frame`·`tip_frames`(실제로 쓰는 손목·손끝 프레임 이름 — `link_offsets` 가 있으면 `<링크>_offset`), `reset()`. 손당 프레임 p50 약 0.6~0.9ms, p99 약 1~3ms(동봉 max_evals 10). |
+| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `kinematics`(`whatslab.kinematics.Kinematics`, `link_offsets` 프레임 포함), `wrist_frame`·`tip_frames`(실제로 쓰는 손목·손끝 프레임 이름 — `link_offsets` 가 있으면 `<링크>_offset`), `reset()`. 손당 프레임 p50 약 1.1ms, p99 약 1.5ms(orca·DG-5F, 동봉 max_evals 10). |
 | `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 아래 표에 없는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
-| `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `HandKinematics(urdf)`(pinocchio 모델, URDF `<mimic>` 관절), `RetargetOptimizer`(`scipy.optimize.minimize(method="SLSQP", jac=True)`, 관절 한계 ±1e-3 을 `bounds` 로. `objective(ref, center)` 는 `f(x) -> (loss, grad)`. `solve(ref, start) -> x | None` — 수렴(status 0)했거나 반복 상한에 걸렸어도(status 9) `x` 가 유한하면 쓸 수 있는 해로 돌려주고, 그 밖의 종료(직선 탐색 실패·특이 행렬 등)나 유한하지 않은 `x` 는 `None`. 마지막 결과는 `last_result`(`OptimizeResult`)), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
+| `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `RetargetOptimizer`(`scipy.optimize.minimize(method="SLSQP", jac=True)`, 관절 한계 ±1e-3 을 `bounds` 로. `objective(ref, center)` 는 `f(x) -> (loss, grad)`. `solve(ref, start) -> x | None` — 수렴(status 0)했거나 반복 상한에 걸렸어도(status 9) `x` 가 유한하면 쓸 수 있는 해로 돌려주고, 그 밖의 종료(직선 탐색 실패·특이 행렬 등)나 유한하지 않은 `x` 는 `None`. 마지막 결과는 `last_result`(`OptimizeResult`)), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
 | `dex.preprocess` 모듈 | DexPilot 입력 전처리 — 아래 `xr_to_mano`·`mirror_xr_joints` 와 `palm_frame`·`mano_palm_frame`(손바닥 좌표계, 점이 겹치거나 나란하거나 유한하지 않으면 `None`), `xr_wrist_positions`. |
 | `xr_to_mano(xr_joints)` | OpenXR 26 → MANO 21 손목 상대 위치. 인덱스 `[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`, 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`(양손 같음 — 손목 공간 위치를 손목 회전으로 한 번 더 풀어 손목 자세와 무관하다). |
 | `mirror_xr_joints(xr_joints)` | 손목 공간 x 축 거울상(왼손 ↔ 오른손). 두 번 하면 원래대로. |
@@ -326,6 +326,16 @@ dexhand-description 에 없는 URDF 기준이다.
 |---|---|
 | `URDFScene` | URDF 하나를 메쉬/스켈레톤 자동 판별 렌더 + 관절 구동. visual 메쉬가 전부 있고 trimesh 로 읽을 수 있으면 visual, 아니면 collision, 둘 다 안 되면 스켈레톤. DAE 는 pycollada 로 읽는다. 메쉬에 자체 색·텍스처가 없으면 URDF visual `<material>` 색(로봇 수준 이름 material 포함)을 칠하고, GLB/OBJ/DAE 의 자체 색은 그대로 둔다. 상대 메쉬 경로는 URDF 폴더 기준이다. `set_root`, `q_from_named`, `fk`. |
 | `HandViz(urdf, joint_names, port=8080, root_path="/hand", root_pose=None)` | 로봇 손 URDF 하나를 q 로 구동한다(리타게팅 결과 확인). 사람 손 시각화는 Spine 이 맡는다. |
+
+## whatslab.kinematics — numpy URDF 기구학 (pinocchio 없음)
+
+| 심볼 | 설명 |
+|---|---|
+| `Kinematics(urdf_path)` / `Kinematics.from_string(xml)` | URDF 를 xml.etree 로 읽는다. revolute·continuous·prismatic·fixed 관절(그 밖의 type 은 `ValueError`). 관절 순서·한계는 pinocchio `buildModelFromUrdf` 와 같다(형제 관절은 이름순 깊이 우선). continuous 는 각도 1개, 한계 ±inf. `joint_names`, `joint_parents`, `joint_limits` `(n, 2)`, `link_names`, `link_joints`, `dof`, `neutral()`. |
+| mimic | `mimic_names`·`mimic_source_names`·`mimic_multipliers`·`mimic_offsets`·`idx_mimic`·`idx_source` — mimic 의 mimic 은 구동 관절까지 배율·오프셋을 합친다. `actuated_joint_names`, `forward_qpos(q)`(mimic 관절 채움, 제자리). |
+| `frame_ids(names)` / `add_frame(name, link, offset)` | 링크 이름 → 인덱스(없으면 `ValueError`). `add_frame` 은 링크 프레임에서 `offset` 만큼 옮긴 프레임을 더한다. |
+| `link_placements(q)` / `joint_frames(q)` | 모든 링크 / 관절의 월드 4×4 배치. |
+| `jacobians(q, ids) -> (tf (k,4,4), J (k,6,n))` / `frames(q, ids) -> (pos (k,3), J (k,3,n))` | 프레임 야코비안, pinocchio `LOCAL_WORLD_ALIGNED` 규약(선속도 3행 + 각속도 3행). 열은 `joint_names` 순서이고 mimic 관절도 독립 열이다. |
 
 ## whatslab.safety — 운동학 안전 유틸 (dep-light)
 

@@ -157,11 +157,13 @@ pip install -e '.[all]'   # 개발용 editable
 |---|---|---|
 | `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
-| `hand` | `pin`, `dexhand-description` | DexPilot 엔진 |
-| `viz` | `viser`, `trimesh`, `pycollada`, `pin` | 로봇 손 시각화 |
+| `hand` | `dexhand-description` | DexPilot 엔진(URDF 자산) |
+| `viz` | `viser`, `trimesh`, `pycollada` | 로봇 손 시각화 |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. DexPilot 엔진은 dex-retargeting 최적화기를 numpy 로 옮긴
-자체 구현이라 torch·dex-retargeting 이 필요 없고 `pin>=2.7` 만 더 씁니다(Python 3.14 까지 휠이 있습니다).
+자체 구현이고 URDF 기구학도 numpy 자체 구현(`whatslab.kinematics`)이라 torch·dex-retargeting·pinocchio 가 필요 없습니다.
+numpy·scipy·pyyaml 만 쓰는 순수 파이썬이라 Python 3.10–3.14 와 Pyodide 에서 돕니다. `pin` 은 `dev` 의존성으로만 남아
+설치돼 있으면 테스트가 기구학을 pinocchio 와 대조합니다.
 SLSQP 는 기본 의존성인 scipy 의 것을 씁니다. numpy 상한은 두지 않습니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
 다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
@@ -260,7 +262,7 @@ pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
 ## 감사의 말
 
 whatslab 은 훌륭한 오픈소스 위에 만들었습니다:
-[Pinocchio](https://github.com/stack-of-tasks/pinocchio)(기구학),
+[Pinocchio](https://github.com/stack-of-tasks/pinocchio)(테스트의 기준 기구학),
 [dex-retargeting](https://github.com/dexsuite/dex-retargeting)(DexPilot 손 리타게팅, MIT — DexPilot 엔진의
 최적화기는 이것을 numpy 로 옮긴 것이다. [THIRD_PARTY_LICENSE](src/whatslab/retarget/dex/THIRD_PARTY_LICENSE) 참고),
 [GeoRT](https://zhaohengyin.github.io/geort)(기하 기반 손 리타게팅, 소프트 프롬프트 모델 학습의 바탕),
