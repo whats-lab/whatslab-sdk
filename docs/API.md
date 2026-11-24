@@ -142,7 +142,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 엔진이 이번 프레임을 못 풀면(`solve` 가 `None`) 직전 명령 유지(못 푼 이유는 엔진의 `last_failure` 를 옮긴 `last_failure`, 연속 실패의 첫 번에 경고 로그, 엔진 `reset()`). 예외는 잡지 않는다 — 설정 오류·배열 모양 오류는 그대로 올라온다, 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_failure: Optional[str]` 은 지금 프레임 기준(풀었거나 추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
 | `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints) -> Optional[np.ndarray]`, `last_failure: Optional[str]`, `reset()`. `solve` 가 `None` 이면 "이번 프레임을 풀 수 없다"는 뜻이고 사람이 읽을 이유가 `last_failure` 에 있다(풀면 `None` 으로 돌아간다). 프레임 단위 실패에 예외를 쓰지 않는다. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
-| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `optimizer`(`RetargetOptimizer`), `kinematics`(`whatslab.kinematics.Kinematics`, `link_offsets` 프레임 포함), `wrist_frame`·`tip_frames`(실제로 쓰는 손목·손끝 프레임 이름 — `link_offsets` 가 있으면 `<링크>_offset`), `reset()`. 손당 프레임 p50 약 1.1ms, p99 약 1.5ms(orca·DG-5F, 동봉 max_evals 10). |
+| `DexEngine(config, side=None, urdf_root=None, max_evals=None, posture_prior=True, **overrides)` | OpenXR → 로봇 손 DexPilot + 자세 사전항(아래 `posture_prior`, config 에 있으면 기본으로 켠다. `posture_prior=False` 면 DexPilot 만). `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `optimizer`(`RetargetOptimizer`), `kinematics`(`whatslab.kinematics.Kinematics`, `link_offsets` 프레임 포함), `wrist_frame`·`tip_frames`(실제로 쓰는 손목·손끝 프레임 이름 — `link_offsets` 가 있으면 `<링크>_offset`), `robot_palm`(q=0 로봇 손바닥 프레임 3×3), `posture`(`PostureGuide` 또는 `None`), `posture_target(xr) -> (q̄, w) | None`(이번 프레임의 자세 목표·가중치), `set_posture_target(center, weight=None)`(프레임마다 바깥에서 q̄·w 를 준다 — 학습 모델용. `weight` 는 스칼라나 `(n,)`, 없으면 config 의 w. `center=None` 이면 해제하고 config 규칙으로 돌아간다), `reset()`. 손당 프레임 p50 약 0.7ms, p99 약 2.1ms(DG-5F-S, 사전항 켬, 동봉 max_evals 10, 한 코어 연속 실행). |
 | `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 아래 표에 없는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
 | `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `RetargetOptimizer`(`scipy.optimize.minimize(method="SLSQP", jac=True)`, 관절 한계 ±1e-3 을 `bounds` 로. `objective(ref, center)` 는 `f(x) -> (loss, grad)`. `solve(ref, start) -> x | None` — 수렴(status 0)했거나 반복 상한에 걸렸어도(status 9) `x` 가 유한하면 쓸 수 있는 해로 돌려주고, 그 밖의 종료(직선 탐색 실패·특이 행렬 등)나 유한하지 않은 `x` 는 `None`. 마지막 결과는 `last_result`(`OptimizeResult`)), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
@@ -256,6 +256,69 @@ allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ab
 DexPilot 쌍(엄지–손가락, 손가락–손가락, 손목→손끝)에 이미 손목→손끝 벡터가 들어 있어 별도의 벡터·위치 목적함수는
 두지 않는다. `vector_weight`·`position_weight`·`target_origin_link_names`·`target_task_link_names`·
 `target_link_human_indices`·`huber_delta` 는 모르는 키로 로드 때 오류다.
+
+### 자세 사전항 `posture_prior` (정본 목적함수)
+
+목적함수는 DexPilot 에 사람 손 관절각으로 정한 자세 목표를 더한 것이다:
+
+    E(q) = E_DexPilot(q) + Σ_j w_j (q_j − q̄_j)²
+
+`q̄`·`w` 는 매 프레임 `solve()` 안에서 그 프레임의 OpenXR 뼈 방향으로 다시 계산한다(값과 해석적 기울기 모두 들어간다).
+
+1. 사람 각 `a`(rad): 굽힘 `thumb.mcp/ip`, `<손가락>.mcp/pip/dip`, 벌림 `<손가락>.spread`(손가락 = index/middle/ring/little).
+   부모·자식 뼈 회전으로 자식 뼈 방향 `d = R_pᵀ R_c (0,0,−1)` 를 구해 굽힘 = `atan2(−d_y, −d_z)`, 벌림 =
+   `atan2(d_x, hypot(d_y, d_z))`. 벌림은 해부학 기준(+ = 새끼손가락 쪽)이라 왼손은 부호를 뒤집어 오른손과 같은 뜻이다.
+2. `q̄ = G a + G⁺ max(a, 0)` — `joints` 의 `{로봇 관절: {사람 각: 배율}}`. 이름 끝 `+` 는 양수 부분만 쓴다.
+3. 엄지 뿌리 두 관절(`thumb_base`)은 표에서 고른다: 두 관절 한계를 `step_deg` 간격 격자로 돌며 로봇 엄지 뼈
+   (`bone` 두 링크) 방향과 `flex_joint` 굽힘 축을 로봇 손바닥 프레임으로 미리 계산하고, 매 프레임 사람 엄지
+   중수골 방향·굽힘 축(손바닥 프레임)과 `방향·방향 + axis_weight·축·축` 이 가장 큰 격자점을 쓴다. `flex_joint` 의
+   `joints` 배율 합이 음수면(그 관절의 + 회전이 펴기) 축을 뒤집어 굽힘 축으로 맞춘다. 왼손 config 는 왼손 손바닥
+   프레임으로 같은 계산을 한다.
+4. `open_hand`(선택): 손가락 굽힘 합이 `open_below_deg` 이하면 그 손가락 굽힘 관절을 0(펴진 자세)으로
+   `weight` 만큼 당기고, `free_above_deg` 이상이면 당기지 않는다(사이는 선형).
+5. 관절 한계로 자른다. `w` = `weight`(지정 관절), `joint_weights` 로 관절별 덮어쓰기, `open_hand` 당김을 더한다.
+   목표가 없는 관절은 w = 0.
+
+| 키 | 뜻 |
+|---|---|
+| `weight` | 기본 가중치(> 0). 생성기 기본 0.01 |
+| `joints` | `{로봇 관절: {사람 각[+]: 배율}}` — 구동 관절만(mimic 관절은 원 관절로) |
+| `thumb_base` | `{joints: [a, b], bone: [링크, 링크], flex_joint, step_deg: 2, axis_weight: 0.5}` |
+| `joint_weights` | `{관절: w}` — `joints`·`thumb_base` 관절만 |
+| `open_hand` | `{open_below_deg, free_above_deg, weight, fingers: [index, middle, ring, little]}` |
+
+스키마 오류(모르는 키·사람 각, 빈 항목, 0 이하 가중치 등)는 `DexHandConfig.from_dict`(로드) 때, URDF 에 없는
+관절·링크는 `DexEngine` 생성 때 `ValueError`. 프레임에서 목표를 못 정하면(손바닥 프레임을 못 정함 등)
+`solve()` 가 `None` 과 `last_failure` 를 돌려준다.
+
+robotPlatform 의 dex 플러그인에서 옮긴 것이다. 같은 설정·URDF 에서 `q̄`·`w` 는 옛 구현과 비트 단위로 같고
+(`tests/test_posture.py`, dg5f_s 픽스처), 지표도 노이즈 안에서 같다. 옮기면서 SLSQP `ftol` 을 1e-6 → 1e-7 로
+낮췄다 — 0.01 가중치 항은 1e-6 보다 작은 값 변화로 움직여 1e-6 에서는 펴진 손으로 돌아올 때 약 1° 가 남았다.
+
+**생성기** `tools/make_posture_prior.py <config…> [--write]` / `--all --write`(블록이 없는 동봉 config 전부):
+URDF 와 DexPilot config(손끝 링크, 손바닥 링크)로 블록을 만든다. 손끝마다 손목까지의 구동 사슬(여러 손가락이
+나누는 관절은 뺀다)에서 q=0 의 손끝 속도로 관절을 나눈다 — 손바닥 법선(volar) 쪽이면 굽힘, 척측·요측이면 벌림,
+거의 0 이면 꼬임(손가락이 곧을 때 손가락 축으로 도는 Allegro 형 벌림 관절은 굽힘 관절을 반쯤 굽힌 자세에서 다시
+본다). 벌림은 첫 굽힘 관절 앞의 마지막 벌림 관절 하나만 `spread`. 굽힘 관절은 개수대로 1 → `mcp`, 2 → `mcp`,
+`pip + 0.5 dip`, 3 → `mcp`, `pip`, `dip`. mimic 관절은 원 관절의 최소제곱 배율(`k/Σk²`)로 합친다. 부호는 + 회전이
+손끝을 손바닥 쪽(굽힘)·새끼 쪽(벌림)으로 보내면 +. 엄지는 첫 두 구동 관절이 `thumb_base`, 그 뒤 꼬임이 아닌
+굽힘 관절이 `thumb.mcp`·`thumb.ip`(엄지 끝이 손바닥 가운데로 다가가면 +). 기본 `weight` 0.01. robotPlatform 이 손으로
+맞춘 4손(DG-5F-S, HX5, ORCA, Allegro)의 블록을 다시 만들면 DG-5F-S 손바닥 관절(`joint_5_1`) 하나를 빼고 같다.
+
+동봉 config 는 DG-5F-S·ORCA·Allegro(V4) 오른손에 robotPlatform 블록을 그대로(Allegro 는 관절 이름만 바꿔), 같은 손의
+왼손에 생성 블록 + 같은 손 조정(엄지 가중치, DG-5F-S `joint_5_1`, ORCA `open_hand`)을, 나머지에 생성 블록을 넣었다.
+녹화 장갑 400프레임 + 합성 주먹·핀치·손가락별 굽힘 스윕에서 켰을 때 손끝 p95 가 2 배 넘게 나빠지거나
+드리프트·역행·떨림이 늘어난 손은 블록을 넣지 않았다(사전항 꺼짐):
+
+| 손 | 이유(꺼짐 → 켬) |
+|---|---|
+| `robotis`(HX5) | 손끝 p95 6.5 → 18.6 mm. 가중치를 낮추면 역행이 돌아온다(0.0025: 9.2 mm, 역행 127°) |
+| `allegro_v5_4f` | 역행 59 → 91° |
+| `hubo_plus_hand` | 엄지 뿌리 표가 프레임마다 튄다(떨림 p95 0.003 → 20°) |
+| `unitree_dex2_5` | 떨림 p95 0.004 → 0.2~1.0° |
+| `linkerhand_o7` | 펴진 손 드리프트 0.02 → 28° |
+| `linkerhand_l20lite` | 역행 43 → 54°(왼손) |
+| `igris_c` | 역행 0.9 → 2.5° |
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 

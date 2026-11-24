@@ -98,6 +98,8 @@ class Kinematics:
         self._origin = np.array(origins).reshape(-1, 4, 4)
         axis = np.array(axes).reshape(-1, 3)
         self._prismatic = np.array(prismatic, dtype=bool)
+        self.joint_axes = axis
+        self.joint_prismatic = self._prismatic
         self._axis_slide = axis * self._prismatic[:, None]
         self._axis_turn = axis * ~self._prismatic[:, None]
         self._k = _skew(self._axis_turn)

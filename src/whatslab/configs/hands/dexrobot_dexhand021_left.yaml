@@ -9,3 +9,30 @@ retargeting:
   wrist_link_name: left_hand_base
   finger_tip_link_names: [l_f_link1_tip, l_f_link2_tip, l_f_link3_tip, l_f_link4_tip, l_f_link5_tip]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    l_f_joint1_3: {thumb.mcp: 1.0}
+    l_f_joint1_4: {thumb.ip: 1.0}
+    l_f_joint2_1: {index.spread: -1.0}
+    l_f_joint2_2: {index.mcp: 1.0}
+    l_f_joint2_3: {index.pip: 1.0}
+    l_f_joint2_4: {index.dip: 1.0}
+    l_f_joint3_1: {middle.spread: -1.0}
+    l_f_joint3_2: {middle.mcp: 1.0}
+    l_f_joint3_3: {middle.pip: 1.0}
+    l_f_joint3_4: {middle.dip: 1.0}
+    l_f_joint4_1: {ring.spread: 1.0}
+    l_f_joint4_2: {ring.mcp: 1.0}
+    l_f_joint4_3: {ring.pip: 1.0}
+    l_f_joint4_4: {ring.dip: 1.0}
+    l_f_joint5_1: {little.spread: 1.0}
+    l_f_joint5_2: {little.mcp: 1.0}
+    l_f_joint5_3: {little.pip: 1.0}
+    l_f_joint5_4: {little.dip: 1.0}
+  thumb_base:
+    joints: [l_f_joint1_1, l_f_joint1_2]
+    bone: [l_f_link1_2, l_f_link1_3]
+    flex_joint: l_f_joint1_3
+    step_deg: 2.0
+    axis_weight: 0.5

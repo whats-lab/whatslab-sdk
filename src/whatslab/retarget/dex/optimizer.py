@@ -14,9 +14,11 @@ DEXPILOT_PAIR_WEIGHT = 200.0
 DEXPILOT_SECOND_PAIR_WEIGHT = 400.0
 DEXPILOT_SECOND_PAIR_DIST = 0.03
 LIMIT_EPSILON = 1e-3
-FTOL = 1e-6
+FTOL = 1e-7
 MAX_ITER = 100
 USABLE_STATUS = (0, 9)
+
+Prior = Optional[Tuple[np.ndarray, np.ndarray]]
 
 
 def huber_vector_loss(
@@ -156,7 +158,7 @@ class RetargetOptimizer:
         qpos[self.idx_target] = x
         return self.kin.forward_qpos(qpos)
 
-    def objective(self, ref: np.ndarray, center: np.ndarray):
+    def objective(self, ref: np.ndarray, center: np.ndarray, prior: Prior = None):
         target, weight = self.targets(ref)
         target = target.astype(float)
         center = np.asarray(center, dtype=np.float32)
@@ -170,13 +172,18 @@ class RetargetOptimizer:
             np.add.at(d_pos, self.origin_idx, -d_vec)
             grad = (np.einsum("lk,lkj->j", d_pos, jac) @ self.chain
                     + 2 * self.normal_delta * (x - center))
-            return loss, grad
+            if prior is None:
+                return loss, grad
+            d = x - prior[0]
+            return loss + float(np.sum(prior[1] * d * d)), grad + 2.0 * prior[1] * d
 
         return objective
 
-    def solve(self, ref: np.ndarray, start: np.ndarray) -> Optional[np.ndarray]:
+    def solve(
+        self, ref: np.ndarray, start: np.ndarray, prior: Prior = None
+    ) -> Optional[np.ndarray]:
         self.last_result = minimize(
-            self.objective(ref, start),
+            self.objective(ref, start, prior),
             np.asarray(start, dtype=float),
             method="SLSQP",
             jac=True,

@@ -15,3 +15,30 @@ retargeting:
   wrist_link_name: base_link00
   finger_tip_link_names: [Link_14R, Link_24R, Link_34R, Link_44R, Link_54R]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    Pitch_13R: {thumb.mcp: 1.0}
+    Pitch_14R: {thumb.ip: 1.0}
+    Roll_21R: {index.spread: 1.0}
+    Pitch_22R: {index.mcp: 1.0}
+    Pitch_23R: {index.pip: 1.0}
+    Pitch_24R: {index.dip: 1.0}
+    Roll_31R: {middle.spread: 1.0}
+    Pitch_32R: {middle.mcp: 1.0}
+    Pitch_33R: {middle.pip: 1.0}
+    Pitch_34R: {middle.dip: 1.0}
+    Roll_41R: {ring.spread: 1.0}
+    Pitch_42R: {ring.mcp: 1.0}
+    Pitch_43R: {ring.pip: 1.0}
+    Pitch_44R: {ring.dip: 1.0}
+    Roll_51R: {little.spread: 1.0}
+    Pitch_52R: {little.mcp: 1.0}
+    Pitch_53R: {little.pip: 1.0}
+    Pitch_54R: {little.dip: 1.0}
+  thumb_base:
+    joints: [Yaw_11R, Roll_12R]
+    bone: [Link_12R, Link_13R]
+    flex_joint: Pitch_13R
+    step_deg: 2.0
+    axis_weight: 0.5

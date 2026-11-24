@@ -30,6 +30,7 @@ CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right"
 RIGHT_MCP_X = {"index": -0.025, "middle": -0.005, "ring": 0.015, "pinky": 0.033}
 SEG = (0.045, 0.026, 0.021)
 FLEX = np.radians((80.0, 95.0, 60.0))
+LATERAL = np.array([1.0, 0.0, 0.0])
 
 
 def _finger(mcp, curl):
@@ -57,6 +58,15 @@ def synthetic_right_hand(curl: float) -> np.ndarray:
         for k, p in enumerate(_finger((x, 0.0, -0.09), curl)):
             xr[base + 1 + k, 4:7] = p
     xr[0, 4:7] = 0.5 * (xr[11, 4:7] + xr[12, 4:7])
+    for chain in ((2, 3, 4, 5), *((b, b + 1, b + 2, b + 3, b + 4) for b in (6, 11, 16, 21))):
+        for i, j in enumerate(chain):
+            a, b = (chain[i], chain[i + 1]) if i + 1 < len(chain) else (chain[i - 1], j)
+            z = xr[a, 4:7] - xr[b, 4:7]
+            z /= np.linalg.norm(z)
+            x = LATERAL - z * float(LATERAL @ z)
+            x /= np.linalg.norm(x)
+            rot = np.column_stack([x, np.cross(z, x), z])
+            xr[j, :4] = Rotation.from_matrix(rot).as_quat()
     return xr
 
 
@@ -296,7 +306,7 @@ def test_solver_failure_returns_none(monkeypatch):
     _require_urdf("orca_right")
     eng = DexEngine("orca_right")
     nan = (float("nan"), np.full(len(eng.joint_names), np.nan))
-    monkeypatch.setattr(eng.optimizer, "objective", lambda ref, center: lambda x: nan)
+    monkeypatch.setattr(eng.optimizer, "objective", lambda ref, center, prior=None: lambda x: nan)
     assert eng.solve(synthetic_right_hand(0.3)) is None
     assert eng.last_failure.startswith("SLSQP")
     monkeypatch.undo()
@@ -345,7 +355,7 @@ UPSTREAM_FIXTURE = os.path.join(os.path.dirname(__file__), "data", "dex_upstream
 def test_dexpilot_close_to_dex_retargeting_0_5_0(name):
     _require_urdf(name)
     data = np.load(UPSTREAM_FIXTURE)
-    eng = DexEngine(name)
+    eng = DexEngine(name, posture_prior=False)
     tip_ids = eng.kinematics.frame_ids(eng.config.retargeting["finger_tip_link_names"])
 
     def tips(q):

@@ -11,3 +11,30 @@ retargeting:
   wrist_link_name: R-Carpals_8d1f1041
   finger_tip_link_names: [right_sensor_thumb_distal, right_sensor_index_distal, right_sensor_middle_distal, right_sensor_ring_distal, right_sensor_pinky_distal]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    T-PP_68395e98_to_R-T-AP_a9723101: {thumb.mcp: 1.0}
+    T-DP_b7429e50_to_T-PP_68395e98: {thumb.ip: 1.0}
+    I-AP-R_d95d02d1_to_R-Carpals_8d1f1041: {index.spread: -1.0}
+    I-PP_bacbd481_to_I-AP-R_d95d02d1: {index.mcp: 1.0}
+    I-FingerTipAssembly_ec49c16c_to_I-PP_bacbd481: {index.pip: 1.0, index.dip: 0.5}
+    M-AP_e04a96f2_to_R-Carpals_8d1f1041: {middle.spread: -1.0}
+    M-PP_08efa608_to_M-AP_e04a96f2: {middle.mcp: 1.0}
+    M-FingerTipAssembly_34afb748_to_M-PP_08efa608: {middle.pip: 1.0, middle.dip: 0.5}
+    M-AP_6ec59111_to_R-Carpals_8d1f1041: {ring.spread: -1.0}
+    M-PP_8660a1eb_to_M-AP_6ec59111: {ring.mcp: 1.0}
+    M-FingerTipAssembly_424a8e75_to_M-PP_8660a1eb: {ring.pip: 1.0, ring.dip: 0.5}
+    P-AP_f5e42b61_to_R-Carpals_8d1f1041: {little.spread: -1.0}
+    P-PP_1d411b9b_to_P-AP_f5e42b61: {little.mcp: 1.0}
+    P-FingerTipAssembly_cd219176_to_P-PP_1d411b9b: {little.pip: 1.0, little.dip: 0.5}
+  thumb_base:
+    joints: [T-TP-R_1c2b802d_to_R-Carpals_8d1f1041, R-T-AP_a9723101_to_T-TP-R_1c2b802d]
+    bone: [R-T-AP_a9723101, T-PP_68395e98]
+    flex_joint: T-PP_68395e98_to_R-T-AP_a9723101
+    step_deg: 2.0
+    axis_weight: 0.5
+  open_hand:
+    open_below_deg: 10.0
+    free_above_deg: 30.0
+    weight: 1.0

@@ -9,3 +9,31 @@ retargeting:
   wrist_link_name: left_hand_base_link
   finger_tip_link_names: [left_thumb_tip_Link, left_index_tip_Link, left_middle_tip_Link, left_ring_tip_Link, left_little_tip_Link]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    left_thumb_MCP_joint: {thumb.mcp: 1.0}
+    left_thumb_PIP_joint: {thumb.ip: 0.5}
+    left_thumb_DIP_joint: {thumb.ip: 0.5}
+    left_index_MPR_joint: {index.spread: 1.0}
+    left_index_MCP_joint: {index.mcp: 1.0}
+    left_index_PIP_joint: {index.pip: 1.0}
+    left_index_DIP_joint: {index.dip: 1.0}
+    left_middle_MPR_joint: {middle.spread: 1.0}
+    left_middle_MCP_joint: {middle.mcp: 1.0}
+    left_middle_PIP_joint: {middle.pip: 1.0}
+    left_middle_DIP_joint: {middle.dip: 1.0}
+    left_ring_MPR_joint: {ring.spread: 1.0}
+    left_ring_MCP_joint: {ring.mcp: 1.0}
+    left_ring_PIP_joint: {ring.pip: 1.0}
+    left_ring_DIP_joint: {ring.dip: 1.0}
+    left_little_MPR_joint: {little.spread: 1.0}
+    left_little_MCP_joint: {little.mcp: 1.0}
+    left_little_PIP_joint: {little.pip: 1.0}
+    left_little_DIP_joint: {little.dip: 1.0}
+  thumb_base:
+    joints: [left_thumb_CMP_joint, left_thumb_CMR_joint]
+    bone: [left_thumb_CMR_Link, left_thumb_MCP_Link]
+    flex_joint: left_thumb_MCP_joint
+    step_deg: 2.0
+    axis_weight: 0.5

@@ -12,3 +12,31 @@ retargeting:
   wrist_link_name: ee_link
   finger_tip_link_names: [thtip, fftip, mftip, rftip, lftip]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    THJ3: {thumb.mcp: 1.0}
+    THJ2: {thumb.ip: 0.5}
+    THJ1: {thumb.ip: 0.5}
+    FFJ4: {index.spread: 1.0}
+    FFJ3: {index.mcp: 1.0}
+    FFJ2: {index.pip: 1.0}
+    FFJ1: {index.dip: 1.0}
+    MFJ4: {middle.spread: 1.0}
+    MFJ3: {middle.mcp: 1.0}
+    MFJ2: {middle.pip: 1.0}
+    MFJ1: {middle.dip: 1.0}
+    RFJ4: {ring.spread: -1.0}
+    RFJ3: {ring.mcp: 1.0}
+    RFJ2: {ring.pip: 1.0}
+    RFJ1: {ring.dip: 1.0}
+    LFJ4: {little.spread: -1.0}
+    LFJ3: {little.mcp: 1.0}
+    LFJ2: {little.pip: 1.0}
+    LFJ1: {little.dip: 1.0}
+  thumb_base:
+    joints: [THJ5, THJ4]
+    bone: [thproximal, thhub]
+    flex_joint: THJ3
+    step_deg: 2.0
+    axis_weight: 0.5

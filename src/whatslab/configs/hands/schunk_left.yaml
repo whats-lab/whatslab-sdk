@@ -10,3 +10,19 @@ retargeting:
   finger_tip_link_names: [thtip, fftip, mftip, rftip, lftip]
   low_pass_alpha: 0.5
   target_joint_names: [left_hand_Thumb_Opposition, left_hand_Thumb_Flexion, left_hand_Index_Finger_Proximal, left_hand_Index_Finger_Distal, left_hand_Middle_Finger_Proximal, left_hand_Middle_Finger_Distal, left_hand_Ring_Finger, left_hand_Pinky, left_hand_Finger_Spread]
+posture_prior:
+  weight: 0.01
+  joints:
+    left_hand_Finger_Spread: {index.spread: 0.333, ring.spread: -0.333, little.spread: -0.667}
+    left_hand_Index_Finger_Proximal: {index.mcp: 1.0}
+    left_hand_Index_Finger_Distal: {index.pip: 0.478, index.dip: 0.5}
+    left_hand_Middle_Finger_Proximal: {middle.mcp: 1.0}
+    left_hand_Middle_Finger_Distal: {middle.pip: 0.478, middle.dip: 0.5}
+    left_hand_Ring_Finger: {ring.mcp: 0.206, ring.pip: 0.279, ring.dip: 0.292}
+    left_hand_Pinky: {little.mcp: 0.205, little.pip: 0.279, little.dip: 0.292}
+  thumb_base:
+    joints: [left_hand_Thumb_Opposition, left_hand_Thumb_Flexion]
+    bone: [left_hand_a, left_hand_b]
+    flex_joint: left_hand_j3
+    step_deg: 2.0
+    axis_weight: 0.5

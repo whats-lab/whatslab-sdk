@@ -15,6 +15,7 @@ from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX
 from .optimizer import RetargetOptimizer, dexpilot_pairs
+from .posture import POSTURE_KEY, PostureGuide, PostureSpec, parse_posture
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
 HANDS_DIR = "hands"
@@ -64,6 +65,7 @@ class DexHandConfig:
     human_hand_length: float = _DEFAULT_HUMAN_HAND_LENGTH
     mano_to_root_rpy: Optional[Tuple[float, float, float]] = None
     max_evals: Optional[int] = None
+    posture: Optional[PostureSpec] = None
     path: Optional[str] = None
 
     @staticmethod
@@ -100,6 +102,7 @@ class DexHandConfig:
             human_hand_length=float(d.get("human_hand_length", _DEFAULT_HUMAN_HAND_LENGTH)),
             mano_to_root_rpy=None if frame is None else tuple(float(v) for v in frame["rpy"]),
             max_evals=None if d.get("max_evals") is None else int(d["max_evals"]),
+            posture=parse_posture(d.get(POSTURE_KEY)),
             path=path,
         )
 
@@ -117,6 +120,7 @@ class DexEngine:
         side: Optional[str] = None,
         urdf_root: Optional[str] = None,
         max_evals: Optional[int] = None,
+        posture_prior: bool = True,
         **overrides,
     ):
         cfg = config if isinstance(config, DexHandConfig) else DexHandConfig.load(config, side)
@@ -204,6 +208,11 @@ class DexEngine:
         self.max_evals = cfg.max_evals if max_evals is None else int(max_evals)
         if self.max_evals:
             self.optimizer.set_max_evals(self.max_evals)
+        self.posture = None
+        if cfg.posture is not None and posture_prior:
+            self.posture = PostureGuide(cfg.posture, kin, self.optimizer.full_qpos,
+                                        self.joint_names, self._limits, self._rot_robot, cfg.side)
+        self._posture_override = None
 
     @staticmethod
     def _frame_positions(kin: Kinematics, q):
@@ -229,6 +238,10 @@ class DexEngine:
         self._last = lim.mean(1).astype(np.float32)
 
     @property
+    def robot_palm(self) -> np.ndarray:
+        return self._rot_robot.copy()
+
+    @property
     def joint_limits(self) -> np.ndarray:
         return self._limits.copy()
 
@@ -248,14 +261,43 @@ class DexEngine:
     def _fail(self, reason: str) -> None:
         self.last_failure = reason
 
+    def set_posture_target(self, center, weight=None) -> None:
+        if center is None:
+            self._posture_override = None
+            return
+        center = np.asarray(center, dtype=float)
+        if center.shape != (len(self.joint_names),):
+            raise ValueError(f"자세 목표는 ({len(self.joint_names)},) 이어야 한다 — "
+                             f"받은 shape {center.shape}")
+        if weight is None:
+            if self.posture is None:
+                raise ValueError(f"{self.config.name}: {POSTURE_KEY} 가 없어 weight 가 필요하다")
+            weight = self.posture.weight
+        weight = np.broadcast_to(np.asarray(weight, dtype=float), center.shape).copy()
+        if not (np.all(np.isfinite(center)) and np.all(np.isfinite(weight))
+                and np.all(weight >= 0.0)):
+            raise ValueError("자세 목표·가중치는 유한하고 가중치는 0 이상이어야 한다")
+        self._posture_override = (center, weight)
+
+    def posture_target(self, xr_joints) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        if self._posture_override is not None:
+            return self._posture_override
+        if self.posture is None:
+            return None
+        xr = mirror_xr_joints(xr_joints) if self.mirror else np.asarray(xr_joints, dtype=float)
+        return self.posture.target(xr)
+
     def solve(self, xr_joints) -> Optional[np.ndarray]:
         kp = self.human_keypoints(xr_joints)
         if kp is None:
             return self._fail("손바닥 프레임: 손목·검지·중지·소지 MCP 로 방향을 정할 수 없다")
         if not np.all(np.isfinite(kp)):
             return self._fail("손 키포인트에 유한하지 않은 값이 있다")
+        prior = self.posture_target(xr_joints)
+        if prior is None and (self.posture is not None or self._posture_override is not None):
+            return self._fail(f"{POSTURE_KEY}: 사람 손 각도로 자세 목표를 정할 수 없다")
         start = np.clip(self._last, self._limits[:, 0], self._limits[:, 1])
-        x = self.optimizer.solve(self.reference(kp), start)
+        x = self.optimizer.solve(self.reference(kp), start, prior)
         if x is None:
             return self._fail(f"SLSQP 가 풀지 못했다: {self.optimizer.last_result.message}")
         self._last = x

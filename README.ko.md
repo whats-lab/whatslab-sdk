@@ -36,7 +36,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
   핸드트래킹(헤드셋 브라우저 WebXR) 모두 이 형식으로 들어옵니다.
 - 리타게팅 엔진 두 가지
   - DexPilot 벡터 리타게팅([dex-retargeting](https://github.com/dexsuite/dex-retargeting) 의 numpy 이식,
-    torch 없음) — 손당 프레임 1~2ms, URDF 가 있는 로봇 손이면 어느 것이든
+    torch 없음) + 사람 손 관절각으로 매 프레임 정하는 자세 사전항(`posture_prior`, 기본 켬) — 손당 프레임 1~2ms, URDF 가 있는 로봇 손이면 어느 것이든
   - **GeoRT 소프트 프롬프트** 신경망 — numpy 순전파 한 번(약 0.2ms), 학습 모델 하나를 여러 로봇 손이 공유
 - 출력은 `{side: {관절 이름: rad}}` 로 바로 발행할 수 있고, 선택으로 `SafetyFilter` 가 위치·속도를 제한합니다.
 - 순수 Python, ROS 의존 없음. 의존 방향이 한쪽으로 정해져 있습니다

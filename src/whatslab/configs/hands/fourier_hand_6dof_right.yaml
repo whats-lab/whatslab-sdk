@@ -9,3 +9,16 @@ retargeting:
   wrist_link_name: R_hand_base_link
   finger_tip_link_names: [R_thumb_tip_link, R_index_tip_link, R_middle_tip_link, R_ring_tip_link, R_pinky_tip_link]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    R_index_proximal_joint: {index.mcp: -0.513, index.pip: -0.5, index.dip: -0.25}
+    R_middle_proximal_joint: {middle.mcp: -0.513, middle.pip: -0.5, middle.dip: -0.25}
+    R_ring_proximal_joint: {ring.mcp: -0.513, ring.pip: -0.5, ring.dip: -0.25}
+    R_pinky_proximal_joint: {little.mcp: -0.513, little.pip: -0.5, little.dip: -0.25}
+  thumb_base:
+    joints: [R_thumb_proximal_yaw_joint, R_thumb_proximal_pitch_joint]
+    bone: [R_thumb_proximal_pitch_link, R_thumb_distal_link]
+    flex_joint: R_thumb_distal_joint
+    step_deg: 2.0
+    axis_weight: 0.5

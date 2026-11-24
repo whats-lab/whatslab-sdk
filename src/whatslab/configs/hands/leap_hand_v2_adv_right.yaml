@@ -11,3 +11,30 @@ retargeting:
   wrist_link_name: no_finger_frame_mirror
   finger_tip_link_names: [realtip_5, realtip, realtip_2, realtip_3, realtip_4]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    thumb_mcps: {thumb.mcp: 1.0}
+    thumb_ip: {thumb.ip: -1.0}
+    index_mcps: {index.spread: 1.0}
+    index_mcpf: {index.mcp: 1.0}
+    index_pip: {index.pip: 1.0}
+    index_dip: {index.dip: 1.0}
+    middle_mcps: {middle.spread: 1.0}
+    middle_mcpf: {middle.mcp: 1.0}
+    middle_pip: {middle.pip: 1.0}
+    middle_dip: {middle.dip: 1.0}
+    ring_mcps: {ring.spread: 1.0}
+    ring_mcpf: {ring.mcp: 1.0}
+    ring_pip: {ring.pip: 1.0}
+    ring_dip: {ring.dip: 1.0}
+    pinky_mcps: {little.spread: 1.0}
+    pinky_mcpf: {little.mcp: 1.0}
+    pinky_pip: {little.pip: 1.0}
+    pinky_dip: {little.dip: 1.0}
+  thumb_base:
+    joints: [palm_thumb, thumb_mcpf]
+    bone: [axle_4_gear_together_mir_3, thumb_with_motor]
+    flex_joint: thumb_mcps
+    step_deg: 2.0
+    axis_weight: 0.5

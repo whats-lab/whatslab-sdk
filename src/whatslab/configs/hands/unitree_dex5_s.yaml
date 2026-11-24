@@ -15,3 +15,31 @@ retargeting:
   wrist_link_name: right_palm_link
   finger_tip_link_names: [right_thumb_yaw3_link, right_index-finger_roll3_link, right_middle-finger_roll3_link, right_ring-finger_roll3_link, right_little-finger_roll3_link]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    right_thumb_yaw1_joint: {thumb.mcp: -1.0}
+    right_thumb_yaw2_joint: {thumb.ip: -0.5}
+    right_thumb_yaw3_joint: {thumb.ip: -0.5}
+    right_index-finger_yaw_joint: {index.spread: -1.0}
+    right_index-finger_roll1_joint: {index.mcp: 1.0}
+    right_index-finger_roll2_joint: {index.pip: -1.0}
+    right_index-finger_roll3_joint: {index.dip: -1.0}
+    right_middle-finger_yaw_joint: {middle.spread: -1.0}
+    right_middle-finger_roll1_joint: {middle.mcp: 1.0}
+    right_middle-finger_roll2_joint: {middle.pip: -1.0}
+    right_middle-finger_roll3_joint: {middle.dip: -1.0}
+    right_ring-finger_yaw_joint: {ring.spread: -1.0}
+    right_ring-finger_roll1_joint: {ring.mcp: 1.0}
+    right_ring-finger_roll2_joint: {ring.pip: -1.0}
+    right_ring-finger_roll3_joint: {ring.dip: -1.0}
+    right_little-finger_pitch_joint: {little.spread: 1.0}
+    right_little-finger_roll1_joint: {little.mcp: -1.0}
+    right_little-finger_roll2_joint: {little.pip: -1.0}
+    right_little-finger_roll3_joint: {little.dip: -1.0}
+  thumb_base:
+    joints: [right_thumb_pitch_joint, right_thumb_roll_joint]
+    bone: [right_thumb_roll_link, right_thumb_yaw1_link]
+    flex_joint: right_thumb_yaw1_joint
+    step_deg: 2.0
+    axis_weight: 0.5
