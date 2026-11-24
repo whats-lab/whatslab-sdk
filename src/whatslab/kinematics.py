@@ -167,6 +167,19 @@ class Kinematics:
             raise ValueError(f"URDF 에 없는 링크: {missing}")
         return [self._link_index[n] for n in names]
 
+    def add_frame(self, name: str, link: str, offset: Sequence[float]) -> int:
+        if name in self._link_index:
+            raise ValueError(f"URDF 에 이미 있는 프레임 이름: {name}")
+        parent = self.frame_ids([link])[0]
+        tf = self._link_offset[parent].copy()
+        tf[:3, 3] += tf[:3, :3] @ np.asarray(offset, dtype=float)
+        self._link_index[name] = len(self.link_names)
+        self.link_names.append(name)
+        self._link_parent = np.append(self._link_parent, self._link_parent[parent])
+        self._link_offset = np.concatenate([self._link_offset, tf[None]])
+        self._mask = np.concatenate([self._mask, self._mask[:, :, parent:parent + 1]], axis=2)
+        return self._link_index[name]
+
     def forward_qpos(self, qpos: np.ndarray) -> np.ndarray:
         qpos[self.idx_mimic] = qpos[self.idx_source] * self.mimic_multipliers + self.mimic_offsets
         return qpos

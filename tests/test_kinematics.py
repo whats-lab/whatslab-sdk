@@ -102,3 +102,25 @@ def test_continuous_matches_pinocchio():
 def test_unknown_link_rejected():
     with pytest.raises(ValueError, match="없는 링크"):
         Kinematics.from_string(URDF).frame_ids(["nope"])
+
+
+def test_added_frame_matches_pinocchio():
+    model = pin.buildModelFromXML(URDF)
+    kin = Kinematics.from_string(URDF)
+    parent = model.getFrameId("d", pin.BODY)
+    frame = model.frames[parent]
+    offset = np.array([0.01, -0.02, 0.03])
+    model.addFrame(pin.Frame("tip", frame.parentJoint, parent,
+                             frame.placement * pin.SE3(np.eye(3), offset), pin.BODY))
+    data = model.createData()
+    fid = kin.add_frame("tip", "d", offset)
+    q = np.array([0.05, 0.7, 2.5, -0.4])
+    pin.computeJointJacobians(model, data, np.array([0.05, 0.7, np.cos(2.5), np.sin(2.5), -0.4]))
+    pin.updateFramePlacements(model, data)
+    tf, jac = kin.jacobians(q, [fid])
+    want = model.getFrameId("tip", pin.BODY)
+    np.testing.assert_allclose(tf[0], data.oMf[want].homogeneous, atol=TOL)
+    np.testing.assert_allclose(
+        jac[0], pin.getFrameJacobian(model, data, want, pin.LOCAL_WORLD_ALIGNED), atol=TOL)
+    with pytest.raises(ValueError, match="이미 있는"):
+        kin.add_frame("tip", "d", offset)
