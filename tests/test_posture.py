@@ -163,8 +163,7 @@ def test_positive_suffix_uses_positive_part():
     assert len(FEATURES) == 18
 
 
-PRIOR_OFF_HANDS = ("allegro_v5_4f", "igris_c", "linkerhand_l20lite", "linkerhand_o7",
-                   "unitree_dex2_5")
+PRIOR_OFF_HANDS = ("allegro_v5_4f", "linkerhand_l20lite", "linkerhand_o7", "unitree_dex2_5")
 PRIOR_OFF = {f"{n}_{s}" for n in PRIOR_OFF_HANDS for s in ("left", "right")}
 
 

@@ -41,7 +41,7 @@ Spine 3.0.0 을 켜고 글러브를 연결한 뒤:
 ```bash
 $PY examples/airglove_hand.py --config dex:orca --viz
 $PY examples/airglove_hand.py --config geort:orca_right --viz \
-    --viz-urdf "$($PY -c 'from whatslab.paths import models_root; print(models_root())')/orca_hand/urdf/right.urdf"
+    --viz-urdf "$($PY -c 'from whatslab.paths import models_root; print(models_root())')/orca_hand_v2/orca_hand_v2_right.urdf"
 ```
 
 PC 브라우저로 `http://localhost:8080` 을 열면 로봇 손이 보인다. 터미널 로그로 상태를 본다.

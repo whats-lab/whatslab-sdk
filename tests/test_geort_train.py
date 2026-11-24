@@ -20,7 +20,7 @@ from whatslab.retarget.geort.train.hand import (  # noqa: E402
     urdf_path,
 )
 
-HANDS = ("igris_c_right", "leap_right")
+HANDS = ("inspire_right", "leap_right")
 SMALL = ["--steps", "3", "--batch", "32", "--width", "32", "--latent", "16", "--prompt-dim", "8",
          "--collision-batch", "8", "--device", "cpu"]
 

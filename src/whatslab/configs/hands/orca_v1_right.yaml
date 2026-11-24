@@ -1,0 +1,36 @@
+name: orca_v1_right
+side: right
+urdf: orca_hand_v1/orca_hand_v1_right.urdf
+palm_links: {index: right_index_pp, middle: right_middle_pp, pinky: right_pinky_pp}
+fixed_joints:
+  right_wrist: 0.0
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_wrist_jointbody
+  finger_tip_link_names: [right_thumb_fingertip, right_index_fingertip, right_middle_fingertip, right_ring_fingertip, right_pinky_fingertip]
+  low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    right_thumb_pip: {thumb.mcp: 1.0}
+    right_thumb_dip: {thumb.ip: 1.0}
+    right_index_abd: {index.spread: 1.0}
+    right_index_mcp: {index.mcp: 1.0}
+    right_index_pip: {index.pip: 1.0, index.dip: 0.5}
+    right_middle_abd: {middle.spread: 1.0}
+    right_middle_mcp: {middle.mcp: 1.0}
+    right_middle_pip: {middle.pip: 1.0, middle.dip: 0.5}
+    right_ring_abd: {ring.spread: 1.0}
+    right_ring_mcp: {ring.mcp: 1.0}
+    right_ring_pip: {ring.pip: 1.0, ring.dip: 0.5}
+    right_pinky_abd: {little.spread: 1.0}
+    right_pinky_mcp: {little.mcp: 1.0}
+    right_pinky_pip: {little.pip: 1.0, little.dip: 0.5}
+  thumb_base:
+    joints: [right_thumb_mcp, right_thumb_abd]
+    bone: [right_thumb_abd_jointbody, right_thumb_pip_jointbody]
+    flex_joint: right_thumb_pip
+    step_deg: 2.0
+    axis_weight: 0.5

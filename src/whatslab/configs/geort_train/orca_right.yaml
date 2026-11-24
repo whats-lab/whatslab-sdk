@@ -1,5 +1,5 @@
 name: orca_right
-urdf: orca_hand/urdf/right.urdf
+urdf: orca_hand_v2/orca_hand_v2_right.urdf
 wrist: {link: R-Carpals_8d1f1041}
 palm: {index: I-PP_bacbd481, middle: M-PP_08efa608, ring: M-PP_8660a1eb}
 fingers:

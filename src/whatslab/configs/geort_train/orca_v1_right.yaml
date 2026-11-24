@@ -1,0 +1,40 @@
+name: orca_v1_right
+urdf: orca_hand_v1/orca_hand_v1_right.urdf
+wrist: {link: right_wrist_jointbody}
+palm: {index: right_index_pp, middle: right_middle_pp, ring: right_ring_pp}
+fingers:
+- name: thumb
+  link: right_thumb_fingertip
+  joints: [right_thumb_mcp, right_thumb_abd, right_thumb_pip, right_thumb_dip]
+- name: index
+  link: right_index_fingertip
+  joints: [right_index_abd, right_index_mcp, right_index_pip]
+- name: middle
+  link: right_middle_fingertip
+  joints: [right_middle_abd, right_middle_mcp, right_middle_pip]
+- name: ring
+  link: right_ring_fingertip
+  joints: [right_ring_abd, right_ring_mcp, right_ring_pip]
+- name: little
+  link: right_pinky_fingertip
+  joints: [right_pinky_abd, right_pinky_mcp, right_pinky_pip]
+posture:
+  right_thumb_pip: {thumb.mcp: 1.0}
+  right_thumb_dip: {thumb.ip: 1.0}
+  right_index_mcp: {index.mcp: 1.0}
+  right_index_pip: {index.pip: 1.0, index.dip: 0.5}
+  right_middle_mcp: {middle.mcp: 1.0}
+  right_middle_pip: {middle.pip: 1.0, middle.dip: 0.5}
+  right_ring_mcp: {ring.mcp: 1.0}
+  right_ring_pip: {ring.pip: 1.0, ring.dip: 0.5}
+  right_pinky_mcp: {little.mcp: 1.0}
+  right_pinky_pip: {little.pip: 1.0, little.dip: 0.5}
+collision:
+  margin_mm: 4.0
+  pairs:
+  - - [right_thumb_ip, right_thumb_dp]
+    - [right_palm]
+  - - [right_thumb_ip]
+    - [right_index_pp, right_index_ip, right_middle_pp]
+  - - [right_thumb_dp]
+    - [right_index_pp, right_middle_pp]

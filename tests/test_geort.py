@@ -176,7 +176,7 @@ def test_bundled_config_resolves_from_configs_root(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     "config,urdf",
     [
-        ("geort/orca_right.yaml", "orca_hand/urdf/right.urdf"),
+        ("geort/orca_right.yaml", "orca_hand_v2/orca_hand_v2_right.urdf"),
         ("geort/hx5_right.yaml", "robotis_hx5_d20/urdf/hx5_d20_right.urdf"),
     ],
 )

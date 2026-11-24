@@ -1,7 +1,13 @@
 name: orca_right
 side: right
-urdf: orca_hand/urdf/right.urdf
+urdf: orca_hand_v2/orca_hand_v2_right.urdf
 palm_links: {index: I-PP_bacbd481, middle: M-PP_08efa608, pinky: P-PP_1d411b9b}
+link_offsets:
+  T-DP_b7429e50: [0.004104, -0.00019, 0.030238]
+  I-FingerTipAssembly_ec49c16c: [-0.004946, 0.000001, 0.045049]
+  M-FingerTipAssembly_34afb748: [-0.004946, 0.000001, 0.045049]
+  M-FingerTipAssembly_424a8e75: [-0.004946, 0.000001, 0.045049]
+  P-FingerTipAssembly_cd219176: [-0.005452, 0.000005, 0.038056]
 fixed_joints:
   R-Carpals_8d1f1041_to_TopTower-Model_4a80d30e: 0.0
 human_hand_length: 0.19
@@ -9,7 +15,7 @@ max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: R-Carpals_8d1f1041
-  finger_tip_link_names: [right_sensor_thumb_distal, right_sensor_index_distal, right_sensor_middle_distal, right_sensor_ring_distal, right_sensor_pinky_distal]
+  finger_tip_link_names: [T-DP_b7429e50, I-FingerTipAssembly_ec49c16c, M-FingerTipAssembly_34afb748, M-FingerTipAssembly_424a8e75, P-FingerTipAssembly_cd219176]
   low_pass_alpha: 0.5
 posture_prior:
   weight: 0.01

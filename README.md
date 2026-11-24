@@ -74,13 +74,14 @@ that repository. Every hand is previewed with DexPilot retargeting in the browse
 
 | Hand | Engine name | Config | Notes |
 |---|---|---|---|
-| ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 6 actuated; 5 mimic |
+| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 5 fingers, 11 actuated; tip offsets on distal links |
 
 **Foreign hands**
 
 | Hand | Engine name | Config | Notes |
 |---|---|---|---|
-| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` | 5 fingers, 16 actuated; wrist joint held at 0 |
+| ORCA Hand v2 | `dex:orca` | `orca_{left,right}.yaml` | 5 fingers, 16 actuated; wrist joint held at 0; tip offsets on distal links |
+| ORCA Hand v1 | `dex:orca_v1` | `orca_v1_{left,right}.yaml` | 5 fingers, 16 actuated; wrist joint held at 0 |
 | LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` | 4 fingers, 16 actuated; human little finger not used |
 | LEAP Hand V2 Advanced | `dex:leap_hand_v2_adv` | `leap_hand_v2_adv_{left,right}.yaml` | 5 fingers, 21 actuated; wrist offset |
 | PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` | 5 fingers, 6 actuated; 4 mimic |
@@ -127,14 +128,14 @@ The keys of both config formats are described in [API.md](docs/API.md).
 
 | Hand | Engine name | URDF in `dexhand-description` |
 |---|---|---|
-| ORCA Hand (right) | `geort:orca_right` | `orca_hand/urdf/right.urdf` |
+| ORCA Hand v2 (right) | `geort:orca_right` | `orca_hand_v2/orca_hand_v2_right.urdf` |
 | ROBOTIS HX5-D20 (right) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are not in
 dexhand-description yet.
 
 Training: `whatslab-geort-train` (`pip install '.[train]'`) builds the training data from
-`configs/geort_train/<hand>.yaml` (39 right hands with 5 or 4 fingers) and trains and exports a model
+`configs/geort_train/<hand>.yaml` (40 right hands with 5 or 4 fingers) and trains and exports a model
 on any GPU host; see [API.md](docs/API.md). The training code and the bundled model are based on
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT) (CC BY-NC 4.0) and are for
 **non-commercial use** only. Human hand-motion data is not included.
@@ -242,7 +243,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 77 files), geort/ (2 files), geort_train/ (39 files)
+└── configs/          hands/ (DexPilot, 79 files), geort/ (2 files), geort_train/ (40 files)
 ```
 
 ## Examples & tools

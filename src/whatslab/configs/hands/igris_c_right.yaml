@@ -1,11 +1,35 @@
 name: igris_c_right
 side: right
-urdf: igris_c_hand/igris_c_hand_right_coupled.urdf
+urdf: igris_c_hand/igris_c_hand_right.urdf
 palm_links: {index: r_index_middle, middle: r_middle_middle, pinky: r_little_middle}
+link_offsets:
+  r_thumb_distal: [0, 0.0043, 0.0391]
+  r_index_distal: [0, 0.0007, 0.0391]
+  r_middle_distal: [0, 0.0007, 0.0391]
+  r_ring_distal: [0, 0.0007, 0.0391]
+  r_little_distal: [0, 0.0007, 0.0391]
 human_hand_length: 0.19
 max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: r_palm
-  finger_tip_link_names: [r_thumb_tip, r_index_tip, r_middle_tip, r_ring_tip, r_little_tip]
+  finger_tip_link_names: [r_thumb_distal, r_index_distal, r_middle_distal, r_ring_distal, r_little_distal]
   low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.01
+  joints:
+    r_2_joint_thumb_distal: {thumb.mcp: 1.0, thumb.ip: 1.0}
+    r_3_joint_index_middle: {index.mcp: 1.0}
+    r_4_joint_index_distal: {index.pip: 1.0, index.dip: 0.5}
+    r_5_joint_middle_middle: {middle.mcp: 1.0}
+    r_6_joint_middle_distal: {middle.pip: 1.0, middle.dip: 0.5}
+    r_7_joint_ring_middle: {ring.mcp: 1.0}
+    r_8_joint_ring_distal: {ring.pip: 1.0, ring.dip: 0.5}
+    r_9_joint_little_middle: {little.mcp: 1.0}
+    r_10_joint_little_distal: {little.pip: 1.0, little.dip: 0.5}
+  thumb_base:
+    joints: [r_0_joint_thumb_proximal, r_1_joint_thumb_middle]
+    bone: [r_thumb_middle, r_thumb_distal]
+    flex_joint: r_2_joint_thumb_distal
+    step_deg: 2.0
+    axis_weight: 0.5

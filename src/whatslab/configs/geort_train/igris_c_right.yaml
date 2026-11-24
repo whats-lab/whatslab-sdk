@@ -1,23 +1,28 @@
 name: igris_c_right
-urdf: igris_c_hand/igris_c_hand_right_coupled.urdf
+urdf: igris_c_hand/igris_c_hand_right.urdf
 wrist: {link: r_palm}
 palm: {index: r_index_middle, middle: r_middle_middle, ring: r_ring_middle}
 fingers:
 - name: thumb
-  link: r_thumb_tip
-  joints: [r_0_joint_thumb_proximal, r_1_joint_thumb_middle]
+  link: r_thumb_distal
+  offset: [0.0, 0.0043, 0.0391]
+  joints: [r_0_joint_thumb_proximal, r_1_joint_thumb_middle, r_2_joint_thumb_distal]
 - name: index
-  link: r_index_tip
-  joints: [r_3_joint_index_middle]
+  link: r_index_distal
+  offset: [0.0, 0.0007, 0.0391]
+  joints: [r_3_joint_index_middle, r_4_joint_index_distal]
 - name: middle
-  link: r_middle_tip
-  joints: [r_5_joint_middle_middle]
+  link: r_middle_distal
+  offset: [0.0, 0.0007, 0.0391]
+  joints: [r_5_joint_middle_middle, r_6_joint_middle_distal]
 - name: ring
-  link: r_ring_tip
-  joints: [r_7_joint_ring_middle]
+  link: r_ring_distal
+  offset: [0.0, 0.0007, 0.0391]
+  joints: [r_7_joint_ring_middle, r_8_joint_ring_distal]
 - name: little
-  link: r_little_tip
-  joints: [r_9_joint_little_middle]
+  link: r_little_distal
+  offset: [0.0, 0.0007, 0.0391]
+  joints: [r_9_joint_little_middle, r_10_joint_little_distal]
 limits_deg:
   r_1_joint_thumb_middle: [0.0, 70.0]
   r_3_joint_index_middle: [0.0, 90.0]
@@ -25,11 +30,16 @@ limits_deg:
   r_7_joint_ring_middle: [0.0, 90.0]
   r_9_joint_little_middle: [0.0, 90.0]
 posture:
-  r_1_joint_thumb_middle: {thumb.mcp: 0.5, thumb.ip: 0.5}
-  r_3_joint_index_middle: {index.mcp: 0.5, index.pip: 0.5}
-  r_5_joint_middle_middle: {middle.mcp: 0.5, middle.pip: 0.5}
-  r_7_joint_ring_middle: {ring.mcp: 0.5, ring.pip: 0.5}
-  r_9_joint_little_middle: {little.mcp: 0.5, little.pip: 0.5}
+  r_1_joint_thumb_middle: {thumb.mcp: 1.0}
+  r_2_joint_thumb_distal: {thumb.ip: 1.0}
+  r_3_joint_index_middle: {index.mcp: 1.0}
+  r_4_joint_index_distal: {index.pip: 1.0, index.dip: 0.5}
+  r_5_joint_middle_middle: {middle.mcp: 1.0}
+  r_6_joint_middle_distal: {middle.pip: 1.0, middle.dip: 0.5}
+  r_7_joint_ring_middle: {ring.mcp: 1.0}
+  r_8_joint_ring_distal: {ring.pip: 1.0, ring.dip: 0.5}
+  r_9_joint_little_middle: {little.mcp: 1.0}
+  r_10_joint_little_distal: {little.pip: 1.0, little.dip: 0.5}
 collision:
   margin_mm: 4.0
   pairs:

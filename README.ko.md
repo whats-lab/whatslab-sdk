@@ -68,13 +68,14 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 | 손 | 엔진 이름 | 설정 | 비고 |
 |---|---|---|---|
-| ROBROS IGRIS-C hand (coupled) | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 5 |
+| ROBROS IGRIS-C hand | `dex:igris_c` | `igris_c_{left,right}.yaml` | 손가락 5개, 구동 11축; 말단 링크 + 손끝 오프셋 |
 
 **해외 손**
 
 | 손 | 엔진 이름 | 설정 | 비고 |
 |---|---|---|---|
-| ORCA Hand | `dex:orca` | `orca_{left,right}.yaml` | 손가락 5개, 구동 16축; 손목 관절 0 고정 |
+| ORCA Hand v2 | `dex:orca` | `orca_{left,right}.yaml` | 손가락 5개, 구동 16축; 손목 관절 0 고정; 말단 링크 + 손끝 오프셋 |
+| ORCA Hand v1 | `dex:orca_v1` | `orca_v1_{left,right}.yaml` | 손가락 5개, 구동 16축; 손목 관절 0 고정 |
 | LEAP Hand | `dex:leap` | `leap_{left,right}.yaml` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | LEAP Hand V2 Advanced | `dex:leap_hand_v2_adv` | `leap_hand_v2_adv_{left,right}.yaml` | 손가락 5개, 구동 21축; 손목 오프셋 |
 | PSYONIC Ability Hand | `dex:ability` | `ability_{left,right}.yaml` | 손가락 5개, 구동 6축; mimic 4 |
@@ -120,13 +121,13 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 | 손 | 엔진 이름 | `dexhand-description` URDF |
 |---|---|---|
-| ORCA Hand (오른손) | `geort:orca_right` | `orca_hand/urdf/right.urdf` |
+| ORCA Hand v2 (오른손) | `geort:orca_right` | `orca_hand_v2/orca_hand_v2_right.urdf` |
 | ROBOTIS HX5-D20 (오른손) | `geort:hx5_right` | `robotis_hx5_d20/urdf/hx5_d20_right.urdf` |
 
 모델에는 Allegro·DG-5F-S 프롬프트도 들어 있지만, 아직 dexhand-description 에 없는 URDF 를 기준으로
 학습했습니다.
 
-학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 39개)로
+학습: `whatslab-geort-train`(`pip install '.[train]'`)이 `configs/geort_train/<손>.yaml`(5·4손가락 오른손 40개)로
 학습 데이터를 만들고 아무 GPU 호스트에서 학습·내보내기를 합니다([API.md](docs/API.md)). 학습 코드와 동봉 모델은
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT)(CC BY-NC 4.0)를 바탕으로 하며 **비상업 용도로만**
 쓸 수 있습니다. 사람 손 동작 데이터는 포함하지 않습니다.
@@ -230,7 +231,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 77개), geort/ (2개), geort_train/ (39개)
+└── configs/          hands/ (DexPilot, 79개), geort/ (2개), geort_train/ (40개)
 ```
 
 ## 예제와 도구

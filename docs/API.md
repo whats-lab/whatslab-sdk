@@ -174,13 +174,14 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 | `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
 |---|---|---|---|
-| `igris_c` | `igris_c_hand/igris_c_hand_right_coupled.urdf` | `r_palm` | 손가락 5개, 구동 6축; mimic 5 |
+| `igris_c` | `igris_c_hand/igris_c_hand_right.urdf` | `r_palm` | 손가락 5개, 구동 11축; 말단 링크 + 손끝 오프셋 |
 
 **해외 손**
 
 | `dex:` 이름 | URDF (models root 기준, 오른손 기준) | 손목 링크 | 비고 |
 |---|---|---|---|
-| `orca` | `orca_hand/urdf/right.urdf` | `R-Carpals_8d1f1041` | 손가락 5개, 구동 16축; 손목 관절 0 고정 |
+| `orca` | `orca_hand_v2/orca_hand_v2_right.urdf` | `R-Carpals_8d1f1041` | ORCA v2. 손가락 5개, 구동 16축; 손목 관절 0 고정; 말단 링크 + 손끝 오프셋 |
+| `orca_v1` | `orca_hand_v1/orca_hand_v1_right.urdf` | `right_wrist_jointbody` | ORCA v1. 손가락 5개, 구동 16축; 손목 관절 0 고정 |
 | `leap` | `leap_hand/leap_hand_right.urdf` | `base` | 손가락 4개, 구동 16축; 사람 새끼손가락 미사용 |
 | `leap_hand_v2_adv` | `leap_hand_v2_adv/leap_hand_v2_adv_right.urdf` | `no_finger_frame_mirror` | 손가락 5개, 구동 21축; 손목 오프셋 |
 | `ability` | `ability_hand/ability_hand_right.urdf` | `base_link` | 손가락 5개, 구동 6축; mimic 4 |
@@ -314,7 +315,6 @@ HX5(`robotis_{left,right}`)는 config 전체가 robotPlatform HX5 설정과 같�
 | `unitree_dex2_5` | 떨림 p95 0.004 → 0.2~1.0° |
 | `linkerhand_o7` | 펴진 손 드리프트 0.02 → 28° |
 | `linkerhand_l20lite` | 역행 43 → 54°(왼손) |
-| `igris_c` | 역행 0.9 → 2.5° |
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 
@@ -342,7 +342,7 @@ soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 �
 | `preprocess` 모듈 | OpenXR 26 → MediaPipe 21 → `openxr-wrist-kabsch-v2` 입력 좌표계(`InputFrame`, `canonical_points`, `to_geort` …). |
 | `GeortConfigError` | `code`·`cause`·`remedy` 를 가진 `ValueError`(`GeortError`). 설정 내용 검사(필수 키·값 범위·모델 안 손 이름)에만 쓴다 — 프레임 입력 오류는 예외가 아니라 `last_failure`. |
 
-동봉 설정(`configs/geort/`): `orca_right`(ORCA 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
+동봉 설정(`configs/geort/`): `orca_right`(ORCA v2 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
 dexhand-description URDF 와 같다(테스트로 확인). 모델에는 Allegro·DG-5F-S 프롬프트도 있지만 관절 이름이 아직
 dexhand-description 에 없는 URDF 기준이다.
 
