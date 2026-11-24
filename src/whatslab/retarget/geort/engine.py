@@ -12,7 +12,7 @@ import yaml
 from whatslab.core.constants import OPENXR26_TO_HAND21, SIDES, XR_JOINT_COUNT, XR_JOINT_FIELDS
 from whatslab.paths import configs_root
 
-from .errors import GeortConfigError, GeortInputError
+from .errors import GeortConfigError, describe
 from .preprocess import POSITION
 from .prompt import Embodiment, PromptModel, load_prompt_model
 
@@ -45,6 +45,7 @@ class GeortEngine:
         self._model = model
         self._alpha = low_pass_alpha
         self._last: Optional[np.ndarray] = None
+        self.last_failure: Optional[str] = None
         self._mirror = side != model.side
         self._limits = np.column_stack([model.lower, model.upper])
         self._limits.setflags(write=False)
@@ -74,8 +75,9 @@ class GeortEngine:
 
     def reset(self) -> None:
         self._last = None
+        self.last_failure = None
 
-    def keypoints(self, keypoints: np.ndarray) -> np.ndarray:
+    def keypoints(self, keypoints: np.ndarray) -> Optional[np.ndarray]:
         kp = np.asarray(keypoints, dtype=np.float64)
         if kp.shape != KEYPOINT_SHAPE:
             raise ValueError(
@@ -85,24 +87,28 @@ class GeortEngine:
         if not np.all(
             np.isfinite(kp[list(OPENXR26_TO_HAND21), POSITION])
         ):
-            raise GeortInputError(
+            self.last_failure = describe(
                 "GEORT_INPUT_NON_FINITE",
                 "손 추적 위치에 유한하지 않은 값이 있어 리타게팅하지 않았습니다",
                 _REMEDY_TRACKING,
             )
+            return None
         points = self._model.frame.keypoints(kp, mirror=self._mirror)
         if not np.all(np.isfinite(points)):
-            raise GeortInputError(
+            self.last_failure = describe(
                 "GEORT_SOLVE_FAILED",
                 "손목과 손가락 뿌리 위치로 손바닥 방향을 정할 수 없습니다",
                 _REMEDY_TRACKING,
             )
+            return None
+        self.last_failure = None
         return points
 
-    def solve(self, keypoints: np.ndarray) -> np.ndarray:
-        q = np.clip(
-            self._model.forward(self.keypoints(keypoints)), self._limits[:, 0], self._limits[:, 1]
-        )
+    def solve(self, keypoints: np.ndarray) -> Optional[np.ndarray]:
+        points = self.keypoints(keypoints)
+        if points is None:
+            return None
+        q = np.clip(self._model.forward(points), self._limits[:, 0], self._limits[:, 1])
         if self._alpha < 1.0:
             self._last = q if self._last is None else self._last + self._alpha * (q - self._last)
             return self._last.copy()

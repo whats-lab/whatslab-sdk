@@ -93,14 +93,13 @@ pip install -e '.[all]'   # editable, for development
 |---|---|---|
 | `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
 | `webxr` | `websockets` | Quest hand tracking (headset browser) |
-| `hand` | `pin`, `nlopt`, `dexhand-description` | the DexPilot engine |
+| `hand` | `pin`, `dexhand-description` | the DexPilot engine |
 | `viz` | `viser`, `trimesh`, `pin` | robot-hand visualization |
 
 GeoRT inference (`geort:`) needs only numpy. The DexPilot engine carries its own numpy port of
 the dex-retargeting optimizer, so it needs neither torch nor dex-retargeting — only `pin>=2.7`
-and `nlopt>=2.7.1`, both with wheels up to Python 3.14. numpy has no upper bound: nlopt 2.8 and
-later need numpy 2, so numpy-1 environments (Isaac Sim 5.1, for example) pin `numpy<2` and
-`nlopt<2.8` on their side. URDFs and meshes come from
+(wheels up to Python 3.14); SLSQP comes from scipy, a base dependency. numpy has no upper bound.
+URDFs and meshes come from
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf) (pulled in by the
 `hand` extra); point `WHATSLAB_MODELS_ROOT` at another asset tree to override it.
 
@@ -171,7 +170,7 @@ whatslab/
 │   ├── glove/        AirGloveReceiver (airglove-client, connection status and alarms)
 │   └── webxr/        WebXRHandReceiver, its websockets server, TLS certificate, headset page
 ├── retarget/
-│   ├── retargeter.py HandRetargeter, Engine protocol, HandInputError
+│   ├── retargeter.py HandRetargeter, Engine protocol
 │   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, palm frame, mirroring
 │   └── geort/        engine.py GeortEngine · preprocess.py Kabsch input frame · prompt.py model · bundled npz
 ├── hand.py           HandModel: receiver → retargeter → optional SafetyFilter

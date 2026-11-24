@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
+import threading
 import time
 
 import numpy as np
@@ -276,20 +276,20 @@ def test_hand_model_rejects_source_with_kwargs():
         HandModel(hand_source=object(), hand_kwargs={"glove_port": 4040})
 
 
+def _used_udp_ports():
+    used = set()
+    for path in ("/proc/net/udp", "/proc/net/udp6"):
+        if os.path.exists(path):
+            with open(path) as f:
+                used |= {int(line.split()[1].rsplit(":", 1)[1], 16) for line in list(f)[1:]}
+    return used
+
+
 def _free_port_pair():
+    used = _used_udp_ports()
     for p in TEST_PORTS:
-        socks = []
-        try:
-            for port in (p, p + 2):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                socks.append(sock)
-                sock.bind(("127.0.0.1", port))
-        except OSError:
-            continue
-        finally:
-            for sock in socks:
-                sock.close()
-        return p
+        if p not in used and p + 2 not in used:
+            return p
     pytest.skip("47500-47599 에서 빈 UDP 포트 쌍을 못 찾음")
 
 
@@ -357,11 +357,10 @@ def test_end_to_end_against_spine_replayer():
     finally:
         rx.stop()
         proc.terminate()
-        try:
-            out, _ = proc.communicate(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            out, _ = proc.communicate()
+        killer = threading.Timer(5.0, proc.kill)
+        killer.start()
+        out, _ = proc.communicate()
+        killer.cancel()
     assert "haptics right: [0, 2, 3, 0, 0]" in out
     assert "haptics right: [0, 0, 0, 0, 0]" in out
 

@@ -14,16 +14,13 @@ GEORT_PREFIX = "geort:"
 ENGINES = (DEX_PREFIX, GEORT_PREFIX)
 
 
-class HandInputError(ValueError):
-    pass
-
-
 @runtime_checkable
 class Engine(Protocol):
     joint_names: Sequence[str]
     joint_limits: np.ndarray
+    last_failure: Optional[str]
 
-    def solve(self, xr_joints: np.ndarray) -> np.ndarray: ...
+    def solve(self, xr_joints: np.ndarray) -> Optional[np.ndarray]: ...
     def reset(self) -> None: ...
 
 
@@ -67,7 +64,7 @@ class HandRetargeter:
         lim = self._engine.joint_limits
         self._last = np.clip(np.zeros(len(self._engine.joint_names)), lim[:, 0], lim[:, 1])
         self._tracking = False
-        self.last_error: Optional[ValueError] = None
+        self.last_failure: Optional[str] = None
 
     @property
     def joint_names(self) -> List[str]:
@@ -80,9 +77,9 @@ class HandRetargeter:
     def reset(self) -> None:
         self._engine.reset()
         self._tracking = False
-        self.last_error = None
+        self.last_failure = None
 
-    def _solve(self, hand: HandPose) -> np.ndarray:
+    def _solve(self, hand: HandPose) -> Optional[np.ndarray]:
         return self._engine.solve(masked_keypoints(hand.xr_joints, hand.xr_valid))
 
     def compute(self, sample: InputSample) -> HandCommand:
@@ -90,16 +87,17 @@ class HandRetargeter:
         if hand is None or not hand.tracked or hand.xr_joints is None:
             if self._tracking:
                 self.reset()
-            self.last_error = None
+            self.last_failure = None
         else:
-            try:
-                self._last = np.asarray(self._solve(hand), dtype=float)
-                self._tracking = True
-                self.last_error = None
-            except HandInputError as e:
-                first = self.last_error is None
-                if first:
-                    _log.warning("손 리타게팅 입력을 풀 수 없어 직전 명령을 유지한다: %s", e)
+            q = self._solve(hand)
+            if q is None:
+                failure = self._engine.last_failure
+                if self.last_failure is None:
+                    _log.warning("손 리타게팅 입력을 풀 수 없어 직전 명령을 유지한다: %s", failure)
                 self.reset()
-                self.last_error = e
+                self.last_failure = failure
+            else:
+                self._last = np.asarray(q, dtype=float)
+                self._tracking = True
+                self.last_failure = None
         return HandCommand(joint_names=self.joint_names, joint_angles=self._last.copy())

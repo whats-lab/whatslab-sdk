@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-from ..retargeter import HandInputError
+
+def describe(code: str, cause: str, remedy: str = "") -> str:
+    return f"[{code}] {cause}" + (f" — {remedy}" if remedy else "")
 
 
 class GeortError(ValueError):
 
     def __init__(self, code: str, cause: str, remedy: str = "") -> None:
-        super().__init__(f"[{code}] {cause}" + (f" — {remedy}" if remedy else ""))
+        super().__init__(describe(code, cause, remedy))
         self.code = code
         self.cause = cause
         self.remedy = remedy
 
 
 class GeortConfigError(GeortError):
-    pass
-
-
-class GeortInputError(GeortError, HandInputError):
     pass

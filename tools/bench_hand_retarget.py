@@ -122,7 +122,7 @@ def bone_angles(h_pts, r_bones, rot_h, rot_r):
 
 
 def run_config(name, seqs, mirror, overrides, pinch_mm):
-    acc = {k: [] for k in ("open", "pinch", "pinch_err", "bone", "dq", "limit", "ms")}
+    acc = {k: [] for k in ("open", "pinch", "pinch_err", "bone", "dq", "limit", "ms", "fail")}
     n_frames = 0
     eng = DexEngine(name, **overrides)
     probe = RobotProbe(eng)
@@ -153,6 +153,9 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
             q = eng.solve(x)
             acc["ms"].append((time.perf_counter() - t0) * 1e3)
             n_frames += 1
+            if q is None:
+                acc["fail"].append(i)
+                continue
             if prev is not None:
                 acc["dq"].append(float(np.abs(q - prev).max()))
             prev = q
@@ -160,7 +163,8 @@ def run_config(name, seqs, mirror, overrides, pinch_mm):
             tips, bones = probe.points(q)
             h = hand_pts[i]
             rot_h = palm_frame(*(h[j] for j in XR_PALM), side=side)
-            acc["bone"].extend(bone_angles(h, bones, rot_h, probe.rot_palm))
+            if rot_h is not None:
+                acc["bone"].extend(bone_angles(h, bones, rot_h, probe.rot_palm))
             hd = np.linalg.norm(h[tip_idx] - h[XR_TIP[0]], axis=1) * 1e3
             rd = np.linalg.norm(tips[1:] - tips[0], axis=1) * 1e3
             if np.all(ext[i] >= OPEN_FRAC * ext_ref):
@@ -226,7 +230,7 @@ def main():
         default=20.0,
         help="핀치 프레임 판정: 사람 엄지-손가락 끝 거리 상한 (mm)",
     )
-    ap.add_argument("--max-evals", type=int, help="SLSQP 평가 상한 덮어쓰기 (0 = 무제한)")
+    ap.add_argument("--max-evals", type=int, help="SLSQP 반복 상한 덮어쓰기 (0 = scipy 기본 100)")
     ap.add_argument("--json", help="결과를 json 으로 저장")
     args = ap.parse_args()
 
@@ -245,9 +249,10 @@ def main():
     if args.max_evals is not None:
         overrides["max_evals"] = args.max_evals
     print(f"시퀀스 {len(seqs)}개, 프레임 {sum(len(s['xr']) for s in seqs)}")
-    hdr = "%-14s %7s %6s %9s %8s %8s %7s %7s %7s %7s %7s" % (
+    hdr = "%-14s %7s %5s %6s %9s %8s %8s %7s %7s %7s %7s %7s" % (
         "config",
         "frames",
+        "fail",
         "open",
         "pinch(n)",
         "pinchErr",
@@ -264,6 +269,7 @@ def main():
         eng, acc, n = run_config(name, seqs, args.mirror, overrides, args.pinch_mm)
         row = {
             "frames": n,
+            "failures": len(acc["fail"]),
             "open_mm": _mean(acc["open"]),
             "open_n": len(acc["open"]),
             "pinch_mm": _mean(acc["pinch"]),
@@ -291,10 +297,11 @@ def main():
         row["two_hand_ms_p99"] = _pct(two, 99)
         out[name] = row
         print(
-            "%-14s %7d %6.1f %5.1f(%3d) %8.1f %8.1f %7.3f %7.3f %7.2f %7.2f %7.2f"
+            "%-14s %7d %5d %6.1f %5.1f(%3d) %8.1f %8.1f %7.3f %7.3f %7.2f %7.2f %7.2f"
             % (
                 name,
                 n,
+                row["failures"],
                 row["open_mm"],
                 row["pinch_mm"],
                 row["pinch_n"],

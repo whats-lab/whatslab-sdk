@@ -132,24 +132,23 @@ from whatslab.retarget import HandRetargeter, DexEngine
 
 - **`dex:<이름>`** — DexPilot(손끝·손가락 사이 벡터 + 핀치 투영). dex-retargeting 0.5.0 의 최적화기를 numpy 로
   옮긴 자체 구현(`dex.optimizer`, MIT 고지는 `dex/THIRD_PARTY_LICENSE`)이라 torch 를 쓰지 않는다. 손목→손끝 벡터
-  항을 가중합으로 더할 수 있다(아래 `retargeting` 키). URDF 만 있으면 되고 `hand` extra(pinocchio·nlopt)가 필요하다.
+  항을 가중합으로 더할 수 있다(아래 `retargeting` 키). URDF 만 있으면 되고 `hand` extra(pinocchio)가 필요하다. SLSQP 는 scipy 의 것을 쓴다.
 - **`geort:<이름>`** — GeoRT 소프트 프롬프트 신경망(numpy 만). `configs/geort/<이름>.yaml` 또는 yaml 경로.
   학습된 모델 npz 가 필요하다(아래 `whatslab.retarget.geort`). 모델의 손 좌우는 로봇 손 기준이다 —
   오른손 모델(동봉 전부)은 왼손 사람 입력을 반전해 풀 수 있지만 왼손 로봇 손은 구동하지 못한다.
 
 | 심볼 | 설명 |
 |---|---|
-| `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 이번 프레임을 못 풀면(`HandInputError` — geort 의 `GeortInputError` 도 이것이다. 다른 예외는 그대로 올라온다) 직전 명령 유지(못 푼 이유는 `last_error`, 연속 실패의 첫 번에 경고 로그), 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_error` 는 지금 프레임 기준(추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
-| `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints)`, `reset()`. `DexEngine`·`GeortEngine` 이 만족한다. |
+| `HandRetargeter(config="dex:orca", side="right", urdf_root=None, **kwargs)` | 두 엔진을 묶는 창구. 엔진(`DexEngine` / `GeortEngine`)은 `solve(xr_joints)` 계산만 하고, 공통 정책은 여기 한 곳에 있다: 추적이 없거나 엔진이 이번 프레임을 못 풀면(`solve` 가 `None`) 직전 명령 유지(못 푼 이유는 엔진의 `last_failure` 를 옮긴 `last_failure`, 연속 실패의 첫 번에 경고 로그, 엔진 `reset()`). 예외는 잡지 않는다 — 설정 오류·배열 모양 오류는 그대로 올라온다, 추적이 끊기는 순간 엔진 상태 초기화(`reset()`), 첫 입력 전 명령은 0 을 관절범위로 자른 값. `engine_name` = `"dex:"` / `"geort:"`. `HandPose.xr_valid` 가 거짓인 관절은 두 엔진 모두 쓰지 않는다(쓰는 관절이 무효면 그 프레임은 직전 명령 유지). `last_failure: Optional[str]` 은 지금 프레임 기준(풀었거나 추적이 없으면 `None`). `geort:<이름>` 은 동봉 `configs/geort/<이름>.yaml`(현재 디렉토리의 같은 이름 파일이 아니라), `.yaml` 로 끝나면 사용자 경로. `urdf_root` 는 dex 만 쓰고 geort 에서는 무시한다. 나머지 `kwargs` 는 엔진으로 간다. |
+| `Engine` | 엔진 Protocol(구조적 타이핑, 상속 없음) — `joint_names`, `joint_limits`, `solve(xr_joints) -> Optional[np.ndarray]`, `last_failure: Optional[str]`, `reset()`. `solve` 가 `None` 이면 "이번 프레임을 풀 수 없다"는 뜻이고 사람이 읽을 이유가 `last_failure` 에 있다(풀면 `None` 으로 돌아간다). 프레임 단위 실패에 예외를 쓰지 않는다. `DexEngine`·`GeortEngine` 이 만족한다. |
 | `engine_of(name)` | `"dex:"` / `"geort:"` 접두사. 아니면 `ValueError`. |
-| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q`(`joint_names` 순서, rad). `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `reset()`. 손당 프레임 p50 1~2ms, p99 약 4ms. |
+| `DexEngine(config, side=None, urdf_root=None, max_evals=None, **overrides)` | OpenXR → 로봇 손 DexPilot. `config` = `configs/hands` 이름 / `dex:` 이름 / yaml 경로 / `DexHandConfig`. `side` 가 config 의 side 와 다르면 입력을 거울상(`mirror_xr_joints`)으로 바꿔 쓴다. `solve(xr_joints) -> q | None`(`joint_names` 순서, rad). 손바닥 프레임을 못 정하거나 키포인트가 유한하지 않거나 SLSQP 결과를 쓸 수 없으면 `None` 과 `last_failure`. `joint_names`, `joint_limits` `(n, 2)`, `robot_joint_names`(고정·mimic 관절 포함), `full_qpos(q)`(고정 관절 값 + URDF mimic 관절을 채운 전 관절), `human_keypoints(xr)`(MANO 21점, 로봇 루트 축. 손바닥 프레임을 못 정하면 `None`), `scaling_factor`, `type`(`"DEXPILOT"`/`"VECTOR"`/`"POSITION"`), `optimizer`(`RetargetOptimizer`), `reset()`. 손당 프레임 p50 1~2ms, p99 약 4ms. |
 | `DexHandConfig.load(name, side=None)` / `from_dict(d)` | `configs/hands/*.yaml` 로더(아래 키). `retargeting` 에 아래 표에 없는 키가 있으면 `ValueError`. |
 | `hand_config_names()` | 동봉 `configs/hands` 이름 목록. |
-| `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `HandKinematics(urdf)`(pinocchio 모델, URDF `<mimic>` 관절), `RetargetOptimizer`(nlopt SLSQP, `objective(ref, center)` 는 nlopt 목적함수 `f(x, grad)`), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
-| `dex.preprocess` 모듈 | DexPilot 입력 전처리 — 아래 `xr_to_mano`·`mirror_xr_joints` 와 `palm_frame`·`mano_palm_frame`(손바닥 좌표계), `xr_wrist_positions`. |
+| `dex.optimizer` 모듈 | dex-retargeting 0.5.0 에서 필요한 부분만 옮긴 numpy 구현 — `HandKinematics(urdf)`(pinocchio 모델, URDF `<mimic>` 관절), `RetargetOptimizer`(`scipy.optimize.minimize(method="SLSQP", jac=True)`, 관절 한계 ±1e-3 을 `bounds` 로. `objective(ref, center)` 는 `f(x) -> (loss, grad)`. `solve(ref, start) -> x | None` — 수렴(status 0)했거나 반복 상한에 걸렸어도(status 9) `x` 가 유한하면 쓸 수 있는 해로 돌려주고, 그 밖의 종료(직선 탐색 실패·특이 행렬 등)나 유한하지 않은 `x` 는 `None`. 마지막 결과는 `last_result`(`OptimizeResult`)), `huber_vector_loss(robot_vec, target_vec, weight, delta) -> (loss, d loss/d robot_vec)`. |
+| `dex.preprocess` 모듈 | DexPilot 입력 전처리 — 아래 `xr_to_mano`·`mirror_xr_joints` 와 `palm_frame`·`mano_palm_frame`(손바닥 좌표계, 점이 겹치거나 나란하거나 유한하지 않으면 `None`), `xr_wrist_positions`. |
 | `xr_to_mano(xr_joints)` | OpenXR 26 → MANO 21 손목 상대 위치. 인덱스 `[1,2,3,4,5,7,8,9,10,12,13,14,15,17,18,19,20,22,23,24,25]`, 축 `[[0,-1,0],[-1,0,0],[0,0,-1]]`(양손 같음 — 손목 공간 위치를 손목 회전으로 한 번 더 풀어 손목 자세와 무관하다). |
 | `mirror_xr_joints(xr_joints)` | 손목 공간 x 축 거울상(왼손 ↔ 오른손). 두 번 하면 원래대로. |
-| `HandInputError` | 이번 프레임 입력을 풀 수 없다는 `ValueError`. 엔진이 던지고 `HandRetargeter` 가 잡는다. |
 | `masked_keypoints(xr_joints, xr_valid)` | 무효 관절 위치를 NaN 으로 — 엔진에 넣기 전에 쓴다(`HandRetargeter` 는 알아서 한다). |
 
 ### 손 리타게팅 config (configs/hands)
@@ -179,7 +178,7 @@ allegro·leap·ability·schunk 의 손목·손끝 링크와 `target_joint_names`
 | `fixed_joints` | `{관절: rad}` — 리타게팅에서 빼고 고정한다. ORCA 손목 관절은 손 리타게팅 대상이 아니라 0 으로 둔다. |
 | `joint_limits_deg` | `{관절 이름 glob: [lo, hi]}` — 최적화 한계를 덮어쓴다. DG-5F 손가락 PIP·DIP 는 URDF 가 ±90° 라 역방향으로 꺾는 해가 나와 −5..90° 로 자른다. |
 | `human_hand_length` | 사람 손목 → 중지 끝(m, 기본 0.19). `retargeting.scaling_factor` 가 없으면 로봇 같은 길이(q=0)를 이것으로 나눠 쓴다. |
-| `max_evals` | 틱당 SLSQP 평가 상한(동봉값 20). 무제한과 결과는 거의 같고 p99 지연만 줄인다. |
+| `max_evals` | 틱당 SLSQP 반복 상한(scipy `maxiter`, 동봉값 20, 없으면 100). 반복마다 목적함수 평가가 1~2번이라 nlopt 시절의 평가 상한 20 보다 평가 수가 많다. 지연 상한을 두려는 값이며, 값을 바꾸면 일부 프레임의 해가 크게 달라질 수 있다(비볼록 문제) — 바꾸면 벤치로 다시 확인한다. |
 | `retargeting` | 최적화 설정. 키는 아래 표. `target_joint_names` 를 안 주면 `fixed_joints` 를 뺀 전 관절이다. URDF 에 mimic 관절이 있으면 `target_joint_names` 에서 빼서 줘야 한다(URDF `<mimic>` 으로 채운다 — ability·schunk). `DexEngine(..., 키=값)` 으로 덮어쓸 수 있다. |
 
 `retargeting` 키(dex-retargeting 0.5.0 `RetargetingConfig` 의 같은 이름 키와 뜻이 같다. 위치 리타게팅·자유 관절·
@@ -225,11 +224,11 @@ soft prompt), 손 입력 형식 `input_frame = openxr-wrist-kabsch-v2`(손목 �
 | 심볼 | 설명 |
 |---|---|
 | `GeortEngine.from_config(config, side="right", low_pass_alpha=None)` | 설정으로 엔진을 만든다. `config` = 동봉 설정 이름(`orca_right` → `configs/geort/orca_right.yaml`) 또는 `.yaml` 경로(`config_path`). `low_pass_alpha` 를 주면 설정값 대신 쓴다. |
-| `GeortEngine(model, side="right", low_pass_alpha=1.0)` | 26×8 → q (`solve`, 모델 학습 범위로 자름). 계산만 한다 — 직전 값 유지·추적 끊김 처리는 `HandRetargeter`. 모델 손과 반대쪽 입력은 좌우 반전해 푼다. 실제로 쓰는 21점의 위치가 유한하지 않으면 `GeortInputError`(`masked_keypoints` 가 무효 관절을 NaN 으로 바꾼다 — palm·중수골은 안 쓴다). `reset()`, `joint_names`, `joint_limits`. |
+| `GeortEngine(model, side="right", low_pass_alpha=1.0)` | 26×8 → q (`solve`, 모델 학습 범위로 자름). 계산만 한다 — 직전 값 유지·추적 끊김 처리는 `HandRetargeter`. 모델 손과 반대쪽 입력은 좌우 반전해 푼다. 실제로 쓰는 21점의 위치가 유한하지 않거나(`masked_keypoints` 가 무효 관절을 NaN 으로 바꾼다 — palm·중수골은 안 쓴다) 손바닥 방향을 정할 수 없으면 `solve`·`keypoints` 가 `None` 을 돌려주고 `last_failure` 에 `[코드] 원인 — 조치` 문자열(`GEORT_INPUT_NON_FINITE` / `GEORT_SOLVE_FAILED`)을 둔다. `reset()`, `joint_names`, `joint_limits`. |
 | `read_config(config)` | 설정 YAML: `name`(모델 안 손 이름), `side`, `model`(생략 시 `$WHATSLAB_GEORT_MODEL` → 패키지 동봉 `retarget/geort/assets/geort_prompt.npz`), `low_pass_alpha`. 설정의 상대경로는 설정 파일 기준, 환경변수의 상대경로는 현재 디렉토리 기준. |
 | `load_prompt_model(path)` | npz → `PromptModel`(`embodiments`). 형식이 위 조합이 아니거나 배열 모양이 틀리면 `ValueError`. |
 | `preprocess` 모듈 | OpenXR 26 → MediaPipe 21 → `openxr-wrist-kabsch-v2` 입력 좌표계(`InputFrame`, `canonical_points`, `to_geort` …). |
-| `GeortConfigError` / `GeortInputError` | `code`·`cause`·`remedy` 를 가진 `ValueError`. `GeortConfigError` 는 설정 내용 검사(필수 키·값 범위·모델 안 손 이름), `GeortInputError` 는 이번 프레임 입력 오류이자 `HandInputError`. |
+| `GeortConfigError` | `code`·`cause`·`remedy` 를 가진 `ValueError`(`GeortError`). 설정 내용 검사(필수 키·값 범위·모델 안 손 이름)에만 쓴다 — 프레임 입력 오류는 예외가 아니라 `last_failure`. |
 
 동봉 설정(`configs/geort/`): `orca_right`(ORCA 오른손 16축), `hx5_right`(ROBOTIS HX5-D20 오른손 20축). 관절 이름은
 dexhand-description URDF 와 같다(테스트로 확인). 모델에는 Allegro·DG-5F-S 프롬프트도 있지만 관절 이름이 아직

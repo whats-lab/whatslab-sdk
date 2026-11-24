@@ -6,7 +6,6 @@ from whatslab.retarget import masked_keypoints
 from whatslab.retarget.geort import (
     GeortConfigError,
     GeortEngine,
-    GeortInputError,
     config_path,
     load_prompt_model,
     read_config,
@@ -102,7 +101,7 @@ def test_retargeter_solves_within_limits(tmp_path, geort_model):
     assert np.all(cmd.joint_angles >= lim[:, 0] - 1e-9) and np.all(
         cmd.joint_angles <= lim[:, 1] + 1e-9
     )
-    assert ctrl.last_error is None
+    assert ctrl.last_failure is None
 
 
 def test_retargeter_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
@@ -115,17 +114,18 @@ def test_retargeter_holds_last_when_untracked_or_invalid(tmp_path, geort_model):
     valid[12] = False
     held = ctrl.compute(_sample(identity_joints(0.01), valid=valid)).joint_angles
     assert np.array_equal(held, first)
-    assert isinstance(ctrl.last_error, GeortInputError)
-    with pytest.raises(GeortInputError):
-        _q(_solver(tmp_path, geort_model), identity_joints(), valid)
+    assert ctrl.last_failure.startswith("[GEORT_INPUT_NON_FINITE]")
+    solver = _solver(tmp_path, geort_model)
+    assert _q(solver, identity_joints(), valid) is None
+    assert solver.last_failure == ctrl.last_failure
+    assert _q(solver, identity_joints()) is not None and solver.last_failure is None
 
 
 def test_retargeter_raises_non_input_errors(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model)
-    with pytest.raises(ValueError) as info:
+    with pytest.raises(ValueError):
         ctrl.compute(_sample(np.zeros((25, 8))))
-    assert not isinstance(info.value, GeortInputError)
-    assert ctrl.last_error is None
+    assert ctrl.last_failure is None
 
 
 def test_left_hand_is_mirrored_onto_right_model(tmp_path, geort_model):
@@ -249,11 +249,11 @@ def test_model_file_is_read_once_per_path(tmp_path, geort_model, monkeypatch):
     assert len(calls) == 1
 
 
-def test_reset_clears_last_error(tmp_path, geort_model):
+def test_reset_clears_last_failure(tmp_path, geort_model):
     ctrl = _ctrl(tmp_path, geort_model)
     valid = np.ones(26, dtype=bool)
     valid[12] = False
     ctrl.compute(_sample(identity_joints(0.01), valid=valid))
-    assert isinstance(ctrl.last_error, GeortInputError)
+    assert ctrl.last_failure is not None
     ctrl.reset()
-    assert ctrl.last_error is None
+    assert ctrl.last_failure is None

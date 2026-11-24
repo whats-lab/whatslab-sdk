@@ -2,7 +2,6 @@ import importlib
 
 _LAZY = {
     "HandRetargeter": ".retargeter",
-    "HandInputError": ".retargeter",
     "Engine": ".retargeter",
     "engine_of": ".retargeter",
     "masked_keypoints": ".retargeter",

@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-pytest.importorskip("nlopt")
 pin = pytest.importorskip("pinocchio")
 
 from whatslab.core.constants import OPENXR26_TO_HAND21, OPENXR_TO_HAND21_AXES  # noqa: E402
@@ -73,10 +72,7 @@ def _rigid(xr, rot, t):
 
 
 def _require_urdf(name):
-    try:
-        cfg = DexHandConfig.load(name)
-    except FileNotFoundError as e:
-        pytest.skip(str(e))
+    cfg = DexHandConfig.load(name)
     if not os.path.isfile(os.path.join(models_root(), cfg.urdf)):
         pytest.skip(f"{name}: URDF 없음 ({cfg.urdf})")
     return cfg
@@ -226,8 +222,6 @@ def test_retargeter_rejects_onnx_kwargs():
 
 def test_degenerate_input_holds_last_command():
     _require_urdf("orca_right")
-    from whatslab.retarget import HandInputError
-
     ctrl = HandRetargeter("dex:orca", side="right")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True)))
@@ -235,13 +229,27 @@ def test_degenerate_input_holds_last_command():
         bad[:, 3] = 1.0
         cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=bad, tracked=True)))
         assert np.array_equal(cmd.joint_angles, first.joint_angles)
-        assert isinstance(ctrl.last_error, HandInputError)
+        assert ctrl.last_failure.startswith("손바닥 프레임")
+    tip = good.copy()
+    tip[10, 4:7] = np.nan
+    cmd = ctrl.compute(InputSample(hand=HandPose(xr_joints=tip, tracked=True)))
+    assert np.array_equal(cmd.joint_angles, first.joint_angles)
+    assert ctrl.last_failure == "손 키포인트에 유한하지 않은 값이 있다"
+
+
+def test_solver_failure_returns_none(monkeypatch):
+    _require_urdf("orca_right")
+    eng = DexEngine("orca_right")
+    nan = (float("nan"), np.full(len(eng.joint_names), np.nan))
+    monkeypatch.setattr(eng.optimizer, "objective", lambda ref, center: lambda x: nan)
+    assert eng.solve(synthetic_right_hand(0.3)) is None
+    assert eng.last_failure.startswith("SLSQP")
+    monkeypatch.undo()
+    assert eng.solve(synthetic_right_hand(0.3)) is not None and eng.last_failure is None
 
 
 def test_dex_respects_xr_valid():
     _require_urdf("orca_right")
-    from whatslab.retarget import HandInputError
-
     ctrl = HandRetargeter("dex:orca", side="right")
     good = synthetic_right_hand(0.3)
     first = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, tracked=True))).joint_angles
@@ -249,15 +257,15 @@ def test_dex_respects_xr_valid():
     valid[0] = False
     ctrl.reset()
     q = ctrl.compute(InputSample(hand=HandPose(xr_joints=good, xr_valid=valid, tracked=True)))
-    assert ctrl.last_error is None and np.allclose(q.joint_angles, first, atol=1e-6)
+    assert ctrl.last_failure is None and np.allclose(q.joint_angles, first, atol=1e-6)
     valid[0], valid[12] = True, False
     held = ctrl.compute(
         InputSample(hand=HandPose(xr_joints=synthetic_right_hand(0.8), xr_valid=valid,
                                   tracked=True))).joint_angles
     assert np.array_equal(held, q.joint_angles)
-    assert isinstance(ctrl.last_error, HandInputError)
+    assert ctrl.last_failure.startswith("손바닥 프레임")
     ctrl.compute(InputSample(hand=None))
-    assert ctrl.last_error is None
+    assert ctrl.last_failure is None
 
 
 def test_mirrored_dex_tolerates_zero_quaternion_on_invalid_joint():
@@ -279,12 +287,19 @@ UPSTREAM_FIXTURE = os.path.join(os.path.dirname(__file__), "data", "dex_upstream
 
 
 @pytest.mark.parametrize("name", ("orca_right", "dg5f_right", "ability_right"))
-def test_dexpilot_matches_dex_retargeting_0_5_0(name):
+def test_dexpilot_close_to_dex_retargeting_0_5_0(name):
     _require_urdf(name)
     data = np.load(UPSTREAM_FIXTURE)
     eng = DexEngine(name)
+    tip_ids = eng.kinematics.frame_ids(eng.config.retargeting["finger_tip_link_names"])
+
+    def tips(q):
+        return eng.kinematics.frames(eng.full_qpos(q), tip_ids)[0]
+
     q = np.array([eng.solve(x.astype(float)) for x in data["xr"]])
-    assert np.abs(q - data[name]).max() < 1e-5
+    tip_mm = [np.linalg.norm(tips(a) - tips(b), axis=1) * 1e3 for a, b in zip(q, data[name])]
+    assert np.abs(q - data[name]).mean() < 0.03
+    assert np.mean(tip_mm) < 1.5
 
 
 def _fd_check(f, x, grad, eps=1e-6):
@@ -324,15 +339,12 @@ def test_objective_gradient_matches_finite_difference(name, overrides):
     lim = eng.joint_limits
     x = lim[:, 0] + np.random.default_rng(1).uniform(0.2, 0.8, len(lim)) * (lim[:, 1] - lim[:, 0])
     f = eng.optimizer.objective(ref, x)
-    grad = np.zeros_like(x)
-    f(x, grad)
-    _fd_check(lambda v: f(v, np.empty(0)), x, grad)
+    _fd_check(lambda v: f(v)[0], x, f(x)[1])
 
 
 def _loss_and_grad(eng, x, curl=0.6):
     ref = eng.reference(eng.human_keypoints(hand_for(eng.config.side, curl)))
-    grad = np.zeros_like(x)
-    return eng.optimizer.objective(ref, x)(x, grad), grad
+    return eng.optimizer.objective(ref, x)(x)
 
 
 @pytest.mark.parametrize("name", ("orca_right", "ability_right"))

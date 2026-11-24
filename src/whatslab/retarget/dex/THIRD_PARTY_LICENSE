@@ -3,7 +3,8 @@ whatslab.retarget.dex.optimizer is derived from dex-retargeting 0.5.0
 (dex_retargeting/optimizer.py), the pinocchio robot wrapper (robot_wrapper.py), the
 mimic-joint kinematics adaptor (kinematics_adaptor.py) and the sequential solve with its
 low-pass filter (seq_retarget.py, optimizer_utils.py, folded into engine.py). The torch
-autograd losses were rewritten in numpy. dex-retargeting is distributed under the
+autograd losses were rewritten in numpy and the nlopt SLSQP call was replaced with
+scipy.optimize.minimize(method="SLSQP"). dex-retargeting is distributed under the
 following license.
 
 The MIT License (MIT)

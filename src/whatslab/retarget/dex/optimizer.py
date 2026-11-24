@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
-import nlopt
 import numpy as np
 import pinocchio as pin
+from scipy.optimize import OptimizeResult, minimize
 
 DEXPILOT_HUBER_DELTA = 0.03
 DEXPILOT_ETA1 = 1e-4
@@ -15,7 +15,9 @@ DEXPILOT_PAIR_WEIGHT = 200.0
 DEXPILOT_SECOND_PAIR_WEIGHT = 400.0
 DEXPILOT_SECOND_PAIR_DIST = 0.03
 LIMIT_EPSILON = 1e-3
-FTOL_ABS = 1e-6
+FTOL = 1e-6
+MAX_ITER = 100
+USABLE_STATUS = (0, 9)
 
 
 class HandKinematics:
@@ -57,18 +59,11 @@ class HandKinematics:
         qpos[self.idx_mimic] = qpos[self.idx_source] * self.mimic_multipliers + self.mimic_offsets
         return qpos
 
-    def frames(
-        self, qpos: np.ndarray, frame_ids: Sequence[int], jacobian: bool
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        if jacobian:
-            pin.computeJointJacobians(self.model, self.data, qpos)
-        else:
-            pin.forwardKinematics(self.model, self.data, qpos)
+    def frames(self, qpos: np.ndarray, frame_ids: Sequence[int]) -> Tuple[np.ndarray, np.ndarray]:
+        pin.computeJointJacobians(self.model, self.data, qpos)
         pos = np.array(
             [pin.updateFramePlacement(self.model, self.data, f).translation for f in frame_ids]
         )
-        if not jacobian:
-            return pos, np.empty((0,))
         jac = np.array([
             pin.getFrameJacobian(self.model, self.data, f, pin.LOCAL_WORLD_ALIGNED)[:3]
             for f in frame_ids
@@ -210,19 +205,19 @@ class RetargetOptimizer:
         self.origin_idx = np.array([links.index(n) for n in origins], dtype=int)
         self.task_idx = np.array([links.index(n) for n in tasks], dtype=int)
 
-        self.opt = nlopt.opt(nlopt.LD_SLSQP, n_target)
-        self.opt.set_ftol_abs(FTOL_ABS)
+        self.bounds: Optional[np.ndarray] = None
+        self.max_iter = MAX_ITER
+        self.last_result: Optional[OptimizeResult] = None
 
     @property
     def num_rows(self) -> int:
         return len(self.origin_idx)
 
     def set_joint_limits(self, limits: np.ndarray) -> None:
-        self.opt.set_lower_bounds((limits[:, 0] - LIMIT_EPSILON).tolist())
-        self.opt.set_upper_bounds((limits[:, 1] + LIMIT_EPSILON).tolist())
+        self.bounds = np.stack([limits[:, 0] - LIMIT_EPSILON, limits[:, 1] + LIMIT_EPSILON], 1)
 
     def set_max_evals(self, max_evals: int) -> None:
-        self.opt.set_maxeval(max_evals)
+        self.max_iter = max_evals
 
     def reset(self) -> None:
         if self.dexpilot is not None:
@@ -248,20 +243,29 @@ class RetargetOptimizer:
         target = target.astype(float)
         center = np.asarray(center, dtype=np.float32)
 
-        def objective(x: np.ndarray, grad: np.ndarray) -> float:
-            pos, jac = self.kin.frames(self.full_qpos(x), self.frame_ids, grad.size > 0)
+        def objective(x: np.ndarray) -> Tuple[float, np.ndarray]:
+            pos, jac = self.kin.frames(self.full_qpos(x), self.frame_ids)
             robot_vec = pos[self.task_idx] - pos[self.origin_idx]
             loss, d_vec = huber_vector_loss(robot_vec, target, weight, self.huber_delta)
-            if grad.size > 0:
-                d_pos = np.zeros_like(pos)
-                np.add.at(d_pos, self.task_idx, d_vec)
-                np.add.at(d_pos, self.origin_idx, -d_vec)
-                grad[:] = (np.einsum("lk,lkj->j", d_pos, jac) @ self.chain
-                           + 2 * self.normal_delta * (x - center))
-            return loss
+            d_pos = np.zeros_like(pos)
+            np.add.at(d_pos, self.task_idx, d_vec)
+            np.add.at(d_pos, self.origin_idx, -d_vec)
+            grad = (np.einsum("lk,lkj->j", d_pos, jac) @ self.chain
+                    + 2 * self.normal_delta * (x - center))
+            return loss, grad
 
         return objective
 
-    def solve(self, ref: np.ndarray, start: np.ndarray) -> np.ndarray:
-        self.opt.set_min_objective(self.objective(ref, start))
-        return np.array(self.opt.optimize(start), dtype=np.float32)
+    def solve(self, ref: np.ndarray, start: np.ndarray) -> Optional[np.ndarray]:
+        self.last_result = minimize(
+            self.objective(ref, start),
+            np.asarray(start, dtype=float),
+            method="SLSQP",
+            jac=True,
+            bounds=self.bounds,
+            options={"maxiter": self.max_iter, "ftol": FTOL},
+        )
+        x = self.last_result.x
+        if self.last_result.status not in USABLE_STATUS or not np.all(np.isfinite(x)):
+            return None
+        return x.astype(np.float32)

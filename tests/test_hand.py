@@ -124,3 +124,46 @@ def test_geort_engine_satisfies_engine_protocol():
 
     assert isinstance(GeortEngine.from_config("orca_right"), Engine)
     assert not isinstance(object(), Engine)
+
+
+class _FlakyEngine:
+    joint_names = ["j"]
+    joint_limits = np.array([[-1.0, 1.0]])
+
+    def __init__(self):
+        self.fail = False
+        self.last_failure = None
+        self.resets = 0
+
+    def solve(self, xr_joints):
+        self.last_failure = "못 풂" if self.fail else None
+        return None if self.fail else np.array([0.5])
+
+    def reset(self):
+        self.resets += 1
+        self.last_failure = None
+
+
+def test_engine_none_holds_last_command(caplog):
+    from whatslab.retarget import Engine
+
+    engine = _FlakyEngine()
+    assert isinstance(engine, Engine)
+    ctrl = HandRetargeter.__new__(HandRetargeter)
+    ctrl._engine = engine
+    ctrl.engine_name = "dex:"
+    ctrl._last = np.zeros(1)
+    ctrl._tracking = False
+    ctrl.last_failure = None
+    sample = InputSample(hand=HandPose(xr_joints=_hand(), tracked=True), tracked=True)
+    assert ctrl.compute(sample).joint_angles[0] == 0.5
+    engine.fail = True
+    with caplog.at_level("WARNING"):
+        for _ in range(3):
+            assert ctrl.compute(sample).joint_angles[0] == 0.5
+            assert ctrl.last_failure == "못 풂"
+    assert sum("직전 명령을 유지" in r.message for r in caplog.records) == 1
+    assert engine.resets == 3
+    engine.fail = False
+    ctrl.compute(sample)
+    assert ctrl.last_failure is None

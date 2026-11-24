@@ -34,7 +34,7 @@ receiver, retarget ← hand.py
   `core.types` connect them.
 - Every input arrives as an OpenXR 26-joint `(26, 8)` array (`HandPose.xr_joints`, wrist-relative).
   A new input device converts to this format.
-- Heavy optional dependencies (pin, nlopt, viser) are imported only by the modules
+- Heavy optional dependencies (pin, viser) are imported only by the modules
   that use them. The GeoRT path of `whatslab.retarget` must import with numpy alone.
 
 ### Retargeting engines
@@ -45,7 +45,7 @@ in `retarget/retargeter.py` (structural, no base class); a test checks each engi
 | An engine provides | `HandRetargeter` handles |
 |---|---|
 | `solve(xr_joints) -> q`, `joint_names`, `joint_limits`, `reset()` | picking the engine from the prefix (`dex:`, `geort:`) |
-| raises a `HandInputError` subclass for input it cannot solve | `reset()` on tracking loss; holding the last command on unsolvable input |
+| returns `None` from `solve` for a frame it cannot solve and puts the reason in `last_failure` | `reset()` on tracking loss; holding the last command when `solve` returns `None` |
 
 Each engine keeps its own input preprocessing in `<engine>/preprocess.py` (OpenXR 26 joints → that
 engine's input). A new engine must not re-implement tracking-loss handling or last-value holding.
@@ -55,9 +55,13 @@ engine's input). A new engine must not re-implement tracking-loss handling or la
 - **No docstrings or comments.** Make names and structure carry the meaning; put explanations in the
   README or API.md. The same holds for pyproject and the config YAML. (Tool directives such as `# noqa`
   are the exception.)
-- **No try/except.** Catching and passing on exceptions hides bugs; let failures reach the caller. The
-  one exception today is `HandRetargeter.compute` catching `HandInputError` to hold the last command —
-  keeping the robot hand from jumping on one bad frame is the feature itself.
+- **No try/except, without exception.** Catching and passing on exceptions hides bugs. An expected
+  failure is a value, not an exception: a function that may fail on a given input returns `None`
+  (with the reason in a `last_failure` attribute when the caller needs it), and the caller decides —
+  `HandRetargeter.compute` holds the last command when an engine returns `None`. `raise` is only for
+  programming and configuration errors (bad YAML, missing URDF, invalid `side`, wrong array shape),
+  which nothing catches. Third-party calls that signal failure by raising are replaced with ones that
+  return a status (e.g. scipy `minimize` instead of nlopt). Tests use `pytest.raises`.
 - No defensive code: no re-checking on already validated paths, no handling of cases that cannot happen.
 - No single-use wrappers, classes or options. No `X = Y` aliases and no `import … as …` (except
   conventions such as np).

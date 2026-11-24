@@ -87,13 +87,12 @@ pip install -e '.[all]'   # 개발용 editable
 |---|---|---|
 | `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
 | `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
-| `hand` | `pin`, `nlopt`, `dexhand-description` | DexPilot 엔진 |
+| `hand` | `pin`, `dexhand-description` | DexPilot 엔진 |
 | `viz` | `viser`, `trimesh`, `pin` | 로봇 손 시각화 |
 
 GeoRT 추론(`geort:`)은 numpy 만 있으면 됩니다. DexPilot 엔진은 dex-retargeting 최적화기를 numpy 로 옮긴
-자체 구현이라 torch·dex-retargeting 이 필요 없고 `pin>=2.7`, `nlopt>=2.7.1` 만 씁니다(둘 다 Python 3.14 까지
-휠이 있습니다). numpy 상한은 두지 않습니다 — nlopt 2.8 부터 numpy 2 가 필요하므로 numpy 1 환경(예:
-Isaac Sim 5.1)은 사용하는 쪽에서 `numpy<2`, `nlopt<2.8` 을 고정합니다. URDF·메쉬는 별도 패키지
+자체 구현이라 torch·dex-retargeting 이 필요 없고 `pin>=2.7` 만 더 씁니다(Python 3.14 까지 휠이 있습니다).
+SLSQP 는 기본 의존성인 scipy 의 것을 씁니다. numpy 상한은 두지 않습니다. URDF·메쉬는 별도 패키지
 [`dexhand-description`](https://github.com/whats-lab/dexterous-hand-urdf)(`hand` extra 가 설치)에서 오고,
 다른 자산 폴더를 쓰려면 `WHATSLAB_MODELS_ROOT` 를 지정합니다.
 
@@ -161,7 +160,7 @@ whatslab/
 │   ├── glove/        AirGloveReceiver (airglove-client, 연결 상태·알람)
 │   └── webxr/        WebXRHandReceiver, websockets 서버, TLS 인증서, 헤드셋 페이지
 ├── retarget/
-│   ├── retargeter.py HandRetargeter, Engine Protocol, HandInputError
+│   ├── retargeter.py HandRetargeter, Engine Protocol
 │   ├── dex/          engine.py DexEngine (DexPilot) · preprocess.py OpenXR → MANO, 손바닥 좌표계, 거울상
 │   └── geort/        engine.py GeortEngine · preprocess.py Kabsch 입력 좌표계 · prompt.py 모델 · 동봉 npz
 ├── hand.py           HandModel: 수신 → 리타게팅 → (선택) SafetyFilter

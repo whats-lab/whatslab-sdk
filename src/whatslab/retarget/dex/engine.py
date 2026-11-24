@@ -13,7 +13,7 @@ from scipy.spatial.transform import Rotation
 from whatslab.core.constants import SIDES
 from whatslab.paths import configs_root, models_root
 
-from ..retargeter import DEX_PREFIX, HandInputError
+from ..retargeter import DEX_PREFIX
 from .optimizer import HandKinematics, RetargetOptimizer, VectorTerm, dexpilot_pairs
 from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_mano
 
@@ -154,6 +154,8 @@ class DexEngine:
         if wrist is None:
             raise ValueError(f"{cfg.name}: retargeting.wrist_link_name 이 필요하다")
         self._rot_robot = palm_frame(pos(wrist), *(pos(n) for n in cfg.palm_links), side=cfg.side)
+        if self._rot_robot is None:
+            raise ValueError(f"{cfg.name}: palm_links 로 로봇 손바닥 프레임을 정할 수 없다")
         self._rot_fixed = (
             None
             if cfg.mano_to_root_rpy is None
@@ -219,6 +221,7 @@ class DexEngine:
         self.joint_names: List[str] = list(target_joints)
         self.low_pass_alpha = float(rt.get("low_pass_alpha", 0.1))
         self._smoothed: Optional[np.ndarray] = None
+        self.last_failure: Optional[str] = None
         self._apply_limits(kin.joint_limits[self.optimizer.idx_target], cfg.joint_limits)
         self.max_evals = cfg.max_evals if max_evals is None else int(max_evals)
         if self.max_evals:
@@ -254,33 +257,40 @@ class DexEngine:
     def joint_limits(self) -> np.ndarray:
         return self._limits.copy()
 
-    def human_keypoints(self, xr_joints) -> np.ndarray:
+    def human_keypoints(self, xr_joints) -> Optional[np.ndarray]:
         xr = mirror_xr_joints(xr_joints) if self.mirror else xr_joints
         mano = xr_to_mano(xr)
         if self._rot_fixed is not None:
-            rot = self._rot_fixed
-        else:
-            rot = self._rot_robot @ mano_palm_frame(mano, self.config.side).T
-        return mano @ rot.T
+            return mano @ self._rot_fixed.T
+        palm = mano_palm_frame(mano, self.config.side)
+        if palm is None:
+            return None
+        return mano @ (self._rot_robot @ palm.T).T
 
     def reference(self, keypoints: np.ndarray) -> np.ndarray:
         return keypoints[self._human_idx[1]] - keypoints[self._human_idx[0]]
 
-    def solve(self, xr_joints) -> np.ndarray:
+    def _fail(self, reason: str) -> None:
+        self.last_failure = reason
+
+    def solve(self, xr_joints) -> Optional[np.ndarray]:
         kp = self.human_keypoints(xr_joints)
+        if kp is None:
+            return self._fail("손바닥 프레임: 손목·검지·중지·소지 MCP 로 방향을 정할 수 없다")
         if not np.all(np.isfinite(kp)):
-            raise HandInputError("손 키포인트에 유한하지 않은 값이 있다")
+            return self._fail("손 키포인트에 유한하지 않은 값이 있다")
         start = np.clip(self._last, self._limits[:, 0], self._limits[:, 1])
-        self._last = self.optimizer.solve(self.reference(kp), start)
+        x = self.optimizer.solve(self.reference(kp), start)
+        if x is None:
+            return self._fail(f"SLSQP 가 풀지 못했다: {self.optimizer.last_result.message}")
+        self._last = x
         full = self.optimizer.full_qpos(self._last)
         if 0.0 <= self.low_pass_alpha <= 1.0:
             if self._smoothed is not None:
                 full = self._smoothed + self.low_pass_alpha * (full - self._smoothed)
             self._smoothed = full
-        q = full[self.optimizer.idx_target]
-        if not np.all(np.isfinite(q)):
-            raise HandInputError("리타게팅 해가 유한하지 않다")
-        return q
+        self.last_failure = None
+        return full[self.optimizer.idx_target]
 
     def full_qpos(self, q: np.ndarray) -> np.ndarray:
         return self.optimizer.full_qpos(np.asarray(q, dtype=float))
@@ -292,6 +302,7 @@ class DexEngine:
     def reset(self) -> None:
         self._last = self._limits.mean(1).astype(np.float32)
         self._smoothed = None
+        self.last_failure = None
         self.optimizer.reset()
 
 

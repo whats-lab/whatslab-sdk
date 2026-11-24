@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -15,8 +15,6 @@ from whatslab.core.constants import (
     XR_JOINT_COUNT,
     XR_WRIST,
 )
-
-from ..retargeter import HandInputError
 
 MANO_PALM: Tuple[int, ...] = (HAND21_WRIST, HAND21_INDEX_MCP, HAND21_MIDDLE_MCP, HAND21_LITTLE_MCP)
 _MIRROR = np.diag([-1.0, 1.0, 1.0])
@@ -48,23 +46,23 @@ def xr_to_mano(xr_joints) -> np.ndarray:
     return xr_wrist_positions(xr_joints)[list(OPENXR26_TO_HAND21)] @ OPENXR_TO_HAND21_AXES.T
 
 
-def palm_frame(wrist, index, middle, pinky, side: str) -> np.ndarray:
+def palm_frame(wrist, index, middle, pinky, side: str) -> Optional[np.ndarray]:
     w, i, m, p = (np.asarray(v, dtype=float) for v in (wrist, index, middle, pinky))
     z = m - w
     nz = float(np.linalg.norm(z))
     if not nz >= 1e-6:
-        raise HandInputError("손바닥 프레임: 손목과 중지 MCP 가 겹치거나 유한하지 않다")
+        return None
     z = z / nz
     y = i - p if side == "right" else p - i
     y = y - z * float(y @ z)
     ny = float(np.linalg.norm(y))
     if not ny >= 1e-6:
-        raise HandInputError("손바닥 프레임: 검지·소지 MCP 가 손가락 방향과 나란하다")
+        return None
     y = y / ny
     return np.column_stack([np.cross(y, z), y, z])
 
 
-def mano_palm_frame(mano: np.ndarray, side: str) -> np.ndarray:
+def mano_palm_frame(mano: np.ndarray, side: str) -> Optional[np.ndarray]:
     k = np.asarray(mano, dtype=float)
     return palm_frame(*(k[j] for j in MANO_PALM), side=side)
 
