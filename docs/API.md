@@ -310,6 +310,12 @@ URDF 와 DexPilot config(손끝 링크, 손바닥 링크)로 블록을 만든다
 HX5(`robotis_{left,right}`)는 config 전체가 robotPlatform HX5 설정과 같다 — 손끝은 robotPlatform 센서 프레임 위치를
 `link_offsets` 로 옮긴 점(FK 차 0 m), 관절 한계는 로봇 드라이버 한계(±1.57 rad), `max_evals` 20,
 `project_dist`/`escape_dist` 0.03/0.035. 왼손은 같은 값을 거울상으로 둔다.
+DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatform 실기 설정과 같다 — 공통으로
+`project_dist`/`escape_dist` 0.03/0.035. DG-5F-S 는 손바닥 링크 `link_2_2`·`link_3_2`·`link_5_3`, 엄지 `joint_1_[34]`·
+손가락 `joint_[2-5]_[34]` 한계 0~90°(왼손 엄지는 −90~0°). ORCA 는 `?-PP_*` 0~100°, `?-FingerTipAssembly_*`·`T-DP_*`
+0~107°. Allegro 는 굽힘 관절 한계(엄지 0~94.1/98.4°, MCP 0~92.2°, PIP 0~97.9°, DIP 0~92.7°)와 엄지 끝을
+`link_15.0` + `link_offsets` (0, 0, 0.0387) m(Wonik `allegro_hand_ros` v4 의 엄지 끝)로 둔다. 업스트림 비교 테스트
+(`test_dexpilot_close_to_dex_retargeting_0_5_0`)는 ORCA 에서 이 한계·거리를 빼고 dex-retargeting 0.5.0 과 비교한다.
 녹화 장갑 400프레임 + 합성 주먹·핀치·손가락별 굽힘 스윕에서 켰을 때 손끝 p95 가 2 배 넘게 나빠지거나
 드리프트·역행·떨림이 늘어난 손은 블록을 넣지 않았다(사전항 꺼짐):
 

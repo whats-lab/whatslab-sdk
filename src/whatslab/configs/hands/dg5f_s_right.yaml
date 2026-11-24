@@ -1,16 +1,19 @@
 name: dg5f_s_right
 side: right
 urdf: tesollo_dg5f_s/tesollo_dg5f_s_right.urdf
-palm_links: {index: link_2_1, middle: link_3_1, pinky: link_5_1}
+palm_links: {index: link_2_2, middle: link_3_2, pinky: link_5_3}
 human_hand_length: 0.19
 joint_limits_deg:
-  "joint_[2-5]_[34]": [-5.0, 90.0]
+  "joint_1_[34]": [0.0, 90.0]
+  "joint_[2-5]_[34]": [0.0, 90.0]
 max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: link_base
   finger_tip_link_names: [link_1_tip, link_2_tip, link_3_tip, link_4_tip, link_5_tip]
   low_pass_alpha: 0.5
+  project_dist: 0.03
+  escape_dist: 0.035
 posture_prior:
   weight: 0.01
   joints:

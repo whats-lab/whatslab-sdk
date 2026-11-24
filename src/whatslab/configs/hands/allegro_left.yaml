@@ -2,13 +2,29 @@ name: allegro_left
 side: left
 urdf: allegro_hand/allegro_hand_left.urdf
 palm_links: {index: link_9.0, middle: link_5.0, pinky: link_1.0}
+link_offsets:
+  link_15.0: [0.0, 0.0, 0.0387]
 human_hand_length: 0.19
+joint_limits_deg:
+  "joint_14.0": [0.0, 94.1]
+  "joint_15.0": [0.0, 98.4]
+  "joint_1.0": [0.0, 92.2]
+  "joint_5.0": [0.0, 92.2]
+  "joint_9.0": [0.0, 92.2]
+  "joint_2.0": [0.0, 97.9]
+  "joint_6.0": [0.0, 97.9]
+  "joint_10.0": [0.0, 97.9]
+  "joint_3.0": [0.0, 92.7]
+  "joint_7.0": [0.0, 92.7]
+  "joint_11.0": [0.0, 92.7]
 max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: wrist
-  finger_tip_link_names: [link_15.0_tip, link_11.0_tip, link_7.0_tip, link_3.0_tip]
+  finger_tip_link_names: [link_15.0, link_11.0_tip, link_7.0_tip, link_3.0_tip]
   low_pass_alpha: 0.5
+  project_dist: 0.03
+  escape_dist: 0.035
 posture_prior:
   weight: 0.01
   joint_weights: {joint_12.0: 0.07, joint_13.0: 0.07, joint_14.0: 0.07, joint_15.0: 0.07}

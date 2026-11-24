@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import subprocess
 import sys
@@ -353,11 +354,16 @@ def test_dex_engine_satisfies_engine_protocol():
 UPSTREAM_FIXTURE = os.path.join(os.path.dirname(__file__), "data", "dex_upstream_0_5_0.npz")
 
 
-@pytest.mark.parametrize("name", ("orca_right", "dg5f_right", "ability_right"))
-def test_dexpilot_close_to_dex_retargeting_0_5_0(name):
+@pytest.mark.parametrize("name,robotplatform", (("orca_right", True), ("dg5f_right", False),
+                                                ("ability_right", False)))
+def test_dexpilot_close_to_dex_retargeting_0_5_0(name, robotplatform):
     _require_urdf(name)
     data = np.load(UPSTREAM_FIXTURE)
-    eng = DexEngine(name, posture_prior=False)
+    cfg = DexHandConfig.load(name)
+    if robotplatform:
+        rt = {k: v for k, v in cfg.retargeting.items() if k not in ("project_dist", "escape_dist")}
+        cfg = dataclasses.replace(cfg, joint_limits={}, retargeting=rt)
+    eng = DexEngine(cfg, posture_prior=False)
     tip_ids = eng.kinematics.frame_ids(eng.config.retargeting["finger_tip_link_names"])
 
     def tips(q):

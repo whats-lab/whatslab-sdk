@@ -11,12 +11,18 @@ link_offsets:
 fixed_joints:
   L-Carpals_719fff8c_to_TopTower-Model_4a80d30e: 0.0
 human_hand_length: 0.19
+joint_limits_deg:
+  "?-PP_*": [0.0, 100.0]
+  "?-FingerTipAssembly_*": [0.0, 107.0]
+  "T-DP_*": [0.0, 107.0]
 max_evals: 10
 retargeting:
   type: DexPilot
   wrist_link_name: L-Carpals_719fff8c
   finger_tip_link_names: [T-DP_307db3cc, I-FingerTipAssembly_ed91b18a, M-FingerTipAssembly_34afb748, M-FingerTipAssembly_424a8e75, P-FingerTipAssembly_cd219176]
   low_pass_alpha: 0.5
+  project_dist: 0.03
+  escape_dist: 0.035
 posture_prior:
   weight: 0.01
   joints:
