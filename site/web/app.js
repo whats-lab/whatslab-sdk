@@ -997,7 +997,7 @@ function applyI18n() {
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
   document.querySelectorAll("[data-i18n-list]").forEach((el) => {
-    el.innerHTML = t(el.dataset.i18nList).map((item) => `<li>${item}</li>`).join("");
+    el.innerHTML = t(el.dataset.i18nList).map((item) => `<li>${item.replaceAll("{hands}", String(catalog.hands.length))}</li>`).join("");
   });
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
   document.querySelectorAll(".copy").forEach((b) => { b.textContent = t("copy"); });
