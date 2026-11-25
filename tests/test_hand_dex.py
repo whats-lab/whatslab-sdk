@@ -382,7 +382,7 @@ def test_dexpilot_close_to_dex_retargeting_0_5_0(name, robotplatform):
     data = np.load(UPSTREAM_FIXTURE)
     cfg = DexHandConfig.load(name)
     if robotplatform:
-        rt = {k: v for k, v in cfg.retargeting.items() if k not in ("project_dist", "escape_dist")}
+        rt = {k: v for k, v in cfg.retargeting.items() if k != "project_dist"}
         cfg = dataclasses.replace(cfg, joint_limits={}, retargeting=rt)
     eng = DexEngine(cfg, posture_prior=False)
     eng.optimizer.dexpilot.projection = _upstream_step_projection(eng.optimizer.dexpilot)
@@ -434,6 +434,14 @@ def test_pinch_projection_ramps_second_pair_and_has_no_hysteresis():
     back_target, back_weight = _sweep(state, refs[::-1])
     assert np.array_equal(back_target[::-1], target)
     assert np.array_equal(back_weight[::-1], weight)
+
+
+def test_escape_dist_is_accepted_and_ignored():
+    _require_urdf("dg5f_s_right")
+    plain, legacy = DexEngine("dg5f_s_right"), DexEngine("dg5f_s_right", escape_dist=0.035)
+    for curl in (0.2, 0.6, 0.9):
+        frame = synthetic_right_hand(curl)
+        assert np.array_equal(plain.solve(frame), legacy.solve(frame))
 
 
 @pytest.mark.parametrize("full", (-0.001, 0.03, 0.04))

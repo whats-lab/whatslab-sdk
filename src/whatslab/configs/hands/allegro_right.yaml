@@ -24,7 +24,6 @@ retargeting:
   finger_tip_link_names: [link_15.0, link_3.0_tip, link_7.0_tip, link_11.0_tip]
   low_pass_alpha: 0.5
   project_dist: 0.03
-  escape_dist: 0.035
 posture_prior:
   weight: 0.01
   joint_weights: {joint_12.0: 0.07, joint_13.0: 0.07, joint_14.0: 0.07, joint_15.0: 0.07}

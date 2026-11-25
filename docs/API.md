@@ -252,7 +252,7 @@ allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ab
 | `normal_delta` | 0.004 | 직전 해로 당기는 정규화 계수 — 기울기에만 `2·normal_delta·(x − 직전)` 로 들어간다(upstream 과 같다). |
 | `project_dist` | 0.03 | DexPilot 핀치 투영이 시작되는 엄지–손가락 사람 거리. |
 | `project_full_dist` | `project_dist`/2 | 핀치 투영이 다 켜지는 거리. 0 이상 `project_dist` 미만. |
-| `escape_dist` | — | 받기만 하고 쓰지 않는다(이전 계단식 투영의 히스테리시스 거리). |
+| `escape_dist` | — | 사용 중단. 이전 계단식 투영의 히스테리시스 거리로, 기존 사용자 config 가 그대로 로드되도록 받되 무시한다. 동봉 config 에는 없다. |
 | `low_pass_alpha` | 0.1 | 출력 1차 저역통과(`y += α(x − y)`). 0~1 밖이면 끈다. |
 
 핀치 투영은 upstream(거리 문턱에서 켜고 끄는 계단 + 히스테리시스)과 달리 연속 램프다. 엄지 쌍 사람 거리 d 에 대해
@@ -318,9 +318,9 @@ URDF 와 DexPilot config(손끝 링크, 손바닥 링크)로 블록을 만든다
 손의 왼손에 생성 블록 + 같은 손 조정(엄지 가중치, DG-5F-S `joint_5_1`, ORCA `open_hand`)을, 나머지에 생성 블록을 넣었다.
 HX5(`robotis_{left,right}`)는 config 전체가 robotPlatform HX5 설정과 같다 — 손끝은 robotPlatform 센서 프레임 위치를
 `link_offsets` 로 옮긴 점(FK 차 0 m), 관절 한계는 로봇 드라이버 한계(±1.57 rad), `max_evals` 20,
-`project_dist`/`escape_dist` 0.03/0.035. 왼손은 같은 값을 거울상으로 둔다.
+`project_dist` 0.03(robotPlatform 의 `escape_dist` 0.035 는 램프 투영에서 쓰지 않아 뺐다). 왼손은 같은 값을 거울상으로 둔다.
 DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatform 실기 설정과 같다 — 공통으로
-`project_dist`/`escape_dist` 0.03/0.035. DG-5F-S 는 손바닥 링크 `link_2_2`·`link_3_2`·`link_5_3`, 엄지 `joint_1_[34]`·
+`project_dist` 0.03(`escape_dist` 는 뺐다). DG-5F-S 는 손바닥 링크 `link_2_2`·`link_3_2`·`link_5_3`, 엄지 `joint_1_[34]`·
 손가락 `joint_[2-5]_[34]` 한계 0~90°(왼손 엄지는 −90~0°). ORCA 는 `?-PP_*` 0~100°, `?-FingerTipAssembly_*`·`T-DP_*`
 0~107°. Allegro 는 굽힘 관절 한계(엄지 0~94.1/98.4°, MCP 0~92.2°, PIP 0~97.9°, DIP 0~92.7°)와 엄지 끝을
 `link_15.0` + `link_offsets` (0, 0, 0.0387) m(Wonik `allegro_hand_ros` v4 의 엄지 끝)로 둔다. 업스트림 비교 테스트
