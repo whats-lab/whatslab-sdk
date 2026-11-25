@@ -13,8 +13,7 @@ posture_prior:
   weight: 0.01
   joints:
     right_thumb_MCP_FE: {thumb.mcp: 1.0}
-    right_thumb_MCP_AA: {thumb.ip: 0.5}
-    right_thumb_IP: {thumb.ip: 0.5}
+    right_thumb_IP: {thumb.ip: 1.0}
     right_index_MCP_AA: {index.spread: 1.0}
     right_index_MCP_FE: {index.mcp: 1.0}
     right_index_PIP: {index.pip: 1.0}

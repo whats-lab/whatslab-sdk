@@ -36,3 +36,4 @@ posture_prior:
     flex_joint: thumb_pitch
     step_deg: 2.0
     axis_weight: 0.5
+  joint_weights: {thumb_pitch: 0.3}

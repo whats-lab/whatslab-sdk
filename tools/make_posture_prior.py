@@ -17,6 +17,9 @@ PALM_DEPTH = 0.03
 TWIST_RATIO = 0.2
 FLEX_PROBE = 0.5
 MIN_BONE = 0.005
+ONE_SIDED = np.radians(5.0)
+CUP_GAIN = 0.25
+AXIS_COS = np.cos(np.radians(45.0))
 
 
 class Hand:
@@ -113,8 +116,17 @@ def finger_entries(hand, finger, joints, tip):
     first_flex = next((i for i, j in enumerate(joints) if kinds[j] == "flexion"), len(joints))
     before = [j for j in lateral if joints.index(j) < first_flex]
     abduction = before[-1:] or lateral[:1]
-    flexion = [j for j in joints if kinds[j] == "flexion"][-3:]
+    cup = [j for j in joints if kinds[j] == "flexion" and abduction
+           and joints.index(j) < joints.index(abduction[0])
+           and np.linalg.norm(hand.axis(j)[1] - hand.axis(abduction[0])[1])
+           > np.linalg.norm(hand.axis(j)[1] - hand.link_pos(hand.eng.wrist_frame))]
+    flexion = [j for j in joints if kinds[j] == "flexion" and j not in cup][-3:]
     entries = []
+    for j in cup:
+        source, k = hand.source[j]
+        sign = 1.0 if hand.tip_velocity(j, tip) @ hand.volar > 0 else -1.0
+        entries.append((source, (k, {f"{finger}.{n}+": sign * CUP_GAIN
+                                     for n in ("mcp", "pip", "dip")})))
     for j in abduction:
         source, k = hand.source[j]
         sign = 1.0 if hand.tip_velocity(j, tip) @ hand.ulnar > 0 else -1.0
@@ -128,7 +140,18 @@ def finger_entries(hand, finger, joints, tip):
     return entries
 
 
+def one_sided(hand, joint):
+    source, k = hand.source[joint]
+    lo, hi = hand.eng.joint_limits[hand.eng.joint_names.index(source)]
+    if lo >= -ONE_SIDED or hi <= ONE_SIDED:
+        return (1.0 if hi > -lo else -1.0) * (1.0 if k > 0 else -1.0)
+    return None
+
+
 def thumb_sign(hand, joint, tip):
+    fixed = one_sided(hand, joint)
+    if fixed is not None:
+        return fixed
     toward = hand.palm_point - hand.link_pos(tip)
     return 1.0 if hand.tip_velocity(joint, tip) @ toward > 0 else -1.0
 
@@ -146,8 +169,10 @@ def thumb_block(hand, joints, tip):
     flex_joint = after[0] if after else base[1]
     spec = {"joints": base, "bone": [hand.child[base[1]], bone_end], "flex_joint": flex_joint,
             "step_deg": 2.0, "axis_weight": 0.5}
+    distal = hand.axis(joints[-1])[0]
     flexion = [j for j in after
-               if hand.source[j][0] not in base and hand.kind(j, tip) != "twist"]
+               if hand.source[j][0] not in base and hand.kind(j, tip) != "twist"
+               and abs(hand.axis(j)[0] @ distal) > AXIS_COS]
     slots = THUMB_SLOTS.get(len(flexion)) or (
         [{"mcp": 1.0}] + [{"ip": round(1.0 / (len(flexion) - 1), 3)}] * (len(flexion) - 1))
     entries = []

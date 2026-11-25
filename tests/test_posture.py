@@ -163,17 +163,11 @@ def test_positive_suffix_uses_positive_part():
     assert len(FEATURES) == 18
 
 
-PRIOR_OFF_HANDS = ("allegro_v5_4f", "linkerhand_l20lite", "linkerhand_o7", "unitree_dex2_5")
-PRIOR_OFF = {f"{n}_{s}" for n in PRIOR_OFF_HANDS for s in ("left", "right")}
-
-
 @pytest.mark.parametrize("name", hand_config_names())
 def test_every_bundled_config_has_a_usable_prior(name):
     _require_urdf(name)
     eng = DexEngine(name)
-    assert (eng.posture is None) == (name in PRIOR_OFF)
-    if eng.posture is None:
-        return
+    assert eng.posture is not None
     xr = hand_for(eng.config.side, 0.5)
     center, weight = eng.posture_target(xr)
     lim = eng.joint_limits

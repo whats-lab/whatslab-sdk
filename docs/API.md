@@ -316,15 +316,11 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 0~107°. Allegro 는 굽힘 관절 한계(엄지 0~94.1/98.4°, MCP 0~92.2°, PIP 0~97.9°, DIP 0~92.7°)와 엄지 끝을
 `link_15.0` + `link_offsets` (0, 0, 0.0387) m(Wonik `allegro_hand_ros` v4 의 엄지 끝)로 둔다. 업스트림 비교 테스트
 (`test_dexpilot_close_to_dex_retargeting_0_5_0`)는 ORCA 에서 이 한계·거리를 빼고 dex-retargeting 0.5.0 과 비교한다.
-녹화 장갑 400프레임 + 합성 주먹·핀치·손가락별 굽힘 스윕에서 켰을 때 손끝 p95 가 2 배 넘게 나빠지거나
-드리프트·역행·떨림이 늘어난 손은 블록을 넣지 않았다(사전항 꺼짐):
-
-| 손 | 이유(꺼짐 → 켬) |
-|---|---|
-| `allegro_v5_4f` | 역행 59 → 91° |
-| `unitree_dex2_5` | 떨림 p95 0.004 → 0.2~1.0° |
-| `linkerhand_o7` | 펴진 손 드리프트 0.02 → 28° |
-| `linkerhand_l20lite` | 역행 43 → 54°(왼손) |
+동봉 config 85개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
+합성 주먹·핀치·손가락별 굽힘 스윕으로 관절별 `joint_weights`·게인, `weight`, `project_dist` 만 조정했다(오른손 값을 왼손에
+복사, 결과가 나쁜 왼손은 따로 조정). 85개 중앙값: 역행 14.5 → 1.9°, 드리프트 0.17 → 0.12°, 손끝 p95 32.0 mm 그대로.
+역행이 3° 를 크게 넘게 남은 손: `leap_hand_v2_adv_right` 11.2°, `leap_left` 10.3°, `linkerhand_l25` 9.4°,
+`schunk_left` 7.6°, `allegro_v5_4f` 7.5°, `orca_v1` 7.1°, `leap_right` 7.0°.
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 

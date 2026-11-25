@@ -16,7 +16,7 @@ retargeting:
   finger_tip_link_names: [Link_14R, Link_24R, Link_34R, Link_44R, Link_54R]
   low_pass_alpha: 0.5
 posture_prior:
-  weight: 0.01
+  weight: 0.04
   joints:
     Pitch_13R: {thumb.mcp: 1.0}
     Pitch_14R: {thumb.ip: 1.0}
@@ -42,3 +42,4 @@ posture_prior:
     flex_joint: Pitch_13R
     step_deg: 2.0
     axis_weight: 0.5
+  joint_weights: {Pitch_13R: 0.1}

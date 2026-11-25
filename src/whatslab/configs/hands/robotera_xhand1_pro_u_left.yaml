@@ -12,7 +12,7 @@ retargeting:
 posture_prior:
   weight: 0.01
   joints:
-    left_hand_thumb_pip_joint: {thumb.mcp: -1.0, thumb.ip: -1.0}
+    left_hand_thumb_pip_joint: {thumb.mcp: 1.0, thumb.ip: 1.0}
     left_hand_index_mcp0_joint: {index.spread: -1.0}
     left_hand_index_mcp1_joint: {index.mcp: 1.0}
     left_hand_index_pip_joint: {index.pip: 1.0}

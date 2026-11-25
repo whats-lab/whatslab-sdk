@@ -18,8 +18,8 @@ retargeting:
 posture_prior:
   weight: 0.01
   joints:
-    right_thumb_yaw1_joint: {thumb.mcp: -1.0}
-    right_thumb_yaw2_joint: {thumb.ip: -0.5}
+    right_thumb_yaw1_joint: {thumb.mcp: 1.0}
+    right_thumb_yaw2_joint: {thumb.ip: -1.5}
     right_thumb_yaw3_joint: {thumb.ip: -0.5}
     right_index-finger_yaw_joint: {index.spread: -1.0}
     right_index-finger_roll1_joint: {index.mcp: 1.0}

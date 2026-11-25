@@ -19,7 +19,7 @@ posture_prior:
   weight: 0.01
   joints:
     thumb_cmc_pitch: {thumb.mcp: 1.0}
-    thumb_dip: {thumb.ip: 1.0}
+    thumb_dip: {thumb.ip: 1.5}
     index_mcp_roll: {index.spread: -1.0}
     index_mcp_pitch: {index.mcp: 1.0}
     index_dip: {index.pip: 1.0, index.dip: 0.5}
@@ -31,10 +31,11 @@ posture_prior:
     ring_dip: {ring.pip: 1.0, ring.dip: 0.5}
     pinky_mcp_roll: {little.spread: -1.0}
     pinky_mcp_pitch: {little.mcp: 1.0}
-    pinky_dip: {little.pip: 1.0, little.dip: 0.5}
+    pinky_dip: {little.pip: 0.5, little.dip: 0.25}
   thumb_base:
     joints: [thumb_cmc_roll, thumb_cmc_yaw]
     bone: [thumb_metacarpals_base2_Link, thumb_metacarpals_Link]
     flex_joint: thumb_cmc_pitch
     step_deg: 2.0
     axis_weight: 0.5
+  joint_weights: {thumb_cmc_pitch: 0.1, pinky_dip: 0.3}

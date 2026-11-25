@@ -10,9 +10,9 @@ retargeting:
   finger_tip_link_names: [L_thumb_tip, L_index_tip, L_middle_tip, L_ring_tip, L_pinky_tip]
   low_pass_alpha: 0.5
 posture_prior:
-  weight: 0.01
+  weight: 0.015
   joints:
-    L_thumb_mcp_joint: {thumb.mcp: -0.224, thumb.ip: 0.295}
+    L_thumb_mcp_joint: {thumb.mcp: -0.448, thumb.ip: -0.59}
     L_index_abad_joint: {index.spread: -1.0}
     L_index_pip_joint: {index.mcp: 0.454, index.pip: 0.498, index.dip: 0.249}
     L_middle_pip_joint: {middle.mcp: 0.454, middle.pip: 0.498, middle.dip: 0.249}
@@ -26,3 +26,4 @@ posture_prior:
     flex_joint: L_thumb_mcp_joint
     step_deg: 2.0
     axis_weight: 0.5
+  joint_weights: {L_thumb_mcp_joint: 0.03}
