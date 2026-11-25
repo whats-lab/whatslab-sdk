@@ -326,6 +326,7 @@ def solve_hand(job):
             "modelSide": engine.config.side,
             "joints": names,
             "actuated": len(actuated),
+            "dof": len(engine.joint_names),
             "palm": np.round(rot_t, 6).tolist(),
             "fitError": float(np.abs(c @ rot_t - k).max()),
             "wrist": np.round(wrist, 6).tolist(),
@@ -426,13 +427,15 @@ def main():
         )
         primary = urdfs.get("right") or urdfs["left"]
         structure = urdf_structure(hands_root / primary)
+        engine_side = solved_sides.get("right") or solved_sides.get("left")
+        dof = engine_side["dof"] if engine_side else structure["dof"]
         notes = sorted(p.name for p in (hands_root / hid).iterdir() if NOTE_FILES.match(p.name))
         base = f"{args.repo_url}/tree/{args.ref}/robots/hands/{hid}"
         hands.append(
             {
                 "id": hid,
                 **row,
-                "dof": structure["dof"],
+                "dof": dof,
                 "fingers": structure["fingers"],
                 "retargeted": bool(solved_sides),
                 "sides": [s for s in SIDES if s in urdfs and not data["sides"][s]["mirrored"]],
@@ -446,7 +449,8 @@ def main():
         fails = sum(s["failures"] for s in solved_sides.values())
         fit = max((s["fitError"] for s in solved_sides.values()), default=0.0)
         print(
-            f"{hid:28s} dof={structure['dof']:2d} fingers={structure['fingers']} "
+            f"{hid:28s} dof={dof:2d} urdf_dof={structure['dof']:2d} "
+            f"fingers={structure['fingers']} "
             f"sides={','.join(urdfs)} retarget={'yes' if solved_sides else 'no '} "
             f"fail={fails} fit={fit:.1e}"
         )

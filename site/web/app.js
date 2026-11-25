@@ -540,6 +540,10 @@ async function show() {
   scene.updateMatrixWorld(true);
   const box = !data.meshes ? new THREE.Box3() : robot.userData.revealed ? new THREE.Box3().setFromObject(mount) : jointBox(robot);
   current = { hand, side: state.side, data, sideData, robot, box, joints, values: new Float32Array(joints.length) };
+  stopPosing();
+  engine.robotQ = null;
+  engine.id += 1;
+  engine.ready = false;
   const span = box.isEmpty() ? 0 : Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 3;
   grid.scale.setScalar(Math.max(span, 0.3));
   const animated = Boolean(sideData.clips);
