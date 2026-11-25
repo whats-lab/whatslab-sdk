@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import URDFLoader from "urdf-loader";
 import { currentLang, setLang, t } from "./i18n.js";
+import { HandModel, TIPS } from "./teleop.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -39,6 +40,7 @@ const state = {
   side: "right",
   human: "beside",
   playing: true,
+  posing: false,
   t: 0,
   speed: 1,
 };
@@ -185,7 +187,8 @@ const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().
     });
     root.visible = false;
     humanFrame.add(root);
-    handMeshes[side] = { root, bones: XR_BONES.map((n) => root.getObjectByName(n)) };
+    const bones = XR_BONES.map((n) => root.getObjectByName(n));
+    handMeshes[side] = { root, bones, model: new HandModel(bones, side) };
   })));
 
 const converted = new WeakMap();
@@ -647,8 +650,11 @@ function lerpRow(r0, r1, a, scale) {
   return out;
 }
 
+let lastHuman = null;
+
 function applyPose(q, p) {
   const names = current.sideData.joints;
+  if (p) lastHuman = p;
   for (let k = 0; k < names.length; k++) current.robot.setJointValue(names[k], q[k]);
   current.values.set(q);
   if (!p) return;
@@ -674,6 +680,213 @@ function applyPose(q, p) {
     bone.quaternion.set(p[o], p[o + 1], p[o + 2], p[o + 3]).normalize();
     bone.position.set(p[o + 4], p[o + 5], p[o + 6]);
   });
+}
+
+const handleMaterial = new THREE.MeshBasicMaterial({ color: color("--accent"), transparent: true, opacity: 0.55, depthTest: false });
+const handleHot = new THREE.MeshBasicMaterial({ color: color("--accent"), depthTest: false });
+const handles = TIPS.map((_, f) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.009, 16, 12), handleMaterial);
+  m.renderOrder = 20;
+  m.userData.finger = f;
+  humanFrame.add(m);
+  return m;
+});
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const dragPlane = new THREE.Plane();
+let drag = null;
+let hot = null;
+const engine = { worker: null, ready: false, busy: false, dirty: false, id: 0, robotQ: null, solveMs: [], failed: false };
+window.__solveMs = engine.solveMs;
+
+function canPose() {
+  return Boolean(current && current.sideData.clips && current.handMesh && human.visible);
+}
+
+function placeHandles() {
+  const show = canPose();
+  handles.forEach((h, f) => {
+    h.visible = show;
+    if (show) h.position.copy(current.handMesh.bones[TIPS[f]].position);
+  });
+}
+
+function pickHandle(e) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(handles.filter((h) => h.visible), false)[0];
+  return hit ? hit.object : null;
+}
+
+function armToWorld() {
+  const m = current.handMesh.model;
+  const c = new THREE.Matrix4().setFromMatrix3(m.toCanon);
+  const t = m.pos[0].clone().applyMatrix3(m.toCanon).negate();
+  c.setPosition(t);
+  humanFrame.updateMatrixWorld(true);
+  return new THREE.Matrix4().multiplyMatrices(humanFrame.matrixWorld, c);
+}
+
+function showHuman() {
+  const p = current.handMesh.model.canonical();
+  applyPose(engine.robotQ || current.values, p);
+  engine.dirty = true;
+}
+
+function startPosing() {
+  if (state.posing) return;
+  state.posing = true;
+  state.playing = false;
+  playBtn.classList.add("paused");
+  playBtn.setAttribute("aria-label", "Play");
+  if (lastHuman) current.handMesh.model.fromCanonical(lastHuman);
+  engine.robotQ = Float32Array.from(current.values);
+  ensureEngine();
+}
+
+function stopPosing() {
+  state.posing = false;
+}
+
+function engineConfigure() {
+  if (!engine.worker || !current || !current.sideData.config) return;
+  engine.ready = false;
+  engine.busy = false;
+  engine.id += 1;
+  const sd = current.sideData;
+  const id = engine.id;
+  fetch("py/wheel.json").then((r) => (r.ok ? r.json() : null)).then((w) => {
+    if (!w) {
+      showRow("engine", { frac: 0, text: t("engine.nowheel"), failed: true });
+      return;
+    }
+    engine.worker.postMessage({
+      type: "init",
+      id,
+      wheelUrl: new URL(`py/${w.wheel}`, location.href).href,
+      urdfUrl: new URL(sd.engineUrdf, location.href).href,
+      urdfRel: sd.engineUrdf.replace(/^robots\//, ""),
+      config: sd.config,
+      side: current.side,
+    });
+  });
+}
+
+const ENGINE_STAGES = {
+  pyodide: ["Pyodide", 0, 0.4],
+  packages: ["numpy, scipy", 0.4, 0.88],
+  wheel: ["whatslab-sdk", 0.88, 0.95],
+  engine: ["building engine", 0.95, 1],
+};
+
+function showRow(part, { frac, text, failed }) {
+  const box = $("#engine-loading");
+  const pct = Math.round(Math.min(Math.max(frac, 0), 1) * 100);
+  box.hidden = false;
+  box.classList.toggle("failed", Boolean(failed));
+  box.setAttribute("aria-valuenow", String(pct));
+  box.querySelector(".loading-fill").style.width = `${pct}%`;
+  box.querySelector(".loading-value").textContent = text;
+}
+
+function ensureEngine() {
+  if (engine.worker) return;
+  engine.worker = new Worker(new URL("engine-worker.js", import.meta.url), { type: "module" });
+  engine.started = performance.now();
+  showRow("engine", { frac: 0, text: t("engine.starting") });
+  engine.worker.onerror = (e) => {
+    engine.failed = true;
+    showRow("engine", { frac: 0, text: t("engine.failed", { msg: e.message || "engine-worker.js" }), failed: true });
+  };
+  engine.worker.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === "stage" || msg.type === "progress") {
+      const [label, lo, hi] = ENGINE_STAGES[msg.stage];
+      const inner = msg.expected ? Math.min(msg.received / msg.expected, 1) : 0;
+      const frac = lo + (hi - lo) * inner;
+      const mb = (n) => (n / 1e6).toFixed(1);
+      showRow("engine", { frac, text: `${Math.round(frac * 100)}% · ${label}${msg.expected ? ` ${mb(msg.received)} / ${mb(msg.expected)} MB` : ""}` });
+    } else if (msg.type === "ready" && msg.id === engine.id) {
+      engine.ready = true;
+      engine.dirty = true;
+      window.__engineReady = Math.round(performance.now() - engine.started);
+      $("#engine-loading").hidden = true;
+    } else if (msg.type === "error") {
+      engine.failed = true;
+      showRow("engine", { frac: 0, text: t("engine.failed", { msg: msg.message }), failed: true });
+    } else if (msg.type === "pose") {
+      engine.busy = false;
+      if (msg.id !== engine.id || !msg.values || !current) return;
+      engine.solveMs.push(msg.values[0]);
+      if (engine.solveMs.length > 200) engine.solveMs.shift();
+      engine.robotQ = Float32Array.from(msg.values.slice(1));
+      if (state.posing) applyPose(engine.robotQ, lastHuman);
+    }
+  };
+  engineConfigure();
+}
+
+function pumpEngine() {
+  if (!state.posing || !engine.ready || engine.busy || !engine.dirty || !current) return;
+  engine.dirty = false;
+  engine.busy = true;
+  const sd = current.sideData;
+  engine.worker.postMessage({ type: "solve", id: engine.id, xr: current.handMesh.model.xr(Boolean(sd.mirrored)) });
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!canPose()) return;
+  const h = pickHandle(e);
+  if (!h) return;
+  e.stopImmediatePropagation();
+  controls.enabled = false;
+  startPosing();
+  showHuman();
+  placeHandles();
+  const world = h.getWorldPosition(new THREE.Vector3());
+  dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), world);
+  drag = { finger: h.userData.finger, pointer: e.pointerId };
+  canvas.setPointerCapture(e.pointerId);
+}, { capture: true });
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!drag) {
+    const h = canPose() ? pickHandle(e) : null;
+    if (h !== hot) {
+      if (hot) hot.material = handleMaterial;
+      hot = h;
+      if (hot) hot.material = handleHot;
+      canvas.style.cursor = hot ? "grab" : "";
+    }
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  const world = raycaster.ray.intersectPlane(dragPlane, new THREE.Vector3());
+  if (!world) return;
+  const target = world.applyMatrix4(armToWorld().invert());
+  current.handMesh.model.solveTip(drag.finger, target);
+  showHuman();
+});
+
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.pointer) return;
+  drag = null;
+  controls.enabled = true;
+  canvas.releasePointerCapture(e.pointerId);
+}
+
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
+function setPose(name) {
+  if (!canPose()) return;
+  startPosing();
+  if (name === "open") current.handMesh.model.reset();
+  else current.handMesh.model.preset(name);
+  showHuman();
 }
 
 const jointCells = [];
@@ -908,7 +1121,12 @@ for (const m of motions.motions) {
   motionsEl.append(b);
 }
 
-motionsEl.addEventListener("click", (e) => e.target.dataset.motion && select({ motion: e.target.dataset.motion }));
+motionsEl.addEventListener("click", (e) => {
+  if (!e.target.dataset.motion) return;
+  stopPosing();
+  select({ motion: e.target.dataset.motion });
+});
+$("#poses").addEventListener("click", (e) => e.target.dataset.pose && setPose(e.target.dataset.pose));
 $("#side").addEventListener("click", (e) => e.target.dataset.side && select({ side: e.target.dataset.side }));
 $("#human").addEventListener("click", (e) => {
   if (!e.target.dataset.human) return;
@@ -932,6 +1150,10 @@ window.addEventListener("keydown", (e) => {
 });
 const playBtn = $("#play");
 playBtn.addEventListener("click", () => {
+  if (state.posing) {
+    stopPosing();
+    state.playing = false;
+  }
   state.playing = !state.playing;
   playBtn.classList.toggle("paused", !state.playing);
   playBtn.setAttribute("aria-label", state.playing ? "Pause" : "Play");
@@ -967,7 +1189,7 @@ function tick(now) {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   resize();
-  if (current && current.sideData.clips && !state.downloading) {
+  if (current && current.sideData.clips && !state.downloading && !state.posing) {
     const d = duration();
     if (state.playing) state.t = (state.t + dt * state.speed) % (d + 0.6);
     const t = Math.min(state.t, d);
@@ -978,6 +1200,8 @@ function tick(now) {
   }
   updateTable(now);
   drainQueue(4);
+  pumpEngine();
+  placeHandles();
   if (state.view === "detail" && !state.downloading) {
     controls.update();
     renderer.render(scene, camera);

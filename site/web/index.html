@@ -106,11 +106,24 @@ print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
           <p class="loading-text mono"></p>
           <p class="loading-failed mono" hidden></p>
         </div>
+        <div id="engine-loading" class="loading engine-loading" role="progressbar" aria-label="Retargeting engine download" aria-valuemin="0" aria-valuemax="100" hidden>
+          <p class="loading-line mono"><span data-i18n="engine.label">Retargeting engine</span><span class="loading-value"></span></p>
+          <div class="loading-track"><span class="loading-fill"></span></div>
+        </div>
       </div>
 
       <div class="controls">
         <div class="row" id="motion-row">
           <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
+        </div>
+        <div class="row" id="pose-row">
+          <div class="segmented small" id="poses" role="group" aria-label="Pose">
+            <button type="button" data-pose="open" data-i18n="pose.open">Open</button>
+            <button type="button" data-pose="fist" data-i18n="pose.fist">Fist</button>
+            <button type="button" data-pose="pinch" data-i18n="pose.pinch">Pinch</button>
+            <button type="button" data-pose="v" data-i18n="pose.v">V</button>
+          </div>
+          <span class="hint" data-i18n="pose.hint"></span>
         </div>
         <div class="row transport" id="transport">
           <button id="play" type="button" class="icon-btn" aria-label="Pause">

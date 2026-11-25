@@ -255,7 +255,7 @@ pycodestyle·pep8-naming·isort·pyflakes, 줄 길이 99).
 ```bash
 uv build --wheel --out-dir dist
 uv run --no-project --with dist/whatslab_sdk-1.0.0-py3-none-any.whl python site/build.py \
-    --repo ../dexterous-hand-urdf
+    --repo ../dexterous-hand-urdf --wheel dist/whatslab_sdk-1.0.0-py3-none-any.whl
 python -m http.server -d _site
 ```
 

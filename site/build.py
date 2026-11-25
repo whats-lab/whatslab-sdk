@@ -36,6 +36,7 @@ def parse_args():
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--motions", type=Path, default=HERE / "motions")
     p.add_argument("--out", type=Path, default=HERE.parent / "_site")
+    p.add_argument("--wheel", type=Path, required=True)
     p.add_argument("--repo-url", default="https://github.com/whats-lab/dexterous-hand-urdf")
     p.add_argument("--ref", default="master")
     p.add_argument("--jobs", type=int, default=os.cpu_count())
@@ -353,11 +354,12 @@ def main():
         data = {"id": hid, "meshes": mesh_sources(manifest), "sides": {}}
         for side, rel in urdfs.items():
             shown = display_urdf(hands_root, rel)
-            urdf_files.add(shown)
+            urdf_files |= {shown, rel}
             missing, count, size = mesh_download(manifest, visual_meshes(hands_root, shown))
             missing_meshes += [f"{shown}: {m}" for m in missing]
             entry = {
                 "urdf": f"robots/{shown}",
+                "engineUrdf": f"robots/{rel}",
                 "meshFiles": count,
                 "meshBytes": size,
             }
@@ -441,6 +443,9 @@ def main():
         dst = out / "robots" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(hands_root / rel, dst)
+    (out / "py").mkdir()
+    shutil.copy2(args.wheel, out / "py" / args.wheel.name)
+    (out / "py" / "wheel.json").write_text(json.dumps({"wheel": args.wheel.name}))
     total = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(
         f"{len(hands)} hands ({len(retargeted)} retargeted), {len(urdf_files)} URDF files, "

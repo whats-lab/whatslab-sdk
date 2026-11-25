@@ -265,6 +265,24 @@ body {
 
 .detail-body { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 32px); overflow-y: auto; }
 
+.engine-loading {
+  top: 12px;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 32px));
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.loading-line { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+
+.loading-value { color: var(--faint); text-align: right; }
+
+.engine-loading.failed .loading-value { color: var(--ink); }
+
+.hint { color: var(--muted); font-size: 12px; }
+
 .loading-title { margin: 0 0 10px; text-align: center; font-size: 13px; color: var(--ink); }
 
 .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 14px 16px; min-width: 0; }
