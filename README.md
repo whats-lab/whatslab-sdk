@@ -71,6 +71,7 @@ repository at the pinned commit.
 | Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
 | Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 4 fingers, 16 actuated; wrist offset |
 | Allegro Hand V6 | `dex:allegro_v6` | `allegro_v6_{left,right}.yaml` | 5 fingers, 20 actuated; tip offsets on distal links |
+| AIDIN Hand Gen2 | `dex:aidin_hand2` | `aidin_hand2_{left,right}.yaml` | 5 fingers, 16 actuated; each joint4 is passive (four-bar from joint3) — approximated as a linear coupling (`couplings`, least-squares fit to the upstream four-bar table, max error 6.3° fingers / 8.7° thumb); tactile pad links kept; tip offsets on distal links |
 
 **Korean humanoid hands**
 
@@ -249,7 +250,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 83 files), geort/ (2 files), geort_train/ (42 files)
+└── configs/          hands/ (DexPilot, 85 files), geort/ (2 files), geort_train/ (42 files)
 ```
 
 ## Examples & tools

@@ -1,0 +1,47 @@
+name: aidin_hand2_right
+side: right
+urdf: aidin_hand2/aidin_hand2_right.urdf
+palm_links: {index: right_index_link1, middle: right_middle_link1, pinky: right_baby_link1}
+link_offsets:
+  right_thumb_link4: [0.0009, 0, 0.0333]
+  right_index_link4: [-0.0014, 0, 0.0251]
+  right_middle_link4: [-0.0014, 0, 0.0251]
+  right_ring_link4: [-0.0014, 0, 0.0251]
+  right_baby_link4: [-0.0014, 0, 0.0251]
+couplings:
+  right_thumb_joint4: {source: right_thumb_joint3, multiplier: 1.125, offset: -0.1446}
+  right_index_joint4: {source: right_index_joint3, multiplier: 1.0989, offset: 0.1096}
+  right_middle_joint4: {source: right_middle_joint3, multiplier: 1.0989, offset: 0.1096}
+  right_ring_joint4: {source: right_ring_joint3, multiplier: 1.0989, offset: 0.1096}
+  right_baby_joint4: {source: right_baby_joint3, multiplier: 1.0989, offset: 0.1096}
+human_hand_length: 0.19
+max_evals: 10
+retargeting:
+  type: DexPilot
+  wrist_link_name: right_hand_base_link
+  finger_tip_link_names: [right_thumb_link4, right_index_link4, right_middle_link4, right_ring_link4, right_baby_link4]
+  low_pass_alpha: 0.5
+posture_prior:
+  weight: 0.015
+  joints:
+    right_thumb_joint3: {thumb.mcp: 0.441, thumb.ip: 0.497}
+    right_index_joint1: {index.spread: 1.0}
+    right_index_joint2: {index.mcp: 1.0}
+    right_index_joint3: {index.pip: 0.453, index.dip: 0.498}
+    right_middle_joint1: {middle.spread: 1.0}
+    right_middle_joint2: {middle.mcp: 1.0}
+    right_middle_joint3: {middle.pip: 0.453, middle.dip: 0.498}
+    right_ring_joint1: {ring.spread: 1.0}
+    right_ring_joint2: {ring.mcp: 1.0}
+    right_ring_joint3: {ring.pip: 0.453, ring.dip: 0.498}
+    right_baby_joint1: {little.spread: 1.0}
+    right_baby_joint2: {little.mcp: 1.0}
+    right_baby_joint3: {little.pip: 0.453, little.dip: 0.498}
+  thumb_base:
+    joints: [right_thumb_joint0, right_thumb_joint1]
+    bone: [right_thumb_link1, right_thumb_link3]
+    flex_joint: right_thumb_joint2
+    step_deg: 2.0
+    axis_weight: 0.0
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
+  joint_weights: {right_thumb_joint3: 0.02, right_baby_joint3: 0.02}

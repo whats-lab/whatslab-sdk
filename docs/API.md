@@ -169,6 +169,7 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `allegro_v5_4f` | `allegro_v5_4f/allegro_v5_4f_right_a.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | `allegro_v5_sense` | `allegro_v5_sense/allegro_v5_sense_right.urdf` | `palm_link` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | `allegro_v6` | `allegro_v6/allegro_v6_right.urdf` | `base_link` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| `aidin_hand2` | `aidin_hand2/aidin_hand2_right.urdf` | `right_hand_base_link` | 손가락 5개, 구동 16축; 각 joint4 는 passive(joint3 의 4절 링크) — 선형 결합으로 근사(`couplings`, 업스트림 4절 링크 표에 최소제곱 맞춤, 최대 오차 손가락 6.3°·엄지 8.7°); 촉각 패드 링크 유지; 말단 링크 + 손끝 오프셋 |
 
 **국내 휴머노이드 손**
 
@@ -329,7 +330,7 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 0~107°. Allegro 는 굽힘 관절 한계(엄지 0~94.1/98.4°, MCP 0~92.2°, PIP 0~97.9°, DIP 0~92.7°)와 엄지 끝을
 `link_15.0` + `link_offsets` (0, 0, 0.0387) m(Wonik `allegro_hand_ros` v4 의 엄지 끝)로 둔다. 업스트림 비교 테스트
 (`test_dexpilot_close_to_dex_retargeting_0_5_0`)는 ORCA 에서 이 한계·거리를 빼고 dex-retargeting 0.5.0 과 비교한다.
-동봉 config 83개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
+동봉 config 85개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
 합성 주먹·핀치·손가락별 굽힘 스윕으로 관절별 `joint_weights`·게인, `weight`, `project_dist` 만 조정했다(오른손 값을 왼손에
 복사, 결과가 나쁜 왼손은 따로 조정). 85개 중앙값: 역행 14.5 → 1.9°, 드리프트 0.17 → 0.12°, 손끝 p95 32.0 mm 그대로.
 이어서 역행 3° 를 넘던 손을 다시 조정해 85개 중앙값 역행 1.59°, 드리프트 0.12°, 손끝 p95 29.6 mm 이다. 3° 를 넘는 것은
@@ -340,6 +341,9 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 multiplier 1 로 따라가 엄지를 맞세우면 새끼 쪽 손바닥이 거꾸로 벌어진다)를 config 덮어쓰기
 (`couplings.left_hand_j5: {source: left_hand_Thumb_Opposition, multiplier: -1, override_urdf: true}`)로 보정하고,
 사전항은 오른손 거울상(`weight` 0.01, `joint_weights` Pinky 0.3)이다. 역행 7.6 → 2.5°(오른손 2.6°), 드리프트 0.07°.
+`aidin_hand2`: 생성 블록은 역행 19.6°(새끼 `joint3`), 엄지 `joint0` 한 프레임 도약 42.6° 라 `thumb_base.axis_weight` 0,
+`weight` 0.015, `joint_weights` 엄지·새끼 `joint3` 0.02 로 조정했다(왼손은 거울상). 역행 2.6°, 드리프트 0.65°, 도약 4.5°,
+손끝 평균 13.2 mm·p95 34.1 mm. `abduction` 은 손끝·역행·드리프트 회귀 없이 벌림 변화폭을 줄여(중지 20.8 → 5.8°) 켰다.
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 

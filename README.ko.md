@@ -64,6 +64,7 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 | Allegro Hand V5 (4 finger, A) | `dex:allegro_v5_4f` | `allegro_v5_4f_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | Allegro Hand V5 Sense | `dex:allegro_v5_sense` | `allegro_v5_sense_{left,right}.yaml` | 손가락 4개, 구동 16축; 손목 오프셋 |
 | Allegro Hand V6 | `dex:allegro_v6` | `allegro_v6_{left,right}.yaml` | 손가락 5개, 구동 20축; 말단 링크 + 손끝 오프셋 |
+| AIDIN Hand Gen2 | `dex:aidin_hand2` | `aidin_hand2_{left,right}.yaml` | 손가락 5개, 구동 16축; 각 joint4 는 passive(joint3 의 4절 링크) — 선형 결합으로 근사(`couplings`, 업스트림 4절 링크 표에 최소제곱 맞춤, 최대 오차 손가락 6.3°·엄지 8.7°); 촉각 패드 링크 유지; 말단 링크 + 손끝 오프셋 |
 
 **국내 휴머노이드 손**
 
@@ -235,7 +236,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs·models 경로
-└── configs/          hands/ (DexPilot, 83개), geort/ (2개), geort_train/ (42개)
+└── configs/          hands/ (DexPilot, 85개), geort/ (2개), geort_train/ (42개)
 ```
 
 ## 예제와 도구
