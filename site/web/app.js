@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import URDFLoader from "urdf-loader";
+import { currentLang, setLang, t } from "./i18n.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -31,8 +32,8 @@ const PALM_TO_WORLD = new THREE.Matrix4().set(
 );
 
 const state = {
-  view: "gallery",
-  section: "gallery",
+  view: "intro",
+  section: "intro",
   hand: null,
   motion: "pinch_index",
   side: "right",
@@ -103,7 +104,7 @@ const human = new THREE.Group();
 human.visible = false;
 scene.add(human);
 const humanFrame = new THREE.Group();
-humanFrame.quaternion.setFromRotationMatrix(PALM_TO_WORLD);
+human.matrixAutoUpdate = false;
 human.add(humanFrame);
 const skeleton = new THREE.Group();
 humanFrame.add(skeleton);
@@ -223,12 +224,10 @@ function showLoading(stats) {
   el.hidden = false;
   el.setAttribute("aria-valuenow", String(pct));
   el.querySelector(".loading-fill").style.width = `${pct}%`;
-  el.querySelector(".loading-text").textContent = stats.total
-    ? `${pct}% · ${stats.finished}/${stats.files} files · ${(stats.total / 1e6).toFixed(1)} MB`
-    : `${pct}% · ${stats.finished}/${stats.files} files`;
+  el.querySelector(".loading-text").textContent = t("loading.text", { pct, done: stats.finished, files: stats.files, mb: (stats.total / 1e6).toFixed(1) });
   const failed = el.querySelector(".loading-failed");
   failed.hidden = !stats.failed.length;
-  failed.textContent = `${stats.failed.length} failed`;
+  failed.textContent = t("loading.failed", { n: stats.failed.length });
 }
 
 const meshWorker = new Worker(new URL("mesh-worker.js", import.meta.url), { type: "module" });
@@ -431,7 +430,7 @@ function loadRobot(url, meshes) {
         if (!robot && pending === mine) {
           robots.delete(url);
           showLoading(null);
-          setStatus("The model could not be loaded.");
+          setStatus(t("status.model"));
         }
         return;
       }
@@ -509,6 +508,7 @@ async function show() {
   const sideData = data.sides[state.side];
   const url = new URL(sideData.urdf, location.href).href;
   setStatus("");
+  setDownloading(true);
   showLoading({ total: 0, done: 0, files: 0, finished: 0, failed: [] });
   const [{ robot, ready }] = await Promise.all([loadRobot(url, data.meshes), handModels]);
   if (token !== loadToken) return;
@@ -522,7 +522,6 @@ async function show() {
   for (const name of joints) robot.setJointValue(name, 0);
   scene.updateMatrixWorld(true);
   const box = !data.meshes ? new THREE.Box3() : robot.userData.revealed ? new THREE.Box3().setFromObject(mount) : jointBox(robot);
-  $("#viewer-note").hidden = Boolean(data.meshes);
   current = { hand, side: state.side, data, sideData, robot, box, joints, values: new Float32Array(joints.length) };
   const span = box.isEmpty() ? 0 : Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 3;
   grid.scale.setScalar(Math.max(span, 0.3));
@@ -538,8 +537,10 @@ async function show() {
   ready.then(() => {
     if (token !== loadToken) return;
     showLoading(null);
+    state.t = 0;
+    setDownloading(false);
     const failed = robot.userData.failedMeshes;
-    setStatus(failed.length ? `${failed.length} of the model's mesh files could not be downloaded.` : "");
+    setStatus(failed.length ? t("status.failed", { n: failed.length }) : "");
     reveal(robot).then(() => {
       if (token !== loadToken) return;
       if (data.meshes) {
@@ -553,11 +554,40 @@ async function show() {
   });
 }
 
+function setDownloading(on) {
+  state.downloading = on;
+  canvas.style.visibility = on ? "hidden" : "";
+}
+
 function humanBox() {
   human.updateMatrixWorld(true);
   const model = current.handMesh;
   return model ? new THREE.Box3().setFromObject(model.root, true)
-    : new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012 * human.scale.x);
+    : new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012);
+}
+
+function fingerFrame(mcp, tip, index, pinky, side) {
+  const z = tip.clone().sub(mcp).normalize();
+  const y = side === "right" ? index.clone().sub(pinky) : pinky.clone().sub(index);
+  y.addScaledVector(z, -y.dot(z)).normalize();
+  const x = new THREE.Vector3().crossVectors(y, z);
+  return new THREE.Matrix4().makeBasis(x, y, z);
+}
+
+function humanAlignment(sd, chirality) {
+  const open = motions.skeleton[sd.skeleton].fist[0];
+  const at = (k) => new THREE.Vector3(open[k * 7 + 4], open[k * 7 + 5], open[k * 7 + 6]).divideScalar(motions.pScale);
+  const v = (a) => new THREE.Vector3().fromArray(a);
+  const h = { mcp: at(12), tip: at(15), index: at(7), pinky: at(22) };
+  const r = { mcp: v(sd.align.mcp), tip: v(sd.align.tip), index: v(sd.align.index), pinky: v(sd.align.pinky) };
+  const fr = fingerFrame(r.mcp, r.tip, r.index, r.pinky, chirality);
+  const fh = fingerFrame(h.mcp, h.tip, h.index, h.pinky, chirality);
+  const rot = fr.multiply(fh.transpose());
+  const s = r.tip.distanceTo(r.mcp) / h.tip.distanceTo(h.mcp);
+  const m = rot.clone().multiply(new THREE.Matrix4().makeScale(s, s, s));
+  const t = r.mcp.clone().sub(h.mcp.clone().applyMatrix4(m));
+  m.setPosition(t);
+  return new THREE.Matrix4().multiplyMatrices(placement(sd), m);
 }
 
 function applyHuman() {
@@ -569,19 +599,18 @@ function applyHuman() {
     const chirality = sd.skeleton.split("_as_")[1];
     for (const [side, model] of Object.entries(handMeshes)) model.root.visible = side === chirality;
     current.handMesh = handMeshes[chirality];
-    skeleton.visible = overlay;
+    skeleton.visible = false;
     skinMaterial.needsUpdate = skinMaterial.transparent !== overlay;
     skinMaterial.transparent = overlay;
-    skinMaterial.opacity = overlay ? 0.25 : 1;
+    skinMaterial.opacity = overlay ? 0.35 : 1;
     skinMaterial.depthWrite = !overlay;
     const pose = poseAt(0);
     applyPose(pose.q, pose.p);
-    human.scale.setScalar(sd.scale);
-    human.position.set(0, 0, 0);
-    if (!overlay && !box.isEmpty()) human.position.x = box.min.x - 0.25 * (box.max.x - box.min.x) - humanBox().max.x;
-    for (const o of [boneLines, dots]) {
-      o.material.depthTest = !overlay;
-      o.renderOrder = overlay ? 10 : 0;
+    const align = sd.align ? humanAlignment(sd, chirality) : new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromRotationMatrix(PALM_TO_WORLD)).scale(new THREE.Vector3(sd.scale, sd.scale, sd.scale));
+    human.matrix.copy(align);
+    if (!overlay && !box.isEmpty()) {
+      const shift = box.min.x - 0.25 * (box.max.x - box.min.x) - humanBox().max.x;
+      human.matrix.premultiply(new THREE.Matrix4().makeTranslation(shift, 0, 0));
     }
     box.union(humanBox());
   }
@@ -650,44 +679,90 @@ function applyPose(q, p) {
 const jointCells = [];
 let lastTable = 0;
 
+const KEYWORDS = /\b(import|from|print|True|False|None)\b/g;
+
+function highlight(code) {
+  const text = code.textContent;
+  const parts = text.split(/("[^"\n]*")/g);
+  code.innerHTML = parts.map((part, i) => (i % 2
+    ? `<span class="tok-s">${esc(part)}</span>`
+    : esc(part).replace(KEYWORDS, '<span class="tok-k">$1</span>'))).join("");
+}
+
+function decorateCode(root) {
+  root.querySelectorAll("pre.code").forEach((pre) => {
+    const code = pre.querySelector("code");
+    if (code.dataset.lang !== "sh") highlight(code);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.textContent = t("copy");
+    button.addEventListener("click", () => {
+      navigator.clipboard.writeText(code.textContent).then(() => {
+        button.textContent = t("copied");
+        setTimeout(() => { button.textContent = t("copy"); }, 1500);
+      }, () => { button.textContent = t("copy"); });
+    });
+    pre.append(button);
+  });
+}
+
+function applyI18n() {
+  document.documentElement.lang = currentLang();
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-list]").forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nList).map((item) => `<li>${item}</li>`).join("");
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+  document.querySelectorAll(".copy").forEach((b) => { b.textContent = t("copy"); });
+  document.querySelectorAll(".lang button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === currentLang())));
+  if (current && state.view === "detail") renderInfo();
+}
+
 function renderInfo() {
   const h = current.hand;
   const sd = current.sideData;
   const urdfName = sd.urdf.split("/").pop();
   $("#d-name").textContent = h.name;
-  $("#d-meta").textContent = `${h.maker} · ${h.dof} actuated DoF · ${h.fingers} fingers · ${h.license}`;
+  $("#d-meta").textContent = t("meta", { maker: h.maker, dof: h.dof, fingers: h.fingers, license: h.license });
+  const sideName = (x) => t(`side.${x}`);
   const mirrored = sd.mirrored
-    ? `<p class="note">This repository has no ${state.side} model of this hand. The ${state.side === "left" ? "right" : "left"} model is shown${sd.clips ? ", driven by the mirrored motion" : ""}.</p>`
+    ? `<p class="note">${t("note.mirrored", { side: sideName(state.side), other: sideName(state.side === "left" ? "right" : "left") })}</p>`
     : "";
   const modelOnly = sd.clips
-    ? `<p class="note">Joint angles are precomputed offline with whatslab-sdk DexPilot retargeting (config <span class="mono">${esc(sd.config)}</span>) from synthetic hand motions.</p>`
-    : `<p class="note">whatslab-sdk has no retargeting config for this hand yet, so only the model is shown.</p>`;
+    ? `<p class="note">${t("note.offline", { config: esc(sd.config) })}</p>`
+    : `<p class="note">${t("note.noconfig")}</p>`;
   const notes = h.notes.map((n) => `<a class="mono" href="${esc(n.url)}" rel="noopener">${esc(n.name)}</a>`).join("<br>");
-  const unclear = h.licenseUnclear
-    ? `<p class="note">License unclear upstream. Included for non-commercial research use; see the folder's license notes.</p>`
+  const unclear = h.licenseUnclear ? `<p class="note">${t("note.unclear")}</p>` : "";
+  const meshes = current.data.meshes ? `${(sd.meshBytes / 1e6).toFixed(1)} MB` : t("stat.notshown");
+  const snippet = sd.config
+    ? `from whatslab.retarget import HandRetargeter\n\nr = HandRetargeter("dex:${sd.config}", side="${current.side}")`
     : "";
-  const meshes = current.data.meshes ? `${(sd.meshBytes / 1e6).toFixed(1)} MB` : "not shown";
   $("#info").innerHTML = `
     <section class="panel stats" aria-label="Quick stats">
-      <div class="stat"><b>${h.dof}</b><span>actuated DoF</span></div>
-      <div class="stat"><b>${h.fingers}</b><span>fingers</span></div>
-      <div class="stat"><b>${meshes}</b><span>${current.data.meshes ? `mesh download, ${sd.meshFiles} files` : "meshes (proprietary license)"}</span></div>
+      <div class="stat"><b>${h.dof}</b><span>${t("stat.dof")}</span></div>
+      <div class="stat"><b>${h.fingers}</b><span>${t("stat.fingers")}</span></div>
+      <div class="stat"><b>${meshes}</b><span>${current.data.meshes ? t("stat.mesh", { n: sd.meshFiles }) : t("stat.nomesh")}</span></div>
     </section>
     <section class="panel joints-panel">
-      <h2>Joints</h2>
+      <h2>${t("joints")}</h2>
       <table class="joints"><tbody></tbody></table>
     </section>
+    ${snippet ? `<section class="panel"><h2>${t("usehand")}</h2><pre class="code"><code>${esc(snippet)}</code></pre></section>` : ""}
     <section class="panel">
-      <h2>Source</h2>
+      <h2>${t("source")}</h2>
       <dl>
-        <dt>Maker</dt><dd>${h.website ? `<a href="${esc(h.website)}" rel="noopener">${esc(h.maker)}</a>` : esc(h.maker)}</dd>
-        <dt>License</dt><dd>${esc(h.license)}</dd>
-        <dt>Source</dt><dd>${h.sourceUrl ? `<a class="mono" href="${esc(h.sourceUrl)}" rel="noopener">${esc(h.source)}</a>` : esc(h.source)}</dd>
-        <dt>Model</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
-        ${notes ? `<dt>Files</dt><dd>${notes}</dd>` : ""}
+        <dt>${t("maker")}</dt><dd>${h.website ? `<a href="${esc(h.website)}" rel="noopener">${esc(h.maker)}</a>` : esc(h.maker)}</dd>
+        <dt>${t("license")}</dt><dd>${esc(h.license)}</dd>
+        <dt>${t("source")}</dt><dd>${h.sourceUrl ? `<a class="mono" href="${esc(h.sourceUrl)}" rel="noopener">${esc(h.source)}</a>` : esc(h.source)}</dd>
+        <dt>${t("model")}</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
+        ${notes ? `<dt>${t("files")}</dt><dd>${notes}</dd>` : ""}
       </dl>
-      ${mirrored}${unclear}${current.data.meshes ? "" : `<p class="note">Meshes not shown: proprietary mesh license (see MESHES-LICENSE).</p>`}${modelOnly}
+      ${mirrored}${unclear}${modelOnly}
     </section>`;
+  decorateCode($("#info"));
   const body = $("#info tbody");
   jointCells.length = 0;
   for (const name of current.joints.slice(0, current.sideData.actuated || current.joints.length)) {
@@ -730,31 +805,8 @@ function renderList(filter = "") {
     list.append(b);
     shown++;
   }
-  if (!shown) list.innerHTML = `<p class="empty">No hand matches “${esc(filter)}”. Try a maker name or a license.</p>`;
+  if (!shown) list.innerHTML = `<p class="empty">${esc(t("empty", { q: filter }))}</p>`;
   $("#hand-count").textContent = String(catalog.hands.length);
-}
-
-function renderGallery() {
-  const grid = $("#gallery");
-  grid.innerHTML = "";
-  for (const h of catalog.hands) {
-    const a = document.createElement("a");
-    a.className = "card-hand";
-    a.href = `#${h.id}`;
-    const thumb = h.preview
-      ? `<img class="palm-img" src="previews/${esc(h.id)}_palm.webp" alt="" loading="lazy"><img class="back-img" src="previews/${esc(h.id)}_back.webp" alt="" loading="lazy">`
-      : `<span class="none">Meshes not shown<br>(proprietary mesh license)</span>`;
-    a.innerHTML = `<div class="thumb">${thumb}</div>
-      <div class="card-body">
-        <span class="name"></span>
-        <span class="maker"></span>
-        <span class="chips"><span class="tag">${h.dof} DoF</span><span class="tag">${h.fingers} fingers</span><span class="tag lic"></span></span>
-      </div>`;
-    a.querySelector(".name").textContent = h.name;
-    a.querySelector(".maker").textContent = h.maker;
-    a.querySelector(".lic").textContent = h.license;
-    grid.append(a);
-  }
 }
 
 function markSelected() {
@@ -783,20 +835,19 @@ function parseHash() {
   const legacy = new URLSearchParams(raw);
   if (legacy.has("hand")) return { view: "detail", hand: legacy.get("hand"), motion: legacy.get("motion"), side: legacy.get("side") };
   if (handsById.has(head)) return { view: "detail", hand: head, motion: p.get("motion"), side: p.get("side") };
-  return { view: "gallery", section: ["gallery", "about"].includes(head) ? head : "intro" };
+  return { view: "intro", section: head === "about" ? "about" : "intro" };
 }
 
 function route() {
   const r = parseHash();
   closeDrawer();
-  if (r.view === "gallery") {
-    state.view = "gallery";
+  if (r.view === "intro") {
+    state.view = "intro";
     state.section = r.section;
-    $("#gallery-view").hidden = false;
+    $("#intro-view").hidden = false;
     $("#detail-view").hidden = true;
     markSelected();
-    if (r.section === "gallery") $("#gallery-title").scrollIntoView({ block: "start" });
-    else if (r.section === "about") $("#about").scrollIntoView({ block: "start" });
+    if (r.section === "about") $("#about").scrollIntoView({ block: "start" });
     else window.scrollTo(0, 0);
     return;
   }
@@ -805,7 +856,7 @@ function route() {
   if (r.side === "left" || r.side === "right") changes.side = r.side;
   const entering = state.view !== "detail";
   state.view = "detail";
-  $("#gallery-view").hidden = true;
+  $("#intro-view").hidden = true;
   $("#detail-view").hidden = false;
   if (entering) window.scrollTo(0, 0);
   Object.assign(state, changes);
@@ -852,7 +903,8 @@ for (const m of motions.motions) {
   b.type = "button";
   b.setAttribute("role", "radio");
   b.dataset.motion = m.id;
-  b.textContent = m.label;
+  b.dataset.i18n = `motion.${m.id}`;
+  b.textContent = t(`motion.${m.id}`);
   motionsEl.append(b);
 }
 
@@ -915,7 +967,7 @@ function tick(now) {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   resize();
-  if (current && current.sideData.clips) {
+  if (current && current.sideData.clips && !state.downloading) {
     const d = duration();
     if (state.playing) state.t = (state.t + dt * state.speed) % (d + 0.6);
     const t = Math.min(state.t, d);
@@ -926,7 +978,7 @@ function tick(now) {
   }
   updateTable(now);
   drainQueue(4);
-  if (state.view === "detail") {
+  if (state.view === "detail" && !state.downloading) {
     controls.update();
     renderer.render(scene, camera);
   }
@@ -934,8 +986,15 @@ function tick(now) {
 }
 
 state.hand = catalog.default;
+document.querySelectorAll(".page > pre.code, .prose").forEach((el) => decorateCode(el));
+applyI18n();
+document.querySelector(".lang").addEventListener("click", (e) => {
+  if (!e.target.dataset.lang) return;
+  setLang(e.target.dataset.lang);
+  applyI18n();
+  renderList($("#search").value);
+});
 setHandsOpen(!store || store.getItem("handsOpen") !== "0");
 renderList();
-renderGallery();
 route();
 requestAnimationFrame(tick);

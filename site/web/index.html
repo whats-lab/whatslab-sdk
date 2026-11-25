@@ -26,55 +26,82 @@
 <body>
 <header class="mobile-top">
   <button class="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg>Menu
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg><span data-i18n="menu">Menu</span>
   </button>
-  <a class="brand" href="#intro">whatslab-sdk <span>hand preview</span></a>
+  <a class="logo" href="#intro"><picture><source srcset="assets/logo/whatslab-logo-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="assets/logo/whatslab-logo.webp" type="image/webp"><img src="assets/logo/whatslab-logo.png" alt="WHATs LAB" width="180" height="39"></picture></a>
 </header>
 
 <div id="backdrop" class="backdrop" hidden></div>
 <aside id="sidebar" class="sidebar">
   <div class="side-head">
-    <a class="brand" href="#intro">whatslab-sdk</a>
-    <p class="brand-sub">Dexterous hand preview</p>
+    <a class="logo" href="#intro"><picture><source srcset="assets/logo/whatslab-logo-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="assets/logo/whatslab-logo.webp" type="image/webp"><img src="assets/logo/whatslab-logo.png" alt="WHATs LAB" width="180" height="39"></picture></a>
+    <p class="brand-sub" data-i18n="sub">whatslab-sdk · Dexterous hand preview</p>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="ko">한국어</button>
+    </div>
   </div>
   <nav class="toc" aria-label="Sections">
-    <a href="#intro" data-nav="intro">Intro</a>
-    <button type="button" class="toc-toggle" aria-expanded="true" aria-controls="hands-panel">Hands <span id="hand-count"></span></button>
+    <a href="#intro" data-nav="intro" data-i18n="nav.intro">Intro</a>
+    <button type="button" class="toc-toggle" aria-expanded="true" aria-controls="hands-panel"><span data-i18n="nav.hands">Hands</span> <span id="hand-count"></span></button>
     <div id="hands-panel" class="hands-panel">
       <label class="search">
         <span class="visually-hidden">Search hands</span>
-        <input id="search" type="search" placeholder="Search name, maker, license" autocomplete="off">
+        <input id="search" type="search" placeholder="Search name, maker, license" data-i18n-placeholder="search" autocomplete="off">
       </label>
       <div id="hand-list" class="hand-list"></div>
     </div>
-    <a href="#about" data-nav="about">About</a>
+    <a href="#about" data-nav="about" data-i18n="nav.about">About</a>
   </nav>
 </aside>
 
 <main class="main">
-  <section id="gallery-view" class="page">
+  <section id="intro-view" class="page">
     <section id="intro" class="intro" aria-labelledby="intro-title">
-      <h1 id="intro-title">Dexterous hands you can teleoperate</h1>
-      <p class="lead">This site is built with <a href="https://github.com/whats-lab/whatslab-sdk" rel="noopener">whatslab-sdk</a>. The hands are collected in <a href="https://github.com/whats-lab/dexterous-hand-urdf" rel="noopener">dexterous-hand-urdf</a> from each maker's official repository. Every hand shown here can be teleoperated with whatslab-sdk: DexPilot retargeting from OpenXR hand tracking or an AirGlove.</p>
-      <p class="lead">Open a hand to watch it follow a human hand through six synthetic motions, retargeted ahead of time with the DexPilot config bundled in the SDK.</p>
+      <h1 id="intro-title" data-i18n="intro.title"></h1>
+      <p class="lead" data-i18n-html="intro.p1"></p>
+      <p class="lead" data-i18n="intro.p2"></p>
     </section>
-    <h2 id="gallery-title" class="section-title">Gallery</h2>
-    <div id="gallery" class="grid" aria-labelledby="gallery-title"></div>
+    <section class="prose" aria-labelledby="how-title">
+      <h2 id="how-title" data-i18n="how.title"></h2>
+      <ul data-i18n-list="how.items"></ul>
+      <p class="formula">E(q) = E<sub>DexPilot</sub>(q) + Σ<sub>j</sub> w<sub>j</sub> (q<sub>j</sub> − q̄<sub>j</sub>)²</p>
+    </section>
+    <section class="prose" aria-labelledby="use-title">
+      <h2 id="use-title" data-i18n="use.title"></h2>
+      <p data-i18n="use.install"></p>
+      <pre class="code"><code data-lang="sh">uv pip install &quot;whatslab-sdk[hand] @ git+https://github.com/whats-lab/whatslab-sdk.git@v1.0.0&quot;</code></pre>
+      <p data-i18n="use.retarget"></p>
+      <pre class="code"><code>import numpy as np
+
+from whatslab.core.types import HandPose, InputSample
+from whatslab.retarget import HandRetargeter
+
+xr_joints = np.load(&quot;xr_joints.npy&quot;)
+
+r = HandRetargeter(&quot;dex:dg5f_s&quot;, side=&quot;right&quot;)
+cmd = r.compute(InputSample(hand=HandPose(xr_joints=xr_joints, tracked=True)))
+print(dict(zip(cmd.joint_names, cmd.joint_angles.round(3).tolist())))</code></pre>
+      <p data-i18n="use.meshes"></p>
+      <pre class="code"><code>from dexhand_description import hand_dir
+
+print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
+    </section>
   </section>
 
   <section id="detail-view" class="page detail" hidden>
-    <a class="back" href="#gallery">All hands</a>
     <header class="detail-head">
       <h1 id="d-name"></h1>
       <p id="d-meta" class="meta"></p>
     </header>
 
+    <div class="detail-grid">
     <div class="stage">
       <div class="viewport">
         <canvas id="view"></canvas>
         <p id="status" class="status" role="status"></p>
-        <p id="viewer-note" class="viewer-note" hidden>Robot meshes are not shown for this hand (proprietary mesh license). Joint angles are listed below.</p>
         <div id="loading" class="loading" role="progressbar" aria-label="Loading meshes" aria-valuemin="0" aria-valuemax="100" hidden>
+          <p class="loading-title" data-i18n="downloading">Downloading meshes…</p>
           <div class="loading-track"><span class="loading-fill"></span></div>
           <p class="loading-text mono"></p>
           <p class="loading-failed mono" hidden></p>
@@ -91,7 +118,7 @@
           </button>
           <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position">
           <output id="time" class="mono">0.00 s</output>
-          <label class="field">Speed
+          <label class="field"><span data-i18n="speed">Speed</span>
             <select id="speed">
               <option value="0.25">0.25×</option>
               <option value="0.5">0.5×</option>
@@ -102,30 +129,25 @@
         </div>
         <div class="row options">
           <div class="segmented small" id="side" role="radiogroup" aria-label="Side">
-            <button type="button" role="radio" data-side="right">Right</button>
-            <button type="button" role="radio" data-side="left">Left</button>
+            <button type="button" role="radio" data-side="right" data-i18n="right">Right</button>
+            <button type="button" role="radio" data-side="left" data-i18n="left">Left</button>
           </div>
           <div class="segmented small" id="human" role="radiogroup" aria-label="Human hand">
-            <button type="button" role="radio" data-human="off">Robot only</button>
-            <button type="button" role="radio" data-human="beside">Human beside</button>
-            <button type="button" role="radio" data-human="overlay">Human overlay</button>
+            <button type="button" role="radio" data-human="off" data-i18n="human.off">Robot only</button>
+            <button type="button" role="radio" data-human="beside" data-i18n="human.beside">Human beside</button>
+            <button type="button" role="radio" data-human="overlay" data-i18n="human.overlay">Human overlay</button>
           </div>
         </div>
       </div>
     </div>
 
     <div id="info" class="detail-body"></div>
+    </div>
   </section>
 
   <section id="about" class="page about" aria-labelledby="about-title">
-    <h2 id="about-title">About</h2>
-    <ul>
-      <li>URDFs come from each maker's or lab's official repository and are collected, with any fixes listed in each hand's <span class="mono">PATCHES.txt</span>, in <a href="https://github.com/whats-lab/dexterous-hand-urdf" rel="noopener">dexterous-hand-urdf</a>. Every hand page links its source repository, commit, license and license files.</li>
-      <li>Meshes are not rehosted. Your browser downloads the upstream originals at a pinned commit, so the first visit to a hand can take a while (a few MB to tens of MB, shown on each hand page); after that the browser cache makes it fast.</li>
-      <li>Hands whose mesh license forbids redistribution (Proception ProHand Gen2) show their joint angles only.</li>
-      <li>The human hand is the WebXR generic hand from <a href="https://github.com/immersive-web/webxr-input-profiles" rel="noopener">immersive-web/webxr-input-profiles</a> (MIT, Copyright 2019 Amazon).</li>
-      <li>Retargeting runs in <a href="https://github.com/whats-lab/whatslab-sdk" rel="noopener">whatslab-sdk</a> 1.0.0, which supports the 43 hands of dexhand-description 1.0.0 with a bundled DexPilot config for each.</li>
-    </ul>
+    <h2 id="about-title" data-i18n="about.title"></h2>
+    <ul data-i18n-list="about.items"></ul>
   </section>
 </main>
 </body>

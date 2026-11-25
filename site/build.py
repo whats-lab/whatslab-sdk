@@ -243,6 +243,18 @@ def solve_hand(job):
     rest = np.clip(np.zeros(len(lim)), lim[:, 0], lim[:, 1])
     tf = kin.link_placements(engine.full_qpos(rest))
     wrist = tf[kin.frame_ids([engine.wrist_frame])[0], :3, 3]
+
+    def at(names):
+        return np.mean([tf[kin.frame_ids([n])[0], :3, 3] for n in names], axis=0)
+
+    tips = engine.tip_frames
+    index, middle, pinky = engine.config.palm_links
+    align = {
+        "mcp": at(middle),
+        "tip": at([tips[2] if len(tips) > 2 else tips[-1]]),
+        "index": at(index),
+        "pinky": at(pinky),
+    }
     out = {"clips": {}, "failures": 0}
     fit_c, fit_k = [], []
     for motion, _ in MOTIONS:
@@ -277,6 +289,7 @@ def solve_hand(job):
             "palm": np.round(rot_t, 6).tolist(),
             "fitError": float(np.abs(c @ rot_t - k).max()),
             "wrist": np.round(wrist, 6).tolist(),
+            "align": {k: np.round(v, 6).tolist() for k, v in align.items()},
             "scale": round(float(engine.scaling_factor), 6),
         }
     )
@@ -331,8 +344,6 @@ def main():
 
     urdf_files = set()
     missing_meshes = []
-    previews = args.repo / "doc" / "preview"
-    (out / "previews").mkdir()
     hands = []
     for hid in folders:
         row = rows[hid]
@@ -360,6 +371,7 @@ def main():
                         "actuated": res["actuated"],
                         "palm": res["palm"],
                         "wrist": res["wrist"],
+                        "align": res["align"],
                         "scale": res["scale"],
                         "skeleton": f"{side}_as_{res['modelSide']}",
                         "clips": res["clips"],
@@ -375,9 +387,6 @@ def main():
         structure = urdf_structure(hands_root / primary)
         notes = sorted(p.name for p in (hands_root / hid).iterdir() if NOTE_FILES.match(p.name))
         base = f"{args.repo_url}/tree/{args.ref}/robots/hands/{hid}"
-        shots = [previews / f"{hid}_{view}.webp" for view in ("palm", "back")]
-        for shot in shots if all(p.is_file() for p in shots) else []:
-            shutil.copyfile(shot, out / "previews" / shot.name)
         hands.append(
             {
                 "id": hid,
@@ -385,7 +394,6 @@ def main():
                 "dof": structure["dof"],
                 "fingers": structure["fingers"],
                 "retargeted": bool(solved_sides),
-                "preview": all(p.is_file() for p in shots),
                 "sides": [s for s in SIDES if s in urdfs and not data["sides"][s]["mirrored"]],
                 "folder": base,
                 "notes": [
