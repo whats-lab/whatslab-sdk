@@ -49,7 +49,9 @@ SDK 는 손목 기준 손 관절을 주고, 손목 자세는 사용하는 쪽이
 
 `dexhand-description` 의 손 전부(사람 손 모양 4·5손가락 손)에 설정이 있습니다. 묶음은 그 저장소와 같습니다.
 모든 손의 DexPilot 리타게팅은 **[whats-lab.github.io/whatslab-sdk](https://whats-lab.github.io/whatslab-sdk/)** 에서
-브라우저로 볼 수 있습니다.
+브라우저로 볼 수 있습니다. 합성 동작(주먹, 핀치, V 포즈)을 미리 리타게팅해 사람 손 옆에 보여 주고, Live camera 탭은
+MediaPipe 로 손을 추적해 26관절 OpenXR 손에 맞춘 뒤 이 SDK 를 브라우저(Pyodide)에서 돌립니다. 메시는 브라우저가 손마다
+고정 커밋의 업스트림 저장소에서 직접 받고, 메시 재배포가 금지된 손은 관절만 보여 줍니다.
 
 **국내 손**
 
