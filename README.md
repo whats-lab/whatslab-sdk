@@ -157,7 +157,7 @@ pip install -e '.[all]'   # editable, for development
 | Extra | Brings in | Needed for |
 |---|---|---|
 | `receiver` | `airglove-client` (git tag v1.0.0) | AirGlove (Spine) input |
-| `webxr` | `websockets` | Quest hand tracking (headset browser) |
+| `webxr` | `websockets`, `cryptography` | Quest hand tracking (headset browser) |
 | `hand` | `dexhand-description` | the DexPilot engine (URDF assets) |
 | `viz` | `viser`, `trimesh`, `pycollada` | robot-hand visualization |
 | `train` | `torch`, `trimesh`, `dexhand-description` | GeoRT model training (`whatslab-geort-train`) |

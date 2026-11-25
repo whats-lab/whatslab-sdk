@@ -149,7 +149,7 @@ pip install -e '.[all]'   # 개발용 editable
 | extra | 설치되는 것 | 용도 |
 |---|---|---|
 | `receiver` | `airglove-client`(git 태그 v1.0.0) | AirGlove(Spine) 입력 |
-| `webxr` | `websockets` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
+| `webxr` | `websockets`, `cryptography` | Quest 핸드트래킹(헤드셋 브라우저) 입력 |
 | `hand` | `dexhand-description` | DexPilot 엔진(URDF 자산) |
 | `viz` | `viser`, `trimesh`, `pycollada` | 로봇 손 시각화 |
 | `train` | `torch`, `trimesh`, `dexhand-description` | GeoRT 모델 학습(`whatslab-geort-train`) |
