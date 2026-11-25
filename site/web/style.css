@@ -287,7 +287,11 @@ a:hover { text-decoration: underline; }
   background: var(--surface);
 }
 
-.live-panel video { width: 100%; aspect-ratio: 4 / 3; background: var(--bg); border-radius: 4px; transform: scaleX(-1); object-fit: cover; }
+.cam { position: relative; }
+
+.live-panel video { display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--bg); border-radius: 4px; transform: scaleX(-1); object-fit: cover; }
+
+#cam-fit { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); color: var(--accent); pointer-events: none; }
 
 .loading {
   position: absolute;
@@ -305,6 +309,25 @@ a:hover { text-decoration: underline; }
 .loading-text, .loading-failed { margin: 8px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 
 .loading-failed { margin-top: 2px; color: var(--faint); }
+
+.live-loading {
+  top: 12px;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.loading-line { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+
+.loading-value { color: var(--faint); text-align: right; }
+
+.loading-row.failed .loading-value { color: var(--ink); }
 
 .live-note { margin: 0; font-size: 12px; color: var(--muted); }
 
@@ -351,7 +374,7 @@ a:hover { text-decoration: underline; }
   .viewport { flex: none; height: 56vh; }
   .info { max-height: none; }
   .live-panel { left: 8px; right: 8px; bottom: 8px; width: auto; display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; padding: 6px; }
-  .live-panel video { grid-row: span 3; }
+  .live-panel .cam { grid-row: span 3; }
   .segmented button { padding: 5px 9px; }
 }
 

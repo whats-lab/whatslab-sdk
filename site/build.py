@@ -214,7 +214,8 @@ def solve_hand(job):
     clips = dict(np.load(clips_path, allow_pickle=True).item())
     engine = DexEngine(config, side=side)
     kin = engine.kinematics
-    names = list(kin.actuated_joint_names)
+    actuated = list(kin.actuated_joint_names)
+    names = actuated + [n for n in kin.joint_names if n not in actuated]
     idx = [kin.joint_names.index(n) for n in names]
     lim = engine.joint_limits
     rest = np.clip(np.zeros(len(lim)), lim[:, 0], lim[:, 1])
@@ -250,6 +251,7 @@ def solve_hand(job):
             "mirrored": bool(engine.mirror),
             "modelSide": engine.config.side,
             "joints": names,
+            "actuated": len(actuated),
             "palm": np.round(rot_t, 6).tolist(),
             "fitError": float(np.abs(c @ rot_t - k).max()),
             "wrist": np.round(wrist, 6).tolist(),
@@ -323,6 +325,7 @@ def main():
                         "config": res["config"],
                         "mirrored": res["mirrored"],
                         "joints": res["joints"],
+                        "actuated": res["actuated"],
                         "palm": res["palm"],
                         "wrist": res["wrist"],
                         "scale": res["scale"],

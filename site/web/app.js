@@ -128,11 +128,61 @@ const tmpMat = new THREE.Matrix4();
 const tmpVec = new THREE.Vector3();
 const skinMaterial = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.6, metalness: 0 });
 const handMeshes = {};
+function capOpenings(g) {
+  const index = g.index.array;
+  const pos = g.attributes.position;
+  const weld = new Map();
+  const id = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const key = [pos.getX(i), pos.getY(i), pos.getZ(i)].map((x) => Math.round(x * 1e5)).join(",");
+    if (!weld.has(key)) weld.set(key, i);
+    id[i] = weld.get(key);
+  }
+  const edges = new Map();
+  for (let t = 0; t < index.length; t += 3) {
+    for (let k = 0; k < 3; k++) {
+      const a = index[t + k];
+      const b = index[t + (k + 1) % 3];
+      const key = id[a] < id[b] ? `${id[a]},${id[b]}` : `${id[b]},${id[a]}`;
+      edges.set(key, edges.has(key) ? null : [a, b]);
+    }
+  }
+  const rim = [...edges.values()].filter(Boolean);
+  if (!rim.length) return g;
+  const center = new THREE.Vector3();
+  const all = new THREE.Vector3();
+  const v = new THREE.Vector3();
+  const used = new Set(rim.flat());
+  used.forEach((i) => center.add(v.fromBufferAttribute(pos, i)));
+  center.divideScalar(used.size);
+  for (let i = 0; i < pos.count; i++) all.add(v.fromBufferAttribute(pos, i));
+  all.divideScalar(pos.count);
+  const normal = center.clone().sub(all).normalize();
+  const out = new THREE.BufferGeometry();
+  const first = rim[0][0];
+  for (const [name, attr] of Object.entries(g.attributes)) {
+    const size = attr.itemSize;
+    const data = new attr.array.constructor((attr.count + 1) * size);
+    data.set(attr.array);
+    const extra = name === "position" ? center.toArray() : name === "normal" ? normal.toArray()
+      : Array.from(attr.array.slice(first * size, first * size + size));
+    data.set(extra, attr.count * size);
+    out.setAttribute(name, new THREE.BufferAttribute(data, size, attr.normalized));
+  }
+  const c = pos.count;
+  const tris = new (c + 1 > 65535 ? Uint32Array : Uint16Array)(index.length + rim.length * 3);
+  tris.set(index);
+  rim.forEach(([a, b], k) => tris.set([b, a, c], index.length + k * 3));
+  out.setIndex(new THREE.BufferAttribute(tris, 1));
+  return out;
+}
+
 const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().loadAsync(`assets/generic-hand/${side}.glb`)
   .then((gltf) => {
     const root = gltf.scene;
     root.traverse((o) => {
       if (o.isSkinnedMesh) {
+        o.geometry = capOpenings(o.geometry);
         o.material = skinMaterial;
         o.frustumCulled = false;
         o.castShadow = true;
@@ -424,6 +474,7 @@ async function show() {
   mount.matrixWorldNeedsUpdate = true;
   const joints = sideData.joints || Object.values(robot.joints)
     .filter((j) => j.jointType !== "fixed" && j.type !== "URDFMimicJoint").map((j) => j.name);
+  if (sideData.joints) Object.values(robot.joints).forEach((j) => { j.mimicJoints = []; });
   for (const name of joints) robot.setJointValue(name, 0);
   scene.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(mount);
@@ -445,7 +496,9 @@ async function show() {
 
 function humanBox() {
   human.updateMatrixWorld(true);
-  return new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012 * human.scale.x);
+  const model = current.handMesh;
+  return model ? new THREE.Box3().setFromObject(model.root, true)
+    : new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012 * human.scale.x);
 }
 
 function applyHuman() {
@@ -458,6 +511,7 @@ function applyHuman() {
     for (const [side, model] of Object.entries(handMeshes)) model.root.visible = side === chirality;
     current.handMesh = handMeshes[chirality];
     skeleton.visible = overlay;
+    skinMaterial.needsUpdate = skinMaterial.transparent !== overlay;
     skinMaterial.transparent = overlay;
     skinMaterial.opacity = overlay ? 0.25 : 1;
     skinMaterial.depthWrite = !overlay;
@@ -472,6 +526,7 @@ function applyHuman() {
     }
     box.union(humanBox());
   }
+  grid.position.y = box.min.y;
   frameCamera(box);
 }
 
@@ -566,7 +621,7 @@ function renderInfo() {
     <table class="joints"><caption>Joints</caption><tbody></tbody></table>`;
   const body = info.querySelector("tbody");
   jointCells.length = 0;
-  for (const name of current.joints) {
+  for (const name of current.joints.slice(0, current.sideData.actuated || current.joints.length)) {
     const tr = document.createElement("tr");
     const a = document.createElement("td");
     const b = document.createElement("td");
@@ -655,8 +710,10 @@ function setMode(mode) {
     import("./live.js").then((m) => {
       liveApi = m.createLive({
         video: $("#cam"),
+        overlay: $("#cam-fit"),
         note: $("#live-note"),
         button: $("#live-start"),
+        bars: $("#live-loading"),
         onPose: (q, p) => current && state.mode === "live" && applyPose(q, p),
       });
       liveApi.setHand(current);

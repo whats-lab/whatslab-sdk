@@ -51,10 +51,23 @@
         <p class="loading-text mono"></p>
         <p class="loading-failed mono" hidden></p>
       </div>
+      <div id="live-loading" class="loading live-loading" hidden>
+        <div class="loading-row" data-part="tracker" role="progressbar" aria-label="Hand tracker download" aria-valuemin="0" aria-valuemax="100">
+          <p class="loading-line mono"><span>Hand tracker</span><span class="loading-value"></span></p>
+          <div class="loading-track"><span class="loading-fill"></span></div>
+        </div>
+        <div class="loading-row" data-part="engine" role="progressbar" aria-label="Retargeting engine download" aria-valuemin="0" aria-valuemax="100">
+          <p class="loading-line mono"><span>Retargeting engine</span><span class="loading-value"></span></p>
+          <div class="loading-track"><span class="loading-fill"></span></div>
+        </div>
+      </div>
       <div id="live-panel" class="live-panel" hidden>
-        <video id="cam" playsinline muted></video>
+        <div class="cam">
+          <video id="cam" playsinline muted></video>
+          <canvas id="cam-fit" aria-hidden="true"></canvas>
+        </div>
         <p id="live-note" class="live-note" role="status"></p>
-        <p class="live-note">Tracking is approximate: the camera gives 21 hand points, and the 26 OpenXR joints the retargeter expects are filled in (metacarpals interpolated, joint orientations from bone directions). Video stays in this browser.</p>
+        <p class="live-note">The camera gives 21 hand points. A hand model with the same skeleton as the human hand on the left is fitted to them in the image, and its 26 OpenXR joints drive the retargeter. The fitted skeleton is drawn on the video. Video stays in this browser.</p>
         <button id="live-start" type="button" class="primary">Start camera</button>
       </div>
     </div>
