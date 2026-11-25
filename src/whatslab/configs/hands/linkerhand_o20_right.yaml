@@ -37,5 +37,5 @@ posture_prior:
     bone: [thumb_metacarpals_base2_Link, thumb_metacarpals_Link]
     flex_joint: thumb_cmc_pitch
     step_deg: 2.0
-    axis_weight: 0.5
+    axis_weight: 2.0
   joint_weights: {thumb_cmc_pitch: 0.1, pinky_dip: 0.3}

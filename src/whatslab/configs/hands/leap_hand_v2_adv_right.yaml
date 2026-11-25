@@ -37,4 +37,4 @@ posture_prior:
     flex_joint: thumb_mcps
     step_deg: 2.0
     axis_weight: 0.5
-  joint_weights: {pinky_mcpf: 0.03, thumb_ip: 0.03, ring_mcpf: 0.1}
+  joint_weights: {pinky_mcpf: 0.1, thumb_ip: 0.1, ring_mcpf: 0.3, index_mcpf: 0.1, middle_mcpf: 0.1, middle_pip: 0.1, middle_dip: 0.1, ring_pip: 0.1, index_pip: 0.03}

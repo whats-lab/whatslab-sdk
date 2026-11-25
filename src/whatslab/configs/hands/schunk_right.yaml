@@ -26,4 +26,4 @@ posture_prior:
     flex_joint: right_hand_j3
     step_deg: 2.0
     axis_weight: 0.5
-  joint_weights: {right_hand_Pinky: 0.3}
+  joint_weights: {right_hand_Pinky: 0.3, right_hand_Thumb_Opposition: 0.3}

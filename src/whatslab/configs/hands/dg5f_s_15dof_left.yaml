@@ -33,3 +33,4 @@ posture_prior:
     flex_joint: joint_1_3
     step_deg: 2.0
     axis_weight: 0.5
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
