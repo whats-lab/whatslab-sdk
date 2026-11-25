@@ -23,7 +23,14 @@ from whatslab.retarget import (
     xr_to_mano,
 )
 from whatslab.retarget.dex import mano_palm_frame, resolve_hand_config, xr_wrist_positions
-from whatslab.retarget.dex.optimizer import huber_vector_loss
+from whatslab.retarget.dex.optimizer import (
+    DEXPILOT_ETA1,
+    DEXPILOT_PAIR_WEIGHT,
+    DEXPILOT_SECOND_PAIR_DIST,
+    DEXPILOT_SECOND_PAIR_WEIGHT,
+    DexPilotState,
+    huber_vector_loss,
+)
 
 CONFIGS = ("orca_right", "orca_left", "dg5f_right", "dg5f_left", "robotis_right", "robotis_left",
            "allegro_right", "allegro_left", "leap_right", "leap_left", "ability_right",
@@ -354,6 +361,20 @@ def test_dex_engine_satisfies_engine_protocol():
 UPSTREAM_FIXTURE = os.path.join(os.path.dirname(__file__), "data", "dex_upstream_0_5_0.npz")
 
 
+def _upstream_step_projection(state, project_dist=0.03, escape_dist=0.05):
+    on = np.zeros(state.num_thumb, dtype=bool)
+
+    def projection(dist):
+        s1 = state.num_thumb
+        on[dist[:s1] < project_dist] = True
+        on[dist[:s1] > escape_dist] = False
+        second = (on[state.second_origin] & on[state.second_task]
+                  & (dist[s1:] <= DEXPILOT_SECOND_PAIR_DIST))
+        return np.concatenate([on, second]).astype(float)
+
+    return projection
+
+
 @pytest.mark.parametrize("name,robotplatform", (("orca_right", True), ("dg5f_right", False),
                                                 ("ability_right", False)))
 def test_dexpilot_close_to_dex_retargeting_0_5_0(name, robotplatform):
@@ -364,6 +385,7 @@ def test_dexpilot_close_to_dex_retargeting_0_5_0(name, robotplatform):
         rt = {k: v for k, v in cfg.retargeting.items() if k not in ("project_dist", "escape_dist")}
         cfg = dataclasses.replace(cfg, joint_limits={}, retargeting=rt)
     eng = DexEngine(cfg, posture_prior=False)
+    eng.optimizer.dexpilot.projection = _upstream_step_projection(eng.optimizer.dexpilot)
     tip_ids = eng.kinematics.frame_ids(eng.config.retargeting["finger_tip_link_names"])
 
     def tips(q):
@@ -373,6 +395,51 @@ def test_dexpilot_close_to_dex_retargeting_0_5_0(name, robotplatform):
     tip_mm = [np.linalg.norm(tips(a) - tips(b), axis=1) * 1e3 for a, b in zip(q, data[name])]
     assert np.abs(q - data[name]).mean() < 0.03
     assert np.mean(tip_mm) < 1.5
+
+
+def _pinch_ref(thumb_index, thumb_middle=0.08, index_middle=0.05):
+    lengths = np.r_[thumb_index, thumb_middle, 0.08, 0.08, index_middle, np.full(5, 0.05),
+                    np.full(5, 0.1)]
+    return np.array([0.6, 0.0, 0.8]) * lengths[:, None]
+
+
+def _sweep(state, refs):
+    out = [state.update(r, 1.3) for r in refs]
+    return np.array([t for t, _ in out]), np.array([w for _, w in out])
+
+
+def test_pinch_projection_ramps_continuously_with_thumb_distance():
+    state = DexPilotState(5, 0.03, 0.015)
+    d = np.arange(0.005, 0.04, 1e-5)
+    target, weight = _sweep(state, [_pinch_ref(x) for x in d])
+    assert np.abs(np.diff(target, axis=0)).max() < 1e-4
+    assert np.abs(np.diff(weight, axis=0)).max() < 0.1
+    far, full = d > 0.03, d < 0.015
+    assert np.allclose(weight[far, 0], 1.0 / state.num_rows)
+    assert np.allclose(weight[full, 0], DEXPILOT_PAIR_WEIGHT / state.num_rows)
+    assert np.allclose(np.linalg.norm(target[far, 0], axis=1), 1.3 * d[far], atol=1e-6)
+    assert np.allclose(np.linalg.norm(target[full, 0], axis=1), DEXPILOT_ETA1, atol=1e-6)
+    assert np.all(np.diff(weight[:, 0]) <= 1e-9)
+
+
+def test_pinch_projection_ramps_second_pair_and_has_no_hysteresis():
+    state = DexPilotState(5, 0.03, 0.015)
+    d = np.arange(0.005, 0.04, 1e-5)
+    refs = [_pinch_ref(0.005, 0.005, x) for x in d]
+    target, weight = _sweep(state, refs)
+    assert np.abs(np.diff(target, axis=0)).max() < 1e-4
+    assert np.abs(np.diff(weight, axis=0)).max() < 0.2
+    assert np.isclose(weight[0, 4], DEXPILOT_SECOND_PAIR_WEIGHT / state.num_rows)
+    assert np.isclose(weight[-1, 4], 1.0 / state.num_rows)
+    back_target, back_weight = _sweep(state, refs[::-1])
+    assert np.array_equal(back_target[::-1], target)
+    assert np.array_equal(back_weight[::-1], weight)
+
+
+@pytest.mark.parametrize("full", (-0.001, 0.03, 0.04))
+def test_project_full_dist_must_be_below_project_dist(full):
+    with pytest.raises(ValueError, match="project_full_dist"):
+        DexPilotState(5, 0.03, full)
 
 
 def _fd_check(f, x, grad, eps=1e-6):

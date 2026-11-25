@@ -37,12 +37,17 @@ def dexpilot_pairs(num_fingers: int) -> Tuple[List[int], List[int]]:
 
 
 class DexPilotState:
-    def __init__(self, num_fingers: int, project_dist: float, escape_dist: float):
+    def __init__(self, num_fingers: int, project_dist: float, project_full_dist: float):
         if not 2 <= num_fingers <= 5:
             raise ValueError(f"DexPilot 은 손가락 2~5개만 된다 — 받은 수 {num_fingers}")
+        if not 0.0 <= project_full_dist < project_dist:
+            raise ValueError(
+                f"project_full_dist 는 0 이상 project_dist 미만이어야 한다 — "
+                f"받은 값 {project_full_dist} / {project_dist}"
+            )
         self.num_fingers = num_fingers
         self.project_dist = project_dist
-        self.escape_dist = escape_dist
+        self.project_full_dist = project_full_dist
         self.num_pairs = num_fingers * (num_fingers - 1) // 2
         self.num_thumb = num_fingers - 1
         pairs = [(i, j) for i in range(num_fingers - 2) for j in range(i + 1, num_fingers - 1)]
@@ -52,36 +57,35 @@ class DexPilotState:
             [DEXPILOT_ETA1] * self.num_thumb
             + [DEXPILOT_ETA2] * (self.num_pairs - self.num_thumb)
         )
-        self.projected = np.zeros(self.num_pairs, dtype=bool)
+        self.high_weight = np.array(
+            [DEXPILOT_PAIR_WEIGHT] * self.num_thumb
+            + [DEXPILOT_SECOND_PAIR_WEIGHT] * (self.num_pairs - self.num_thumb)
+        )
 
     @property
     def num_rows(self) -> int:
         return self.num_pairs + self.num_fingers
 
-    def reset(self) -> None:
-        self.projected[:] = False
+    def projection(self, dist: np.ndarray) -> np.ndarray:
+        s1 = self.num_thumb
+        span = self.project_dist - self.project_full_dist
+        thumb = np.clip((self.project_dist - dist[:s1]) / span, 0.0, 1.0)
+        second_full = DEXPILOT_SECOND_PAIR_DIST * self.project_full_dist / self.project_dist
+        second = np.clip((DEXPILOT_SECOND_PAIR_DIST - dist[s1:])
+                         / (DEXPILOT_SECOND_PAIR_DIST - second_full), 0.0, 1.0)
+        both = np.minimum(thumb[self.second_origin], thumb[self.second_task])
+        return np.concatenate([thumb, both * second])
 
     def update(self, ref: np.ndarray, scaling: float) -> Tuple[np.ndarray, np.ndarray]:
-        n, s1 = self.num_pairs, self.num_thumb
+        n = self.num_pairs
         dist = np.linalg.norm(ref[:n], axis=1)
-        thumb = self.projected[:s1]
-        thumb[dist[:s1] < self.project_dist] = True
-        thumb[dist[:s1] > self.escape_dist] = False
-        self.projected[s1:] = (
-            thumb[self.second_origin]
-            & thumb[self.second_task]
-            & (dist[s1:] <= DEXPILOT_SECOND_PAIR_DIST)
-        )
-        high = np.array(
-            [DEXPILOT_PAIR_WEIGHT] * s1 + [DEXPILOT_SECOND_PAIR_WEIGHT] * (n - s1)
-        )
+        s = self.projection(dist)
         weight = np.concatenate(
-            [np.where(self.projected, high, 1.0), np.full(self.num_fingers, n + self.num_fingers)]
+            [self.high_weight ** s, np.full(self.num_fingers, n + self.num_fingers)]
         )
-        normal = ref * scaling
-        projected = ref[:n] / (dist[:, None] + 1e-6) * self.projected_dist[:, None]
-        target = np.concatenate([np.where(self.projected[:, None], projected, normal[:n]),
-                                 normal[n:]])
+        length = (1.0 - s) * scaling * dist + s * self.projected_dist
+        target = np.concatenate([ref[:n] / (dist[:, None] + 1e-6) * length[:, None],
+                                 ref[n:] * scaling])
         return target.astype(np.float32), weight / self.num_rows
 
 
@@ -96,7 +100,7 @@ class RetargetOptimizer:
         scaling: float,
         normal_delta: float,
         project_dist: float,
-        escape_dist: float,
+        project_full_dist: float,
     ):
         mimic = set(kin.mimic_names) & set(target_joint_names)
         if mimic:
@@ -122,7 +126,7 @@ class RetargetOptimizer:
         self.scaling = scaling
         self.normal_delta = normal_delta
 
-        self.dexpilot = DexPilotState(len(tips), project_dist, escape_dist)
+        self.dexpilot = DexPilotState(len(tips), project_dist, project_full_dist)
         chain_links = [wrist] + list(tips)
         o, t = dexpilot_pairs(len(tips))
         origins = [chain_links[i] for i in o]
@@ -146,9 +150,6 @@ class RetargetOptimizer:
 
     def set_max_evals(self, max_evals: int) -> None:
         self.max_iter = max_evals
-
-    def reset(self) -> None:
-        self.dexpilot.reset()
 
     def targets(self, ref: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         return self.dexpilot.update(np.asarray(ref, dtype=np.float32), self.scaling)
