@@ -21,7 +21,8 @@ from .preprocess import mano_palm_frame, mirror_xr_joints, palm_frame, xr_to_man
 HANDS_DIR = "hands"
 _DEX_KEYS = frozenset({
     "type", "wrist_link_name", "finger_tip_link_names", "target_joint_names",
-    "scaling_factor", "normal_delta", "project_dist", "escape_dist", "low_pass_alpha",
+    "scaling_factor", "normal_delta", "project_dist", "project_full_dist", "escape_dist",
+    "low_pass_alpha",
 })
 _DEFAULT_HUMAN_HAND_LENGTH = 0.19
 _MANO_TIP_STEP = 4
@@ -193,6 +194,7 @@ class DexEngine:
         o, t = dexpilot_pairs(len(tips))
         self._human_idx = _MANO_TIP_STEP * np.array([o, t], dtype=int)
 
+        project_dist = float(rt.get("project_dist", 0.03))
         self.optimizer = RetargetOptimizer(
             kin,
             target_joints,
@@ -201,8 +203,8 @@ class DexEngine:
             tips,
             scaling=self.scaling_factor,
             normal_delta=float(rt.get("normal_delta", 4e-3)),
-            project_dist=float(rt.get("project_dist", 0.03)),
-            escape_dist=float(rt.get("escape_dist", 0.05)),
+            project_dist=project_dist,
+            project_full_dist=float(rt.get("project_full_dist", project_dist / 2)),
         )
         self.kinematics = kin
         self.wrist_frame = wrist
@@ -327,7 +329,6 @@ class DexEngine:
         self._last = self._limits.mean(1).astype(np.float32)
         self._smoothed = None
         self.last_failure = None
-        self.optimizer.reset()
 
 
 __all__ = [

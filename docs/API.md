@@ -250,8 +250,17 @@ allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ab
 | `target_joint_names` | 고정·mimic 관절을 뺀 전 관절 | 최적화 변수(구동 관절). |
 | `scaling_factor` | 길이비 | 사람 벡터에 곱하는 배율(핀치 투영 벡터 제외). 없으면 `human_hand_length` 로 계산. |
 | `normal_delta` | 0.004 | 직전 해로 당기는 정규화 계수 — 기울기에만 `2·normal_delta·(x − 직전)` 로 들어간다(upstream 과 같다). |
-| `project_dist` / `escape_dist` | 0.03 / 0.05 | DexPilot 핀치 투영: 엄지–손가락 사람 거리가 `project_dist` 미만이면 투영을 켜고 `escape_dist` 초과면 끈다. |
+| `project_dist` | 0.03 | DexPilot 핀치 투영이 시작되는 엄지–손가락 사람 거리. |
+| `project_full_dist` | `project_dist`/2 | 핀치 투영이 다 켜지는 거리. 0 이상 `project_dist` 미만. |
+| `escape_dist` | — | 받기만 하고 쓰지 않는다(이전 계단식 투영의 히스테리시스 거리). |
 | `low_pass_alpha` | 0.1 | 출력 1차 저역통과(`y += α(x − y)`). 0~1 밖이면 끈다. |
+
+핀치 투영은 upstream(거리 문턱에서 켜고 끄는 계단 + 히스테리시스)과 달리 연속 램프다. 엄지 쌍 사람 거리 d 에 대해
+`s = clip((project_dist − d)/(project_dist − project_full_dist), 0, 1)`, 목표 벡터 길이는
+`(1 − s)·scaling_factor·d + s·η`(엄지 쌍 η 1e-4 m, 손가락–손가락 쌍 3e-2 m), 가중치는 `W^s`(엄지 쌍 W 200,
+손가락–손가락 쌍 400)다. 손가락–손가락 쌍의 s 는 두 엄지 쌍 s 의 작은 값에 같은 비율의 램프(0.03 m 에서 시작,
+`0.03·project_full_dist/project_dist` 에서 다 켜짐)를 곱한다. s 가 d 의 연속 함수라 상태가 없고, 계단식에서 문턱을
+넘는 프레임에 손가락이 한 번에 달라붙던 급변(DG-5F-S 장갑 핀치 16°/프레임 → 1.5°/프레임)이 없다.
 
 DexPilot 쌍(엄지–손가락, 손가락–손가락, 손목→손끝)에 이미 손목→손끝 벡터가 들어 있어 별도의 벡터·위치 목적함수는
 두지 않는다. `vector_weight`·`position_weight`·`target_origin_link_names`·`target_task_link_names`·
