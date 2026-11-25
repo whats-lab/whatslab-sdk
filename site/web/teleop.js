@@ -4,7 +4,7 @@ export const PARENT = [-1, 0, 1, 2, 3, 0, 5, 6, 7, 8, 0, 10, 11, 12, 13, 0, 15, 
 export const TIPS = [4, 9, 14, 19, 24];
 const CHAINS = [[1, 2, 3], [6, 7, 8], [11, 12, 13], [16, 17, 18], [21, 22, 23]];
 const LIMITS = {
-  thumb: [[-0.6, 1.3], [-0.6, 1.0], [-0.3, 1.4]],
+  thumb: [[-0.6, 1.3], [-0.6, 1.0], [-0.3, 1.4], [-0.6, 0.6]],
   finger: [[-0.35, 1.6], [-0.35, 0.35], [-0.1, 1.9]],
 };
 const COUPLE = { thumb: 0.8, finger: 0.7 };
@@ -24,6 +24,23 @@ function palmFrame(w, i, m, p, side) {
 
 function quatFromMatrix3(m) {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().setFromMatrix3(m));
+}
+
+function solveLinear(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]];
+    const d = M[c][c] || 1e-12;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const k = M[r][c] / d;
+      for (let j = c; j <= n; j++) M[r][j] -= k * M[c][j];
+    }
+  }
+  return M.map((row, i) => row[n] / (row[i] || 1e-12));
 }
 
 export class HandModel {
@@ -99,50 +116,52 @@ export class HandModel {
 
   chainValues(f) {
     const [a, b, c] = CHAINS[f];
-    return [this.angles[a].flex, this.angles[a].abd, this.angles[b].flex, this.angles[c].flex];
+    const v = [this.angles[a].flex, this.angles[a].abd, this.angles[b].flex];
+    return f === 0 ? [...v, this.angles[a].roll, this.angles[c].flex] : [...v, this.angles[c].flex];
   }
 
   setChain(f, x) {
     const kind = f === 0 ? "thumb" : "finger";
     const lim = LIMITS[kind];
-    const v = x.map((t, i) => Math.min(Math.max(t, lim[i][0]), lim[i][1]));
+    const v = x.slice(0, f === 0 ? 4 : 3).map((t, i) => Math.min(Math.max(t, lim[i][0]), lim[i][1]));
     const [a, b, c] = CHAINS[f];
     this.angles[a].flex = v[0];
     this.angles[a].abd = v[1];
     this.angles[b].flex = v[2];
+    if (f === 0) this.angles[a].roll = v[3];
     this.angles[c].flex = v[2] * COUPLE[kind];
     return v;
   }
 
   solveTip(f, target, iters = 12) {
-    let x = this.chainValues(f).slice(0, 3);
     const tip = TIPS[f];
-    const err = () => target.clone().sub(this.pos[tip]);
-    x = this.setChain(f, x);
+    const n = f === 0 ? 4 : 3;
+    let x = this.setChain(f, this.chainValues(f));
+    const ref = x.slice();
     this.fk();
     for (let it = 0; it < iters; it++) {
-      const e = err();
+      const e = target.clone().sub(this.pos[tip]);
       if (e.length() < 2e-4) break;
       const J = [];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < n; i++) {
         const d = x.slice();
-        d[i] += 1e-3;
+        d[i] += 1e-4;
         this.setChain(f, d);
         this.fk();
-        J.push(this.pos[tip].clone().sub(target).add(e).multiplyScalar(1e3));
-        this.setChain(f, x);
+        J.push(this.pos[tip].clone().sub(target).add(e).multiplyScalar(1e4));
       }
+      this.setChain(f, x);
       this.fk();
-      const jt = new THREE.Matrix3().set(J[0].x, J[0].y, J[0].z, J[1].x, J[1].y, J[1].z, J[2].x, J[2].y, J[2].z);
-      const jtj = new THREE.Matrix3().multiplyMatrices(jt, jt.clone().transpose());
-      const lam = 1e-4;
-      const el = jtj.elements;
-      el[0] += lam;
-      el[4] += lam;
-      el[8] += lam;
-      const g = e.clone().applyMatrix3(jt);
-      const step = g.applyMatrix3(jtj.clone().invert());
-      x = this.setChain(f, [x[0] + step.x, x[1] + step.y, x[2] + step.z]);
+      const A = [];
+      const g = [];
+      const lam = 2e-4;
+      for (let i = 0; i < n; i++) {
+        A.push([]);
+        for (let k = 0; k < n; k++) A[i].push(J[i].dot(J[k]) + (i === k ? lam : 0));
+        g.push(J[i].dot(e) + lam * 0.05 * (ref[i] - x[i]));
+      }
+      const step = solveLinear(A, g);
+      x = this.setChain(f, x.map((v, i) => v + step[i]));
       this.fk();
     }
     return x;
@@ -150,7 +169,8 @@ export class HandModel {
 
   reachTip(f, target) {
     let best = null;
-    for (const seed of [this.chainValues(f).slice(0, 3), [0.4, 0.2, 0.4], [0.9, 0.3, 0.8], [0.2, 0.6, 0.2], [1.2, 0.0, 0.3]]) {
+    const roll = this.angles[CHAINS[f][0]].roll;
+    for (const seed of [this.chainValues(f), [0.4, 0.2, 0.4, roll], [0.9, 0.3, 0.8, roll], [0.2, 0.6, 0.2, roll], [1.2, 0.0, 0.3, roll]]) {
       this.setChain(f, seed);
       this.fk();
       const x = this.solveTip(f, target, 40);
@@ -173,7 +193,7 @@ export class HandModel {
         this.angles[j].abd = j === chain[0] ? Math.atan2(-fwd.x, -fwd.z) : 0;
       }
     }
-    CHAINS.forEach((_, f) => this.setChain(f, this.chainValues(f).slice(0, 3)));
+    CHAINS.forEach((_, f) => this.setChain(f, this.chainValues(f)));
     this.fk();
   }
 
@@ -182,9 +202,88 @@ export class HandModel {
     this.fk();
   }
 
+  fingerOf(j) {
+    if (j <= 0) return -1;
+    return j <= 4 ? 0 : Math.floor((j - 5) / 5) + 1;
+  }
+
+  pointAt(j, offset) {
+    return offset.clone().applyQuaternion(this.rot[j]).add(this.pos[j]);
+  }
+
+  nearestBone(p) {
+    let best = { j: -1, d: Infinity };
+    for (let j = 1; j < this.pos.length; j++) {
+      const a = this.pos[j];
+      const child = TIPS.includes(j) ? null : this.pos[j + 1];
+      let d;
+      if (child) {
+        const ab = child.clone().sub(a);
+        const t = Math.min(Math.max(p.clone().sub(a).dot(ab) / ab.lengthSq(), 0), 1);
+        d = a.clone().addScaledVector(ab, t).distanceTo(p);
+      } else {
+        d = a.distanceTo(p);
+      }
+      if (d < best.d) best = { j, d };
+    }
+    return best.j;
+  }
+
+  anchor(p) {
+    const j = this.nearestBone(p);
+    return { j, offset: p.clone().sub(this.pos[j]).applyQuaternion(this.rot[j].clone().invert()) };
+  }
+
+  step(dt, grab, cursor, gains) {
+    if (!this.rest) this.rest = CHAINS.map((_, f) => this.chainValues(f).map(() => 0));
+    const sub = 4;
+    const h = dt / sub;
+    let moved = 0;
+    for (let s = 0; s < sub; s++) {
+      for (let f = 0; f < CHAINS.length; f++) {
+        let x = this.chainValues(f);
+        const n = x.length;
+        const tau = x.map((v, i) => -gains.kq * (v - this.rest[f][i]));
+        if (grab && this.fingerOf(grab.j) === f) {
+          const pt = this.pointAt(grab.j, grab.offset);
+          const force = cursor.clone().sub(pt).multiplyScalar(gains.k);
+          for (let i = 0; i < n; i++) {
+            const d = x.slice();
+            d[i] += 1e-4;
+            this.setChain(f, d);
+            this.fk();
+            const col = this.pointAt(grab.j, grab.offset).sub(pt).multiplyScalar(1e4);
+            tau[i] += col.dot(force);
+          }
+          this.setChain(f, x);
+          this.fk();
+        }
+        const next = x.map((v, i) => v + (tau[i] / gains.d) * h);
+        const done = this.setChain(f, next);
+        moved = Math.max(moved, ...done.map((v, i) => Math.abs(v - x[i])));
+      }
+      this.fk();
+    }
+    return moved;
+  }
+
+  holdPose() {
+    this.rest = CHAINS.map((_, f) => this.chainValues(f).slice());
+  }
+
   reset() {
     this.angles.forEach((a) => { a.flex = 0; a.abd = 0; a.roll = 0; });
     this.fk();
+  }
+
+  presetTarget(name) {
+    const keep = this.angles.map((a) => ({ ...a }));
+    if (name === "open") this.reset();
+    else this.preset(name);
+    const target = CHAINS.map((_, f) => this.chainValues(f).slice());
+    this.angles = keep;
+    this.fk();
+    this.rest = target;
   }
 
   preset(name) {

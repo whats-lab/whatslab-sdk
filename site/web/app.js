@@ -1,11 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import URDFLoader from "urdf-loader";
 import { currentLang, setLang, t } from "./i18n.js";
 import { HandModel, TIPS } from "./teleop.js";
+import { parseMetaHand, skinInto } from "./metahand.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -163,7 +162,7 @@ function capOpenings(g) {
     const size = attr.itemSize;
     const data = new attr.array.constructor((attr.count + 1) * size);
     data.set(attr.array);
-    const extra = name === "position" ? center.toArray() : name === "normal" ? normal.toArray()
+    const extra = /position/i.test(name) ? center.toArray() : /normal/i.test(name) ? normal.toArray()
       : Array.from(attr.array.slice(first * size, first * size + size));
     data.set(extra, attr.count * size);
     out.setAttribute(name, new THREE.BufferAttribute(data, size, attr.normalized));
@@ -176,24 +175,34 @@ function capOpenings(g) {
   return out;
 }
 
-const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().loadAsync(`assets/hand/${side}.glb`)
-  .then((gltf) => {
-    const root = gltf.scene;
-    root.traverse((o) => {
-      if (o.isSkinnedMesh) {
-        o.geometry = capOpenings(o.geometry);
-        o.material = skinMaterial;
-        o.frustumCulled = false;
-        o.castShadow = true;
-      }
-    });
+const handModels = Promise.all(["left", "right"].map((side) => fetch(`assets/hand/${side}.glb`)
+  .then((r) => r.arrayBuffer())
+  .then((buffer) => {
+    const hand = parseMetaHand(buffer);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(hand.vertices), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(Float32Array.from(hand.normals), 3));
+    g.setAttribute("bindPosition", new THREE.BufferAttribute(Float32Array.from(hand.vertices), 3));
+    g.setAttribute("bindNormal", new THREE.BufferAttribute(Float32Array.from(hand.normals), 3));
+    g.setAttribute("skinIndex", new THREE.BufferAttribute(hand.skinIndex, 4));
+    g.setAttribute("skinWeight", new THREE.BufferAttribute(hand.skinWeight, 4));
+    g.setIndex(new THREE.BufferAttribute(hand.index, 1));
+    const geom = capOpenings(g);
+    const mesh = new THREE.Mesh(geom, skinMaterial);
+    mesh.frustumCulled = false;
+    mesh.castShadow = true;
+    const root = new THREE.Group();
+    root.add(mesh);
     root.visible = false;
-    root.updateMatrixWorld(true);
-    const bones = XR_BONES.map((n) => root.getObjectByName(n));
-    const palm = root.getObjectByName("XRHand_Palm");
-    [palm, ...bones].forEach((bone) => root.attach(bone));
     humanFrame.add(root);
-    handMeshes[side] = { root, bones, palm, model: new HandModel(bones, side) };
+    const bind = XR_BONES.map((name) => {
+      const k = hand.names.indexOf(name);
+      return {
+        position: hand.bindP[k].clone(),
+        quaternion: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().setFromMatrix3(hand.bindR[k])),
+      };
+    });
+    handMeshes[side] = { root, mesh, hand, model: new HandModel(bind, side) };
   })));
 
 const converted = new WeakMap();
@@ -578,8 +587,8 @@ function humanBox() {
     : new THREE.Box3().setFromObject(boneLines).expandByScalar(0.012);
 }
 
-function fingerFrame(mcp, tip, index, pinky, side) {
-  const z = tip.clone().sub(mcp).normalize();
+function palmAxes(wrist, mcp, index, pinky, side) {
+  const z = mcp.clone().sub(wrist).normalize();
   const y = side === "right" ? index.clone().sub(pinky) : pinky.clone().sub(index);
   y.addScaledVector(z, -y.dot(z)).normalize();
   const x = new THREE.Vector3().crossVectors(y, z);
@@ -590,10 +599,10 @@ function humanAlignment(sd, chirality) {
   const open = motions.skeleton[sd.skeleton].fist[0];
   const at = (k) => new THREE.Vector3(open[k * 7 + 4], open[k * 7 + 5], open[k * 7 + 6]).divideScalar(motions.pScale);
   const v = (a) => new THREE.Vector3().fromArray(a);
-  const h = { mcp: at(12), tip: at(15), index: at(7), pinky: at(22) };
-  const r = { mcp: v(sd.align.mcp), tip: v(sd.align.tip), index: v(sd.align.index), pinky: v(sd.align.pinky) };
-  const fr = fingerFrame(r.mcp, r.tip, r.index, r.pinky, chirality);
-  const fh = fingerFrame(h.mcp, h.tip, h.index, h.pinky, chirality);
+  const h = { wrist: at(1), mcp: at(12), tip: at(15), index: at(7), pinky: at(22) };
+  const r = { wrist: v(sd.align.wrist), mcp: v(sd.align.mcp), tip: v(sd.align.tip), index: v(sd.align.index), pinky: v(sd.align.pinky) };
+  const fr = palmAxes(r.wrist, r.mcp, r.index, r.pinky, chirality);
+  const fh = palmAxes(h.wrist, h.mcp, h.index, h.pinky, chirality);
   const rot = fr.multiply(fh.transpose());
   const s = r.tip.distanceTo(r.mcp) / h.tip.distanceTo(h.mcp);
   const m = rot.clone().multiply(new THREE.Matrix4().makeScale(s, s, s));
@@ -684,40 +693,40 @@ function applyPose(q, p) {
   boneGeom.computeBoundingBox();
   const model = current.handMesh;
   if (!model) return;
-  model.palm.quaternion.set(p[0], p[1], p[2], p[3]).normalize();
-  model.palm.position.set(p[4], p[5], p[6]);
-  model.bones.forEach((bone, k) => {
-    const o = (k + 1) * 7;
-    bone.quaternion.set(p[o], p[o + 1], p[o + 2], p[o + 3]).normalize();
-    bone.position.set(p[o + 4], p[o + 5], p[o + 6]);
-  });
+  const quats = new Float64Array(26 * 4);
+  const pos = new Float64Array(26 * 3);
+  for (let k = 0; k < 26; k++) {
+    const norm = Math.hypot(p[k * 7], p[k * 7 + 1], p[k * 7 + 2], p[k * 7 + 3]) || 1;
+    for (let c = 0; c < 4; c++) quats[k * 4 + c] = p[k * 7 + c] / norm;
+    for (let c = 0; c < 3; c++) pos[k * 3 + c] = p[k * 7 + 4 + c];
+  }
+  const g = model.mesh.geometry;
+  skinInto(model.hand, quats, pos, g.attributes.bindPosition.array, g.attributes.bindNormal.array,
+    g.attributes.skinIndex.array, g.attributes.skinWeight.array, g.attributes.position.array, g.attributes.normal.array);
+  g.attributes.position.needsUpdate = true;
+  g.attributes.normal.needsUpdate = true;
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
 }
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-const engine = { worker: null, ready: false, busy: false, dirty: false, id: 0, robotQ: null, solveMs: [], failed: false };
+const engine = { worker: null, ready: false, busy: false, dirty: false, settle: 0, id: 0, robotQ: null, solveMs: [], failed: false };
 window.__solveMs = engine.solveMs;
-const target = new THREE.Mesh(
-  new THREE.SphereGeometry(0.006, 16, 12),
-  new THREE.MeshBasicMaterial({ color: color("--accent"), depthTest: false, transparent: true, opacity: 0.9 }),
-);
-target.renderOrder = 20;
-target.visible = false;
-humanFrame.add(target);
-const gapGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-const gap = new THREE.Line(gapGeom, new THREE.LineBasicMaterial({ color: color("--accent"), depthTest: false }));
-gap.renderOrder = 20;
-gap.visible = false;
-humanFrame.add(gap);
-const gizmo = new TransformControls(camera, canvas);
-gizmo.setMode("translate");
-gizmo.setSpace("local");
-gizmo.setSize(0.8);
-scene.add(gizmo.getHelper());
-gizmo.addEventListener("dragging-changed", (e) => { controls.enabled = !e.value; });
-gizmo.addEventListener("objectChange", () => followTarget());
-let finger = 1;
-window.__teleop = { target, camera, humanFrame, tip: (f) => tipCanonical(f) };
+const springGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const spring = new THREE.Line(springGeom, new THREE.LineBasicMaterial({ color: color("--accent"), depthTest: false }));
+spring.renderOrder = 20;
+spring.visible = false;
+humanFrame.add(spring);
+const grabDot = new THREE.Mesh(new THREE.SphereGeometry(0.004, 12, 8), new THREE.MeshBasicMaterial({ color: color("--accent"), depthTest: false }));
+grabDot.renderOrder = 21;
+grabDot.visible = false;
+humanFrame.add(grabDot);
+const GAINS = { k: 3, kq: 0.0006, d: 0.0006 };
+const dragPlane = new THREE.Plane();
+let grab = null;
+let cursor = null;
+window.__teleop = { camera, humanFrame, grab: () => grab, cursor: () => cursor, point: () => grab && toCanonical(current.handMesh.model.pointAt(grab.j, grab.offset)), model: () => current.handMesh.model, toCanonical };
 
 function interactive() {
   return state.mode === "interactive" && Boolean(current && current.sideData.clips && current.handMesh);
@@ -728,46 +737,16 @@ function toArmature(v) {
   return v.clone().applyMatrix3(m.toCanon.clone().transpose()).add(m.pos[0]);
 }
 
-function tipCanonical(f) {
-  return current.handMesh.bones[TIPS[f]].position.clone();
-}
-
-function placeTarget(reset) {
-  const on = interactive() && human.visible;
-  target.visible = on;
-  gap.visible = on;
-  if (!on) {
-    gizmo.detach();
-    return;
-  }
-  if (reset) target.position.copy(tipCanonical(finger));
-  if (gizmo.object !== target) gizmo.attach(target);
-  gizmo.showX = gizmo.showY = gizmo.showZ = true;
-  const pos = gapGeom.attributes.position;
-  pos.setXYZ(0, target.position.x, target.position.y, target.position.z);
-  const tip = tipCanonical(finger);
-  pos.setXYZ(1, tip.x, tip.y, tip.z);
-  pos.needsUpdate = true;
-}
-
-function followTarget() {
-  if (!interactive()) return;
-  current.handMesh.model.solveTip(finger, toArmature(target.position));
-  showHuman();
-  placeTarget(false);
-}
-
-function selectFinger(f) {
-  finger = f;
-  document.querySelectorAll("#fingers button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.finger) === f)));
-  $("#opposition-field").hidden = f !== 0;
-  placeTarget(true);
+function toCanonical(v) {
+  const m = current.handMesh.model;
+  return v.clone().sub(m.pos[0]).applyMatrix3(m.toCanon);
 }
 
 function showHuman() {
   const p = current.handMesh.model.canonical();
   applyPose(engine.robotQ || current.values, p);
   engine.dirty = true;
+  engine.settle = 0;
 }
 
 function startPosing() {
@@ -775,17 +754,37 @@ function startPosing() {
   state.playing = false;
   playBtn.classList.add("paused");
   playBtn.setAttribute("aria-label", "Play");
-  if (lastHuman) current.handMesh.model.fromCanonical(lastHuman);
-  $("#opposition").value = String(current.handMesh.model.angles[1].roll || 0);
+  const model = current.handMesh.model;
+  if (lastHuman) model.fromCanonical(lastHuman);
+  model.rest = null;
   engine.robotQ = Float32Array.from(current.values);
   ensureEngine();
   showHuman();
-  selectFinger(finger);
 }
 
 function stopPosing() {
   state.posing = false;
-  placeTarget(false);
+  grab = null;
+  spring.visible = false;
+  grabDot.visible = false;
+}
+
+function stepPose(dt) {
+  if (!interactive() || !state.posing) return;
+  const model = current.handMesh.model;
+  const target = grab && cursor ? toArmature(cursor) : null;
+  const moved = model.step(Math.min(dt, 0.05), grab && target ? grab : null, target, GAINS);
+  if (moved > 1e-5 || grab) showHuman();
+  spring.visible = Boolean(grab);
+  grabDot.visible = Boolean(grab);
+  if (grab) {
+    const pt = toCanonical(model.pointAt(grab.j, grab.offset));
+    const pos = springGeom.attributes.position;
+    pos.setXYZ(0, pt.x, pt.y, pt.z);
+    pos.setXYZ(1, cursor.x, cursor.y, cursor.z);
+    pos.needsUpdate = true;
+    grabDot.position.copy(pt);
+  }
 }
 
 function engineConfigure() {
@@ -859,7 +858,11 @@ function ensureEngine() {
       if (msg.id !== engine.id || !msg.values || !current) return;
       engine.solveMs.push(msg.values[0]);
       if (engine.solveMs.length > 200) engine.solveMs.shift();
-      engine.robotQ = Float32Array.from(msg.values.slice(1));
+      const next = Float32Array.from(msg.values.slice(1));
+      const moved = engine.robotQ ? next.reduce((m, v, i) => Math.max(m, Math.abs(v - engine.robotQ[i])), 0) : 1;
+      engine.robotQ = next;
+      engine.settle += 1;
+      if (moved > 1e-3 && engine.settle < 60) engine.dirty = true;
       if (state.posing) applyPose(engine.robotQ, lastHuman);
     }
   };
@@ -874,47 +877,61 @@ function pumpEngine() {
   engine.worker.postMessage({ type: "solve", id: engine.id, xr: current.handMesh.model.xr(Boolean(sd.mirrored)) });
 }
 
-function pickFinger(e) {
+function pointerRay(e) {
   const rect = canvas.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(current.handMesh.root, true).find((h) => h.object.isSkinnedMesh);
-  if (!hit) return -1;
-  const local = humanFrame.worldToLocal(hit.point.clone());
-  const bones = current.handMesh.bones;
-  let best = -1;
-  let dist = Infinity;
-  TIPS.forEach((tip, f) => {
-    for (let j = tip - (f === 0 ? 2 : 3); j <= tip; j++) {
-      const d = bones[j].position.distanceTo(local);
-      if (d < dist) {
-        dist = d;
-        best = f;
-      }
-    }
-  });
-  return best;
+}
+
+function cursorAt(e) {
+  pointerRay(e);
+  const world = raycaster.ray.intersectPlane(dragPlane, new THREE.Vector3());
+  return world ? humanFrame.worldToLocal(world) : cursor;
 }
 
 canvas.addEventListener("pointerdown", (e) => {
-  if (!interactive() || gizmo.dragging || gizmo.axis) return;
-  const f = pickFinger(e);
-  if (f >= 0) selectFinger(f);
+  if (!interactive()) return;
+  pointerRay(e);
+  const hit = raycaster.intersectObject(current.handMesh.mesh, false)[0];
+  if (!hit) return;
+  e.stopImmediatePropagation();
+  controls.enabled = false;
+  if (!state.posing) startPosing();
+  const model = current.handMesh.model;
+  grab = { ...model.anchor(toArmature(humanFrame.worldToLocal(hit.point.clone()))), pointer: e.pointerId };
+  dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), hit.point);
+  cursor = humanFrame.worldToLocal(hit.point.clone());
+  canvas.setPointerCapture(e.pointerId);
+}, { capture: true });
+
+canvas.addEventListener("pointermove", (e) => {
+  if (grab && e.pointerId === grab.pointer) cursor = cursorAt(e);
+  else if (interactive()) {
+    pointerRay(e);
+    canvas.style.cursor = raycaster.intersectObject(current.handMesh.mesh, false).length ? "grab" : "";
+  }
 });
+
+function releaseGrab(e) {
+  if (!grab || e.pointerId !== grab.pointer) return;
+  grab = null;
+  controls.enabled = true;
+  canvas.releasePointerCapture(e.pointerId);
+  if ($("#hold").checked) current.handMesh.model.holdPose();
+}
+
+canvas.addEventListener("pointerup", releaseGrab);
+canvas.addEventListener("pointercancel", releaseGrab);
 
 window.addEventListener("keydown", (e) => {
   if (!interactive() || e.target.closest("input, select, textarea")) return;
-  if (e.key >= "1" && e.key <= "5") selectFinger(Number(e.key) - 1);
   if (e.key === "r" || e.key === "R") setPose("open");
 });
 
 function setPose(name) {
   if (!interactive()) return;
-  if (name === "open") current.handMesh.model.reset();
-  else current.handMesh.model.preset(name);
-  $("#opposition").value = String(current.handMesh.model.angles[1].roll || 0);
-  showHuman();
-  placeTarget(true);
+  if (!state.posing) startPosing();
+  current.handMesh.model.presetTarget(name);
 }
 
 function setMode(mode) {
@@ -924,7 +941,6 @@ function setMode(mode) {
   $("#motion-row").hidden = live;
   $("#transport").hidden = live;
   $("#pose-row").hidden = !live;
-  $("#finger-row").hidden = !live;
   if (live && current && current.handMesh) startPosing();
   if (!live) {
     stopPosing();
@@ -1179,15 +1195,7 @@ motionsEl.addEventListener("click", (e) => {
 });
 $("#poses").addEventListener("click", (e) => e.target.dataset.pose && setPose(e.target.dataset.pose));
 $("[data-pose-reset]").addEventListener("click", () => setPose("open"));
-$("#fingers").addEventListener("click", (e) => e.target.dataset.finger && selectFinger(Number(e.target.dataset.finger)));
 $("#mode-tabs").addEventListener("click", (e) => e.target.dataset.mode && setMode(e.target.dataset.mode));
-$("#opposition").addEventListener("input", (e) => {
-  if (!interactive()) return;
-  current.handMesh.model.setRoll(Number(e.target.value));
-  current.handMesh.model.solveTip(0, toArmature(target.position));
-  showHuman();
-  placeTarget(false);
-});
 $("#side").addEventListener("click", (e) => e.target.dataset.side && select({ side: e.target.dataset.side }));
 $("#human").addEventListener("click", (e) => {
   if (!e.target.dataset.human) return;
@@ -1257,6 +1265,7 @@ function tick(now) {
   }
   updateTable(now);
   drainQueue(4);
+  stepPose(dt);
   pumpEngine();
   if (state.view === "detail" && !state.downloading) {
     controls.update();

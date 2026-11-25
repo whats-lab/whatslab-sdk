@@ -119,18 +119,6 @@ print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
         <div class="row" id="motion-row">
           <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
         </div>
-        <div class="row" id="finger-row" hidden>
-          <div class="segmented small" id="fingers" role="group" aria-label="Finger">
-            <button type="button" data-finger="0" data-i18n="finger.thumb">Thumb</button>
-            <button type="button" data-finger="1" data-i18n="finger.index">Index</button>
-            <button type="button" data-finger="2" data-i18n="finger.middle">Middle</button>
-            <button type="button" data-finger="3" data-i18n="finger.ring">Ring</button>
-            <button type="button" data-finger="4" data-i18n="finger.little">Little</button>
-          </div>
-          <label class="field" id="opposition-field" hidden><span data-i18n="finger.opposition">Thumb opposition</span>
-            <input id="opposition" type="range" min="-0.6" max="0.6" step="0.01" value="0">
-          </label>
-        </div>
         <div class="row" id="pose-row" hidden>
           <div class="segmented small" id="poses" role="group" aria-label="Pose">
             <button type="button" data-pose="open" data-i18n="pose.open">Open</button>
@@ -139,6 +127,7 @@ print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
             <button type="button" data-pose="v" data-i18n="pose.v">V</button>
           </div>
           <button type="button" class="plain" data-pose-reset data-i18n="pose.reset">Reset</button>
+          <label class="check"><input id="hold" type="checkbox"> <span data-i18n="pose.hold">Keep pose on release</span></label>
           <span class="hint" data-i18n="pose.hint"></span>
         </div>
         <div class="row transport" id="transport">

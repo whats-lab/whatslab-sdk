@@ -230,6 +230,37 @@ def mesh_sources(manifest):
     }
 
 
+def finger_mcps(urdf_path, tips):
+    joints = ET.parse(urdf_path).getroot().findall("joint")
+    parent_of = {
+        j.find("child").get("link"): (j.find("parent").get("link"), j.get("type")) for j in joints
+    }
+
+    def chain(link):
+        out = []
+        while link in parent_of:
+            par, kind = parent_of[link]
+            out.append((link, kind))
+            link = par
+        return out[::-1]
+
+    links = [t.removesuffix("_offset") for t in tips]
+    chains = [chain(t) for t in links]
+    fingers = chains[1:]
+    shared = 0
+    while all(len(c) > shared and c[shared] == fingers[0][shared] for c in fingers):
+        shared += 1
+    mcps = []
+    for c in chains:
+        rest = c[shared:] if c[:shared] == fingers[0][:shared] else c
+        mcps.append(next((link for link, kind in rest if kind != "fixed"), rest[0][0]))
+    return mcps
+
+
+def wrist_now(tf, kin, frame):
+    return tf[kin.frame_ids([frame])[0], :3, 3]
+
+
 def solve_hand(job):
     from whatslab.retarget.dex import DexEngine
 
@@ -256,12 +287,13 @@ def solve_hand(job):
         return np.mean([tf[kin.frame_ids([n])[0], :3, 3] for n in names], axis=0)
 
     tips = engine.tip_frames
-    index, middle, pinky = engine.config.palm_links
+    mcps = finger_mcps(engine.urdf_path, tips)
     align = {
-        "mcp": at(middle),
+        "wrist": wrist_now(tf, kin, engine.wrist_frame),
+        "mcp": at([mcps[2] if len(tips) > 2 else mcps[-1]]),
         "tip": at([tips[2] if len(tips) > 2 else tips[-1]]),
-        "index": at(index),
-        "pinky": at(pinky),
+        "index": at([mcps[1]]),
+        "pinky": at([mcps[-1]]),
     }
     out = {"clips": {}, "failures": 0}
     fit_c, fit_k = [], []
