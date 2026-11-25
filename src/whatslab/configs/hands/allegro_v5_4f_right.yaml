@@ -12,7 +12,7 @@ retargeting:
   finger_tip_link_names: [link_15_0_tip, link_3_0_tip, link_7_0_tip, link_11_0_tip]
   low_pass_alpha: 0.5
 posture_prior:
-  weight: 0.015
+  weight: 0.02
   joints:
     joint_14_0: {thumb.mcp: 3.0}
     joint_15_0: {thumb.ip: 1.0}

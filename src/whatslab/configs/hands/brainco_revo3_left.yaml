@@ -37,4 +37,5 @@ posture_prior:
     flex_joint: left_thumb_MCP_joint
     step_deg: 2.0
     axis_weight: 0.5
-  joint_weights: {left_thumb_PIP_joint: 0.1}
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
+  joint_weights: {left_thumb_PIP_joint: 0.1, left_little_DIP_joint: 0.03}

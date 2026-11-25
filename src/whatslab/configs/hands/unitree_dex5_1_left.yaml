@@ -42,4 +42,5 @@ posture_prior:
     flex_joint: Pitch_13L
     step_deg: 2.0
     axis_weight: 0.5
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
   joint_weights: {Pitch_13L: 0.1}

@@ -45,6 +45,7 @@ posture_prior:
     flex_joint: T-PP_68395e98_to_R-T-AP_a9723101
     step_deg: 2.0
     axis_weight: 0.5
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
   open_hand:
     open_below_deg: 10.0
     free_above_deg: 30.0

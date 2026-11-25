@@ -22,7 +22,6 @@ retargeting:
   project_dist: 0.03
 posture_prior:
   weight: 0.01
-  joint_weights: {finger_r_joint1: 0.05, finger_r_joint2: 0.05, finger_r_joint3: 0.05, finger_r_joint4: 0.05}
   joints:
     finger_r_joint3: {thumb.mcp: 1.0}
     finger_r_joint4: {thumb.ip: 1.0}
@@ -48,3 +47,5 @@ posture_prior:
     flex_joint: finger_r_joint3
     step_deg: 2.0
     axis_weight: 0.5
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
+  joint_weights: {finger_r_joint1: 0.05, finger_r_joint2: 0.05, finger_r_joint3: 0.05, finger_r_joint4: 0.05}
