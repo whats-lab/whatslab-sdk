@@ -30,9 +30,11 @@ SPREAD_START = len(BEND_NAMES)
 OPEN_FINGERS = ("index", "middle", "ring", "little")
 FINGER_BENDS = {"thumb": ("thumb.mcp", "thumb.ip"),
                 **{f: tuple(f"{f}.{j}" for j in ("mcp", "pip", "dip")) for f in FINGER_CHAINS}}
-_SPEC_KEYS = frozenset({"weight", "joints", "thumb_base", "joint_weights", "open_hand"})
+_SPEC_KEYS = frozenset({"weight", "joints", "thumb_base", "joint_weights", "open_hand",
+                        "abduction"})
 _THUMB_KEYS = frozenset({"joints", "bone", "flex_joint", "step_deg", "axis_weight"})
 _OPEN_KEYS = frozenset({"open_below_deg", "free_above_deg", "weight", "fingers"})
+_ABDUCTION_KEYS = frozenset({"full_deg", "decay", "gain"})
 
 
 @dataclass(frozen=True)
@@ -53,12 +55,20 @@ class OpenHandSpec:
 
 
 @dataclass(frozen=True)
+class AbductionSpec:
+    full_deg: float = 60.0
+    decay: float = 1.0
+    gain: float = 10.0
+
+
+@dataclass(frozen=True)
 class PostureSpec:
     weight: float
     joints: Dict[str, Dict[str, float]]
     thumb_base: Optional[ThumbBaseSpec] = None
     joint_weights: Dict[str, float] = field(default_factory=dict)
     open_hand: Optional[OpenHandSpec] = None
+    abduction: Optional[AbductionSpec] = None
 
     @property
     def guided_joints(self) -> Tuple[str, ...]:
@@ -124,6 +134,23 @@ def _open_spec(raw) -> OpenHandSpec:
     return OpenHandSpec(below, above, _positive(raw["weight"], f"{where}.weight"), fingers)
 
 
+def _non_negative(value, where: str) -> float:
+    v = float(value)
+    if not v >= 0.0:
+        raise ValueError(f"{where}: 0 이상이어야 한다 — 받은 값 {value!r}")
+    return v
+
+
+def _abduction_spec(raw) -> AbductionSpec:
+    where = f"{POSTURE_KEY}.abduction"
+    raw = _mapping(raw, where)
+    _keys(raw, _ABDUCTION_KEYS, (), where)
+    base = AbductionSpec()
+    return AbductionSpec(_positive(raw.get("full_deg", base.full_deg), f"{where}.full_deg"),
+                         _non_negative(raw.get("decay", base.decay), f"{where}.decay"),
+                         _non_negative(raw.get("gain", base.gain), f"{where}.gain"))
+
+
 def parse_posture(raw) -> Optional[PostureSpec]:
     if raw is None:
         return None
@@ -156,8 +183,9 @@ def parse_posture(raw) -> Optional[PostureSpec]:
                              "없는 관절이다")
         joint_weights[str(joint)] = _positive(value, f"{POSTURE_KEY}.joint_weights.{joint}")
     open_hand = None if raw.get("open_hand") is None else _open_spec(raw["open_hand"])
+    abduction = None if raw.get("abduction") is None else _abduction_spec(raw["abduction"])
     return PostureSpec(_positive(raw["weight"], f"{POSTURE_KEY}.weight"), joints, thumb,
-                       joint_weights, open_hand)
+                       joint_weights, open_hand, abduction)
 
 
 def human_angles(xr: np.ndarray, side: str = "right") -> np.ndarray:
@@ -250,6 +278,38 @@ def open_hand_table(spec: OpenHandSpec, joints: Dict[str, Dict[str, float]],
                          float(np.radians(spec.free_above_deg)), spec.weight)
 
 
+def spread_joints(joints: Dict[str, Dict[str, float]]) -> Dict[str, str]:
+    out = {}
+    for joint, terms in joints.items():
+        fingers = {n.removesuffix(POSITIVE_SUFFIX).split(".")[0] for n in terms}
+        if len(fingers) == 1 and all(n.removesuffix(POSITIVE_SUFFIX) in SPREAD_NAMES
+                                     for n in terms):
+            out[joint] = fingers.pop()
+    return out
+
+
+@dataclass(frozen=True)
+class AbductionTable:
+    rows: np.ndarray
+    bends: np.ndarray
+    full: float
+    decay: float
+    gain: float
+
+    def flex(self, angles: np.ndarray) -> np.ndarray:
+        return np.clip(np.maximum(angles[self.bends], 0.0) / self.full, 0.0, 1.0)
+
+
+def abduction_table(spec: AbductionSpec, joints: Dict[str, Dict[str, float]],
+                    names: Sequence[str]) -> Optional[AbductionTable]:
+    spread = spread_joints(joints)
+    if not spread:
+        return None
+    return AbductionTable(np.array([list(names).index(j) for j in spread]),
+                          np.array([FEATURES.index(f"{f}.mcp") for f in spread.values()]),
+                          float(np.radians(spec.full_deg)), spec.decay, spec.gain)
+
+
 class PostureGuide:
     def __init__(self, spec: PostureSpec, kin: Kinematics, full_qpos, names: Sequence[str],
                  limits: np.ndarray, palm: np.ndarray, side: str):
@@ -282,6 +342,8 @@ class PostureGuide:
         self.weight = weight
         self.open = (None if spec.open_hand is None
                      else open_hand_table(spec.open_hand, spec.joints, names))
+        self.abduction = (None if spec.abduction is None
+                          else abduction_table(spec.abduction, spec.joints, names))
 
     def target(self, xr: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         angles = human_angles(xr, self.side)
@@ -292,6 +354,12 @@ class PostureGuide:
                 return None
             q[list(self.thumb.index)] = self.thumb.solve(*base)
         weight = self.weight.copy()
+        if self.abduction is not None:
+            rows = self.abduction.rows
+            f = self.abduction.flex(angles)
+            rest = self._open_pose[rows]
+            q[rows] = rest + (q[rows] - rest) * (1.0 - f) ** self.abduction.decay
+            weight[rows] *= 1.0 + self.abduction.gain * f
         if self.open is not None:
             rows = self.open.rows
             pull = self.open.share(angles) * self.open.weight

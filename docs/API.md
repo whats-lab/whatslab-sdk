@@ -285,7 +285,11 @@ DexPilot 쌍(엄지–손가락, 손가락–손가락, 손목→손끝)에 이�
    프레임으로 같은 계산을 한다.
 4. `open_hand`(선택): 손가락 굽힘 합이 `open_below_deg` 이하면 그 손가락 굽힘 관절을 0(펴진 자세)으로
    `weight` 만큼 당기고, `free_above_deg` 이상이면 당기지 않는다(사이는 선형).
-5. 관절 한계로 자른다. `w` = `weight`(지정 관절), `joint_weights` 로 관절별 덮어쓰기, `open_hand` 당김을 더한다.
+5. `abduction`(선택): 벌림 관절(`joints` 항목이 한 손가락의 `spread` 만인 관절)마다 같은 손가락 MCP 굽힘 비율
+   `f = clip(max(a_mcp, 0) / full_deg, 0, 1)` 로 목표를 `q̄ ← q̄₀ + (q̄ − q̄₀)(1 − f)^decay`(q̄₀ = 펴진 자세)로 줄이고
+   가중치를 `w ← w (1 + gain·f)` 로 키운다. 사람 손처럼 MCP 가 굽을수록 벌림이 0 쪽으로 가고 옆으로 흔들리지 않는다.
+6. 관절 한계로 자른다. `w` = `weight`(지정 관절), `joint_weights` 로 관절별 덮어쓰기, `abduction` 배율을 곱하고,
+   `open_hand` 당김을 더한다.
    목표가 없는 관절은 w = 0.
 
 | 키 | 뜻 |
@@ -295,6 +299,7 @@ DexPilot 쌍(엄지–손가락, 손가락–손가락, 손목→손끝)에 이�
 | `thumb_base` | `{joints: [a, b], bone: [링크, 링크], flex_joint, step_deg: 2, axis_weight: 0.5}` |
 | `joint_weights` | `{관절: w}` — `joints`·`thumb_base` 관절만 |
 | `open_hand` | `{open_below_deg, free_above_deg, weight, fingers: [index, middle, ring, little]}` |
+| `abduction` | `{full_deg: 60, decay: 1, gain: 10}` — 없으면 끔. 생성기는 벌림 관절이 있는 손에 기본값으로 넣는다 |
 
 스키마 오류(모르는 키·사람 각, 빈 항목, 0 이하 가중치 등)는 `DexHandConfig.from_dict`(로드) 때, URDF 에 없는
 관절·링크는 `DexEngine` 생성 때 `ValueError`. 프레임에서 목표를 못 정하면(손바닥 프레임을 못 정함 등)

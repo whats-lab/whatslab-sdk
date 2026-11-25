@@ -5,8 +5,14 @@ import pytest
 import yaml
 from test_hand_dex import _fd_check, _require_urdf, hand_for, synthetic_right_hand
 
-from whatslab.retarget.dex import DexEngine, DexHandConfig, hand_config_names, mirror_xr_joints
-from whatslab.retarget.dex.posture import FEATURES, human_angles, parse_posture
+from whatslab.retarget.dex import (
+    DexEngine,
+    DexHandConfig,
+    hand_config_names,
+    mirror_xr_joints,
+    resolve_hand_config,
+)
+from whatslab.retarget.dex.posture import FEATURES, human_angles, parse_posture, spread_joints
 
 DATA = os.path.join(os.path.dirname(__file__), "data")
 RP_CONFIG = os.path.join(DATA, "dg5f_s_robotplatform.yaml")
@@ -141,10 +147,43 @@ def _spec(**changes):
     (_spec(open_hand={"open_below_deg": 30, "free_above_deg": 10, "weight": 1}), "free_above"),
     (_spec(open_hand={"open_below_deg": 1, "free_above_deg": 10, "weight": 1,
                       "fingers": ["toe"]}), "손가락"),
+    (_spec(abduction={"full": 60}), "모르는 키"),
+    (_spec(abduction={"full_deg": 0}), "full_deg"),
+    (_spec(abduction={"gain": -1}), "gain"),
+    (_spec(abduction={"decay": -1}), "decay"),
 ))
 def test_posture_schema_errors_at_load(raw, match):
     with pytest.raises(ValueError, match=match):
         parse_posture(raw)
+
+
+def _abduction_engines(name):
+    _require_urdf(name)
+    with open(resolve_hand_config(name)) as f:
+        raw = yaml.safe_load(f)
+    raw["posture_prior"].pop("abduction", None)
+    off = DexEngine(DexHandConfig.from_dict(raw))
+    raw["posture_prior"]["abduction"] = {"full_deg": 60.0, "decay": 1.0, "gain": 10.0}
+    return off, DexEngine(DexHandConfig.from_dict(raw))
+
+
+def test_abduction_rule_shrinks_target_and_raises_weight_with_flexion():
+    off, on = _abduction_engines("dg5f_s_15dof_right")
+    rows = [on.joint_names.index(j) for j in spread_joints(on.config.posture.joints)]
+    assert rows
+    xr = hand_for("right", 0.0)
+    f0 = on.posture.abduction.flex(human_angles(xr))
+    a, b = off.posture_target(xr), on.posture_target(xr)
+    rest = 1.0 + 10.0 * f0
+    assert np.allclose(b[1][rows], a[1][rows] * rest)
+    xr = hand_for("right", 1.0)
+    f1 = on.posture.abduction.flex(human_angles(xr))
+    assert np.all(f1 > f0)
+    a, b = off.posture_target(xr), on.posture_target(xr)
+    assert np.allclose(b[1][rows], a[1][rows] * (1.0 + 10.0 * f1))
+    assert np.all(np.abs(b[0][rows]) <= np.abs(a[0][rows]) + 1e-12)
+    other = [i for i in range(len(on.joint_names)) if i not in rows]
+    assert np.allclose(a[0][other], b[0][other]) and np.array_equal(a[1][other], b[1][other])
 
 
 def test_posture_joint_names_checked_at_engine_build():

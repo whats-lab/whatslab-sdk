@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import dataclasses
 import sys
 
 import numpy as np
 import yaml
 
 from whatslab.retarget.dex import DexEngine, hand_config_names, resolve_hand_config
-from whatslab.retarget.dex.posture import POSTURE_KEY
+from whatslab.retarget.dex.posture import POSTURE_KEY, AbductionSpec, spread_joints
 
 FINGERS = ("thumb", "index", "middle", "ring", "little")
 FLEX_SLOTS = {1: [{"mcp": 1.0}], 2: [{"mcp": 1.0}, {"pip": 1.0, "dip": 0.5}],
@@ -203,6 +204,8 @@ def posture_block(config, urdf_root=None) -> dict:
     block = {"weight": DEFAULT_WEIGHT, "joints": combine(entries)}
     if spec is not None:
         block["thumb_base"] = spec
+    if spread_joints(block["joints"]):
+        block["abduction"] = dataclasses.asdict(AbductionSpec())
     return block
 
 
@@ -216,6 +219,9 @@ def dump(block: dict) -> str:
         lines += ["  thumb_base:", f"    joints: [{', '.join(t['joints'])}]",
                   f"    bone: [{', '.join(t['bone'])}]", f"    flex_joint: {t['flex_joint']}",
                   f"    step_deg: {t['step_deg']}", f"    axis_weight: {t['axis_weight']}"]
+    if "abduction" in block:
+        body = ", ".join(f"{k}: {v}" for k, v in block["abduction"].items())
+        lines.append(f"  abduction: {{{body}}}")
     return "\n".join(lines) + "\n"
 
 
