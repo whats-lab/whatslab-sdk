@@ -295,9 +295,6 @@ body {
 
 .plain { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 13px; }
 
-.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
-
-.check input { accent-color: var(--accent); }
 
 .loading-title { margin: 0 0 10px; text-align: center; font-size: 13px; color: var(--ink); }
 

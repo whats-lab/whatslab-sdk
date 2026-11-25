@@ -235,7 +235,6 @@ export class HandModel {
   }
 
   step(dt, grab, cursor, gains) {
-    if (!this.rest) this.rest = CHAINS.map((_, f) => this.chainValues(f).map(() => 0));
     const sub = 4;
     const h = dt / sub;
     let moved = 0;
@@ -243,7 +242,7 @@ export class HandModel {
       for (let f = 0; f < CHAINS.length; f++) {
         let x = this.chainValues(f);
         const n = x.length;
-        const tau = x.map((v, i) => -gains.kq * (v - this.rest[f][i]));
+        const tau = x.map((v, i) => (this.rest ? -gains.kq * (v - this.rest[f][i]) : 0));
         if (grab && this.fingerOf(grab.j) === f) {
           const pt = this.pointAt(grab.j, grab.offset);
           const force = cursor.clone().sub(pt).multiplyScalar(gains.k);
@@ -265,10 +264,6 @@ export class HandModel {
       this.fk();
     }
     return moved;
-  }
-
-  holdPose() {
-    this.rest = CHAINS.map((_, f) => this.chainValues(f).slice());
   }
 
   reset() {

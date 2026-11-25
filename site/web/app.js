@@ -898,6 +898,7 @@ canvas.addEventListener("pointerdown", (e) => {
   controls.enabled = false;
   if (!state.posing) startPosing();
   const model = current.handMesh.model;
+  model.rest = null;
   grab = { ...model.anchor(toArmature(humanFrame.worldToLocal(hit.point.clone()))), pointer: e.pointerId };
   dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), hit.point);
   cursor = humanFrame.worldToLocal(hit.point.clone());
@@ -917,7 +918,6 @@ function releaseGrab(e) {
   grab = null;
   controls.enabled = true;
   canvas.releasePointerCapture(e.pointerId);
-  if ($("#hold").checked) current.handMesh.model.holdPose();
 }
 
 canvas.addEventListener("pointerup", releaseGrab);
