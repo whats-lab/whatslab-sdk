@@ -462,7 +462,7 @@ def main():
     hands.sort(key=lambda h: h["name"].casefold())
     (out / "data" / "hands.json").write_text(
         json.dumps(
-            {"hands": hands, "default": "tesollo_dg5f_s"},
+            {"hands": hands, "default": "tesollo_dg5f_s", "sdk": args.wheel.name.split("-")[1]},
             separators=(",", ":"),
             ensure_ascii=False,
         )
