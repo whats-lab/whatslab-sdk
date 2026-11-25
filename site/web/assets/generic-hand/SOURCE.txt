@@ -1,5 +1,0 @@
-left.glb and right.glb are unmodified copies of
-packages/assets/profiles/generic-hand/left.glb and right.glb from
-https://github.com/immersive-web/webxr-input-profiles
-at commit f4992299601614adbfefd398dc8e281556bb7444.
-They are licensed under the MIT License in LICENSE (packages/assets/LICENSE.md at the same commit).

@@ -1,6 +1,5 @@
 const SDK = "https://github.com/whats-lab/whatslab-sdk";
 const HANDS = "https://github.com/whats-lab/dexterous-hand-urdf";
-const WEBXR = "https://github.com/immersive-web/webxr-input-profiles";
 const link = (href, text) => `<a href="${href}" rel="noopener">${text}</a>`;
 
 const STRINGS = {
@@ -32,7 +31,7 @@ const STRINGS = {
     "about.items": [
       `URDFs come from each maker's or lab's official repository and are collected, with any fixes listed in each hand's <span class="mono">PATCHES.txt</span>, in ${link(HANDS, "dexterous-hand-urdf")}. Every hand page links its source repository, commit, license and license files.`,
       "Meshes are not rehosted. Your browser downloads the upstream originals at a pinned commit, so the first visit to a hand can take a while (a few MB to tens of MB, shown on each hand page); after that the browser cache makes it fast.",
-      `The human hand is the WebXR generic hand from ${link(WEBXR, "immersive-web/webxr-input-profiles")} (MIT, Copyright 2019 Amazon).`,
+      "Human hand model: Meta OpenXR hand (Oculus SDK License), from AirGlove SDK.",
       `Retargeting runs in ${link(SDK, "whatslab-sdk")} 1.0.0, which supports the 42 hands of dexhand-description 1.0.0 with a bundled DexPilot config for each.`,
     ],
     "speed": "Speed",
@@ -76,7 +75,16 @@ const STRINGS = {
     "pose.fist": "Fist",
     "pose.pinch": "Pinch",
     "pose.v": "V",
-    "pose.hint": "Or drag a fingertip of the human hand. The robot follows once the retargeting engine (about 30 MB) has loaded.",
+    "pose.hint": "Pick a finger (keys 1–5 or click it), then drag the arrows. R resets.",
+    "pose.reset": "Reset",
+    "mode.motion": "Motions",
+    "mode.interactive": "Interactive",
+    "finger.thumb": "Thumb",
+    "finger.index": "Index",
+    "finger.middle": "Middle",
+    "finger.ring": "Ring",
+    "finger.little": "Little",
+    "finger.opposition": "Thumb opposition",
     "engine.label": "Retargeting engine",
     "engine.starting": "starting",
     "engine.failed": "failed: {msg}",
@@ -110,7 +118,7 @@ const STRINGS = {
     "about.items": [
       `URDF 는 각 제조사나 연구실의 공식 저장소에서 가져와 ${link(HANDS, "dexterous-hand-urdf")}에 모았고, 고친 내용은 손마다 <span class="mono">PATCHES.txt</span> 에 적었습니다. 손 페이지마다 원본 저장소, 커밋, 라이선스와 라이선스 파일을 연결해 두었습니다.`,
       "메시는 다시 올리지 않습니다. 브라우저가 고정된 커밋의 업스트림 원본을 직접 받으므로 손을 처음 열 때는 시간이 걸릴 수 있습니다(손마다 수 MB~수십 MB, 손 페이지에 표시). 두 번째부터는 브라우저 캐시 덕분에 빠릅니다.",
-      `사람 손은 ${link(WEBXR, "immersive-web/webxr-input-profiles")}의 WebXR generic hand 입니다(MIT, Copyright 2019 Amazon).`,
+      "사람 손 모델: Meta OpenXR hand(Oculus SDK License), AirGlove SDK 에서 가져왔습니다.",
       `리타게팅은 ${link(SDK, "whatslab-sdk")} 1.0.0 에서 돌아갑니다. dexhand-description 1.0.0 의 손 42개를 지원하고 손마다 DexPilot 설정을 동봉합니다.`,
     ],
     "speed": "속도",
@@ -154,7 +162,16 @@ const STRINGS = {
     "pose.fist": "주먹",
     "pose.pinch": "집기",
     "pose.v": "V",
-    "pose.hint": "사람 손의 손끝을 끌어도 됩니다. 리타게팅 엔진(약 30 MB)을 받고 나면 로봇이 따라 움직입니다.",
+    "pose.hint": "손가락을 고르고(숫자 1–5 또는 클릭) 화살표를 끄세요. R 은 처음 자세로.",
+    "pose.reset": "초기화",
+    "mode.motion": "모션",
+    "mode.interactive": "직접 조작",
+    "finger.thumb": "엄지",
+    "finger.index": "검지",
+    "finger.middle": "중지",
+    "finger.ring": "약지",
+    "finger.little": "소지",
+    "finger.opposition": "엄지 맞섬",
     "engine.label": "리타게팅 엔진",
     "engine.starting": "시작하는 중",
     "engine.failed": "실패: {msg}",

@@ -119,9 +119,11 @@ body {
 
 .prose p { color: var(--muted); margin: 10px 0 6px; }
 
-.formula { font-family: var(--mono); font-size: 13px; color: var(--ink) !important; }
+.codebox { min-width: 0; max-width: 100%; }
 
-.code { position: relative; margin: 0; padding: 12px 14px; padding-right: 64px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow-x: auto; }
+.codebar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+
+.code { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow-x: auto; max-width: 100%; }
 
 .code code { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--ink); white-space: pre; }
 
@@ -131,11 +133,11 @@ body {
 
 :root[data-theme="dark"] .tok-s { color: #f0a36b; }
 
-.copy { position: absolute; top: 8px; right: 8px; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--muted); font-size: 12px; cursor: pointer; }
+.copy { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--muted); font-size: 12px; cursor: pointer; }
 
 .copy:hover { color: var(--ink); }
 
-.panel .code { padding: 10px 12px; padding-right: 60px; }
+.panel .code { padding: 10px 12px; }
 
 .panel .code code { font-size: 11.5px; }
 
@@ -206,7 +208,7 @@ body {
 
 .hand {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
@@ -222,7 +224,9 @@ body {
 
 .hand[aria-selected="true"] { border-left-color: var(--accent); }
 
-.hand .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hand .name { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+
+.hand .tag { margin-top: 1px; }
 
 .hand[aria-selected="true"] .name { font-weight: 600; }
 
@@ -282,6 +286,18 @@ body {
 .engine-loading.failed .loading-value { color: var(--ink); }
 
 .hint { color: var(--muted); font-size: 12px; }
+
+.tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+
+.tabs button { height: 38px; border: 0; background: none; padding: 0 10px; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
+
+.tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+#fingers button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.plain { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 13px; }
+
+#opposition { width: 120px; accent-color: var(--accent); }
 
 .loading-title { margin: 0 0 10px; text-align: center; font-size: 13px; color: var(--ink); }
 

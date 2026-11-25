@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import URDFLoader from "urdf-loader";
@@ -18,10 +19,10 @@ const BONES = [
 ];
 const HAND21 = [1, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24, 25];
 const XR_BONES = [
-  "wrist",
-  "thumb-metacarpal", "thumb-phalanx-proximal", "thumb-phalanx-distal", "thumb-tip",
-  ...["index", "middle", "ring", "pinky"].flatMap((f) => ["metacarpal", "phalanx-proximal", "phalanx-intermediate", "phalanx-distal", "tip"]
-    .map((b) => `${f}-finger-${b}`)),
+  "XRHand_Wrist",
+  ...["Metacarpal", "Proximal", "Distal", "Tip"].map((b) => `XRHand_Thumb${b}`),
+  ...["Index", "Middle", "Ring", "Little"].flatMap((f) => ["Metacarpal", "Proximal", "Intermediate", "Distal", "Tip"]
+    .map((b) => `XRHand_${f}${b}`)),
 ];
 const NEUTRAL = 0xa3a7ad;
 const SKIN = 0xd8a88a;
@@ -41,6 +42,7 @@ const state = {
   human: "beside",
   playing: true,
   posing: false,
+  mode: "motion",
   t: 0,
   speed: 1,
 };
@@ -174,7 +176,7 @@ function capOpenings(g) {
   return out;
 }
 
-const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().loadAsync(`assets/generic-hand/${side}.glb`)
+const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().loadAsync(`assets/hand/${side}.glb`)
   .then((gltf) => {
     const root = gltf.scene;
     root.traverse((o) => {
@@ -186,9 +188,12 @@ const handModels = Promise.all(["left", "right"].map((side) => new GLTFLoader().
       }
     });
     root.visible = false;
-    humanFrame.add(root);
+    root.updateMatrixWorld(true);
     const bones = XR_BONES.map((n) => root.getObjectByName(n));
-    handMeshes[side] = { root, bones, model: new HandModel(bones, side) };
+    const palm = root.getObjectByName("XRHand_Palm");
+    [palm, ...bones].forEach((bone) => root.attach(bone));
+    humanFrame.add(root);
+    handMeshes[side] = { root, bones, palm, model: new HandModel(bones, side) };
   })));
 
 const converted = new WeakMap();
@@ -553,6 +558,10 @@ async function show() {
         applyHuman();
       }
       window.__meshesReady = Math.round(performance.now());
+      if (state.mode === "interactive") {
+        engineConfigure();
+        startPosing();
+      }
     });
   });
 }
@@ -675,6 +684,8 @@ function applyPose(q, p) {
   boneGeom.computeBoundingBox();
   const model = current.handMesh;
   if (!model) return;
+  model.palm.quaternion.set(p[0], p[1], p[2], p[3]).normalize();
+  model.palm.position.set(p[4], p[5], p[6]);
   model.bones.forEach((bone, k) => {
     const o = (k + 1) * 7;
     bone.quaternion.set(p[o], p[o + 1], p[o + 2], p[o + 3]).normalize();
@@ -682,50 +693,75 @@ function applyPose(q, p) {
   });
 }
 
-const handleMaterial = new THREE.MeshBasicMaterial({ color: color("--accent"), transparent: true, opacity: 0.55, depthTest: false });
-const handleHot = new THREE.MeshBasicMaterial({ color: color("--accent"), depthTest: false });
-const handles = TIPS.map((_, f) => {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.009, 16, 12), handleMaterial);
-  m.renderOrder = 20;
-  m.userData.finger = f;
-  humanFrame.add(m);
-  return m;
-});
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-const dragPlane = new THREE.Plane();
-let drag = null;
-let hot = null;
 const engine = { worker: null, ready: false, busy: false, dirty: false, id: 0, robotQ: null, solveMs: [], failed: false };
 window.__solveMs = engine.solveMs;
+const target = new THREE.Mesh(
+  new THREE.SphereGeometry(0.006, 16, 12),
+  new THREE.MeshBasicMaterial({ color: color("--accent"), depthTest: false, transparent: true, opacity: 0.9 }),
+);
+target.renderOrder = 20;
+target.visible = false;
+humanFrame.add(target);
+const gapGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const gap = new THREE.Line(gapGeom, new THREE.LineBasicMaterial({ color: color("--accent"), depthTest: false }));
+gap.renderOrder = 20;
+gap.visible = false;
+humanFrame.add(gap);
+const gizmo = new TransformControls(camera, canvas);
+gizmo.setMode("translate");
+gizmo.setSpace("local");
+gizmo.setSize(0.8);
+scene.add(gizmo.getHelper());
+gizmo.addEventListener("dragging-changed", (e) => { controls.enabled = !e.value; });
+gizmo.addEventListener("objectChange", () => followTarget());
+let finger = 1;
+window.__teleop = { target, camera, humanFrame, tip: (f) => tipCanonical(f) };
 
-function canPose() {
-  return Boolean(current && current.sideData.clips && current.handMesh && human.visible);
+function interactive() {
+  return state.mode === "interactive" && Boolean(current && current.sideData.clips && current.handMesh);
 }
 
-function placeHandles() {
-  const show = canPose();
-  handles.forEach((h, f) => {
-    h.visible = show;
-    if (show) h.position.copy(current.handMesh.bones[TIPS[f]].position);
-  });
-}
-
-function pickHandle(e) {
-  const rect = canvas.getBoundingClientRect();
-  pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-  raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObjects(handles.filter((h) => h.visible), false)[0];
-  return hit ? hit.object : null;
-}
-
-function armToWorld() {
+function toArmature(v) {
   const m = current.handMesh.model;
-  const c = new THREE.Matrix4().setFromMatrix3(m.toCanon);
-  const t = m.pos[0].clone().applyMatrix3(m.toCanon).negate();
-  c.setPosition(t);
-  humanFrame.updateMatrixWorld(true);
-  return new THREE.Matrix4().multiplyMatrices(humanFrame.matrixWorld, c);
+  return v.clone().applyMatrix3(m.toCanon.clone().transpose()).add(m.pos[0]);
+}
+
+function tipCanonical(f) {
+  return current.handMesh.bones[TIPS[f]].position.clone();
+}
+
+function placeTarget(reset) {
+  const on = interactive() && human.visible;
+  target.visible = on;
+  gap.visible = on;
+  if (!on) {
+    gizmo.detach();
+    return;
+  }
+  if (reset) target.position.copy(tipCanonical(finger));
+  if (gizmo.object !== target) gizmo.attach(target);
+  gizmo.showX = gizmo.showY = gizmo.showZ = true;
+  const pos = gapGeom.attributes.position;
+  pos.setXYZ(0, target.position.x, target.position.y, target.position.z);
+  const tip = tipCanonical(finger);
+  pos.setXYZ(1, tip.x, tip.y, tip.z);
+  pos.needsUpdate = true;
+}
+
+function followTarget() {
+  if (!interactive()) return;
+  current.handMesh.model.solveTip(finger, toArmature(target.position));
+  showHuman();
+  placeTarget(false);
+}
+
+function selectFinger(f) {
+  finger = f;
+  document.querySelectorAll("#fingers button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.finger) === f)));
+  $("#opposition-field").hidden = f !== 0;
+  placeTarget(true);
 }
 
 function showHuman() {
@@ -735,18 +771,21 @@ function showHuman() {
 }
 
 function startPosing() {
-  if (state.posing) return;
   state.posing = true;
   state.playing = false;
   playBtn.classList.add("paused");
   playBtn.setAttribute("aria-label", "Play");
   if (lastHuman) current.handMesh.model.fromCanonical(lastHuman);
+  $("#opposition").value = String(current.handMesh.model.angles[1].roll || 0);
   engine.robotQ = Float32Array.from(current.values);
   ensureEngine();
+  showHuman();
+  selectFinger(finger);
 }
 
 function stopPosing() {
   state.posing = false;
+  placeTarget(false);
 }
 
 function engineConfigure() {
@@ -835,58 +874,64 @@ function pumpEngine() {
   engine.worker.postMessage({ type: "solve", id: engine.id, xr: current.handMesh.model.xr(Boolean(sd.mirrored)) });
 }
 
-canvas.addEventListener("pointerdown", (e) => {
-  if (!canPose()) return;
-  const h = pickHandle(e);
-  if (!h) return;
-  e.stopImmediatePropagation();
-  controls.enabled = false;
-  startPosing();
-  showHuman();
-  placeHandles();
-  const world = h.getWorldPosition(new THREE.Vector3());
-  dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), world);
-  drag = { finger: h.userData.finger, pointer: e.pointerId };
-  canvas.setPointerCapture(e.pointerId);
-}, { capture: true });
-
-canvas.addEventListener("pointermove", (e) => {
-  if (!drag) {
-    const h = canPose() ? pickHandle(e) : null;
-    if (h !== hot) {
-      if (hot) hot.material = handleMaterial;
-      hot = h;
-      if (hot) hot.material = handleHot;
-      canvas.style.cursor = hot ? "grab" : "";
-    }
-    return;
-  }
+function pickFinger(e) {
   const rect = canvas.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
-  const world = raycaster.ray.intersectPlane(dragPlane, new THREE.Vector3());
-  if (!world) return;
-  const target = world.applyMatrix4(armToWorld().invert());
-  current.handMesh.model.solveTip(drag.finger, target);
-  showHuman();
-});
-
-function endDrag(e) {
-  if (!drag || e.pointerId !== drag.pointer) return;
-  drag = null;
-  controls.enabled = true;
-  canvas.releasePointerCapture(e.pointerId);
+  const hit = raycaster.intersectObject(current.handMesh.root, true).find((h) => h.object.isSkinnedMesh);
+  if (!hit) return -1;
+  const local = humanFrame.worldToLocal(hit.point.clone());
+  const bones = current.handMesh.bones;
+  let best = -1;
+  let dist = Infinity;
+  TIPS.forEach((tip, f) => {
+    for (let j = tip - (f === 0 ? 2 : 3); j <= tip; j++) {
+      const d = bones[j].position.distanceTo(local);
+      if (d < dist) {
+        dist = d;
+        best = f;
+      }
+    }
+  });
+  return best;
 }
 
-canvas.addEventListener("pointerup", endDrag);
-canvas.addEventListener("pointercancel", endDrag);
+canvas.addEventListener("pointerdown", (e) => {
+  if (!interactive() || gizmo.dragging || gizmo.axis) return;
+  const f = pickFinger(e);
+  if (f >= 0) selectFinger(f);
+});
+
+window.addEventListener("keydown", (e) => {
+  if (!interactive() || e.target.closest("input, select, textarea")) return;
+  if (e.key >= "1" && e.key <= "5") selectFinger(Number(e.key) - 1);
+  if (e.key === "r" || e.key === "R") setPose("open");
+});
 
 function setPose(name) {
-  if (!canPose()) return;
-  startPosing();
+  if (!interactive()) return;
   if (name === "open") current.handMesh.model.reset();
   else current.handMesh.model.preset(name);
+  $("#opposition").value = String(current.handMesh.model.angles[1].roll || 0);
   showHuman();
+  placeTarget(true);
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll("#mode-tabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+  const live = mode === "interactive";
+  $("#motion-row").hidden = live;
+  $("#transport").hidden = live;
+  $("#pose-row").hidden = !live;
+  $("#finger-row").hidden = !live;
+  if (live && current && current.handMesh) startPosing();
+  if (!live) {
+    stopPosing();
+    state.playing = true;
+    playBtn.classList.remove("paused");
+    playBtn.setAttribute("aria-label", "Pause");
+  }
 }
 
 const jointCells = [];
@@ -916,7 +961,13 @@ function decorateCode(root) {
         setTimeout(() => { button.textContent = t("copy"); }, 1500);
       }, () => { button.textContent = t("copy"); });
     });
-    pre.append(button);
+    const box = document.createElement("div");
+    box.className = "codebox";
+    const bar = document.createElement("div");
+    bar.className = "codebar";
+    bar.append(button);
+    pre.replaceWith(box);
+    box.append(bar, pre);
   });
 }
 
@@ -1059,6 +1110,7 @@ function route() {
     state.section = r.section;
     $("#intro-view").hidden = false;
     $("#detail-view").hidden = true;
+    if (state.mode === "interactive") setMode("motion");
     markSelected();
     if (r.section === "about") $("#about").scrollIntoView({ block: "start" });
     else window.scrollTo(0, 0);
@@ -1123,10 +1175,19 @@ for (const m of motions.motions) {
 
 motionsEl.addEventListener("click", (e) => {
   if (!e.target.dataset.motion) return;
-  stopPosing();
   select({ motion: e.target.dataset.motion });
 });
 $("#poses").addEventListener("click", (e) => e.target.dataset.pose && setPose(e.target.dataset.pose));
+$("[data-pose-reset]").addEventListener("click", () => setPose("open"));
+$("#fingers").addEventListener("click", (e) => e.target.dataset.finger && selectFinger(Number(e.target.dataset.finger)));
+$("#mode-tabs").addEventListener("click", (e) => e.target.dataset.mode && setMode(e.target.dataset.mode));
+$("#opposition").addEventListener("input", (e) => {
+  if (!interactive()) return;
+  current.handMesh.model.setRoll(Number(e.target.value));
+  current.handMesh.model.solveTip(0, toArmature(target.position));
+  showHuman();
+  placeTarget(false);
+});
 $("#side").addEventListener("click", (e) => e.target.dataset.side && select({ side: e.target.dataset.side }));
 $("#human").addEventListener("click", (e) => {
   if (!e.target.dataset.human) return;
@@ -1150,10 +1211,6 @@ window.addEventListener("keydown", (e) => {
 });
 const playBtn = $("#play");
 playBtn.addEventListener("click", () => {
-  if (state.posing) {
-    stopPosing();
-    state.playing = false;
-  }
   state.playing = !state.playing;
   playBtn.classList.toggle("paused", !state.playing);
   playBtn.setAttribute("aria-label", state.playing ? "Pause" : "Play");
@@ -1201,7 +1258,6 @@ function tick(now) {
   updateTable(now);
   drainQueue(4);
   pumpEngine();
-  placeHandles();
   if (state.view === "detail" && !state.downloading) {
     controls.update();
     renderer.render(scene, camera);

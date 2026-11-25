@@ -244,6 +244,13 @@ def solve_hand(job):
     rest = np.clip(np.zeros(len(lim)), lim[:, 0], lim[:, 1])
     tf = kin.link_placements(engine.full_qpos(rest))
     wrist = tf[kin.frame_ids([engine.wrist_frame])[0], :3, 3]
+    engine.reset()
+    flat = rest
+    for _ in range(30):
+        q = engine.solve(clips[f"fist_{side}"][0])
+        flat = flat if q is None else q
+    engine.reset()
+    tf = kin.link_placements(engine.full_qpos(flat))
 
     def at(names):
         return np.mean([tf[kin.frame_ids([n])[0], :3, 3] for n in names], axis=0)

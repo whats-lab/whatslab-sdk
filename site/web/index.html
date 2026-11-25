@@ -65,7 +65,6 @@
     <section class="prose" aria-labelledby="how-title">
       <h2 id="how-title" data-i18n="how.title"></h2>
       <ul data-i18n-list="how.items"></ul>
-      <p class="formula">E(q) = E<sub>DexPilot</sub>(q) + Σ<sub>j</sub> w<sub>j</sub> (q<sub>j</sub> − q̄<sub>j</sub>)²</p>
     </section>
     <section class="prose" aria-labelledby="use-title">
       <h2 id="use-title" data-i18n="use.title"></h2>
@@ -97,6 +96,10 @@ print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
 
     <div class="detail-grid">
     <div class="stage">
+      <nav class="tabs" id="mode-tabs" aria-label="Mode">
+        <button type="button" data-mode="motion" aria-pressed="true" data-i18n="mode.motion">Motions</button>
+        <button type="button" data-mode="interactive" aria-pressed="false" data-i18n="mode.interactive">Interactive</button>
+      </nav>
       <div class="viewport">
         <canvas id="view"></canvas>
         <p id="status" class="status" role="status"></p>
@@ -116,13 +119,26 @@ print(hand_dir(&quot;tesollo_dg5f_s&quot;))</code></pre>
         <div class="row" id="motion-row">
           <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
         </div>
-        <div class="row" id="pose-row">
+        <div class="row" id="finger-row" hidden>
+          <div class="segmented small" id="fingers" role="group" aria-label="Finger">
+            <button type="button" data-finger="0" data-i18n="finger.thumb">Thumb</button>
+            <button type="button" data-finger="1" data-i18n="finger.index">Index</button>
+            <button type="button" data-finger="2" data-i18n="finger.middle">Middle</button>
+            <button type="button" data-finger="3" data-i18n="finger.ring">Ring</button>
+            <button type="button" data-finger="4" data-i18n="finger.little">Little</button>
+          </div>
+          <label class="field" id="opposition-field" hidden><span data-i18n="finger.opposition">Thumb opposition</span>
+            <input id="opposition" type="range" min="-0.6" max="0.6" step="0.01" value="0">
+          </label>
+        </div>
+        <div class="row" id="pose-row" hidden>
           <div class="segmented small" id="poses" role="group" aria-label="Pose">
             <button type="button" data-pose="open" data-i18n="pose.open">Open</button>
             <button type="button" data-pose="fist" data-i18n="pose.fist">Fist</button>
             <button type="button" data-pose="pinch" data-i18n="pose.pinch">Pinch</button>
             <button type="button" data-pose="v" data-i18n="pose.v">V</button>
           </div>
+          <button type="button" class="plain" data-pose-reset data-i18n="pose.reset">Reset</button>
           <span class="hint" data-i18n="pose.hint"></span>
         </div>
         <div class="row transport" id="transport">

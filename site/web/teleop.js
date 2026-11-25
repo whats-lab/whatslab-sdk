@@ -10,6 +10,7 @@ const LIMITS = {
 const COUPLE = { thumb: 0.8, finger: 0.7 };
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
+const Z = new THREE.Vector3(0, 0, 1);
 const A = new THREE.Matrix3().set(0, -1, 0, -1, 0, 0, 0, 0, -1);
 const MIRROR = new THREE.Matrix3().set(-1, 0, 0, 0, 1, 0, 0, 0, 1);
 
@@ -32,7 +33,7 @@ export class HandModel {
     const rot = bones.map((b) => b.quaternion.clone());
     this.rel = rot.map((q, j) => (j ? rot[PARENT[j]].clone().invert().multiply(q) : q.clone()));
     this.off = pos.map((p, j) => (j ? p.clone().sub(pos[PARENT[j]]).applyQuaternion(rot[PARENT[j]].clone().invert()) : p.clone()));
-    this.angles = bones.map(() => ({ flex: 0, abd: 0 }));
+    this.angles = bones.map(() => ({ flex: 0, abd: 0, roll: 0 }));
     this.fk();
     const rw = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(this.rot[0]));
     const local = (j) => this.pos[j].clone().sub(this.pos[0]).applyMatrix3(rw.clone().transpose()).applyMatrix3(A);
@@ -49,12 +50,14 @@ export class HandModel {
     this.rot[0] = this.rel[0].clone();
     const qa = new THREE.Quaternion();
     const qf = new THREE.Quaternion();
+    const qr = new THREE.Quaternion();
     for (let j = 1; j < n; j++) {
       const p = PARENT[j];
       const a = this.angles[j];
       qa.setFromAxisAngle(Y, a.abd);
       qf.setFromAxisAngle(X, -a.flex);
-      this.rot[j] = this.rot[p].clone().multiply(this.rel[j]).multiply(qa).multiply(qf);
+      qr.setFromAxisAngle(Z, a.roll);
+      this.rot[j] = this.rot[p].clone().multiply(this.rel[j]).multiply(qa).multiply(qf).multiply(qr);
       this.pos[j] = this.pos[p].clone().add(this.off[j].clone().applyQuaternion(this.rot[p]));
     }
   }
@@ -174,8 +177,13 @@ export class HandModel {
     this.fk();
   }
 
+  setRoll(v) {
+    this.angles[1].roll = Math.min(Math.max(v, -0.6), 0.6);
+    this.fk();
+  }
+
   reset() {
-    this.angles.forEach((a) => { a.flex = 0; a.abd = 0; });
+    this.angles.forEach((a) => { a.flex = 0; a.abd = 0; a.roll = 0; });
     this.fk();
   }
 
