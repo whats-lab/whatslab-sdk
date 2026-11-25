@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dexterous Hand URDF</title>
-<meta name="description" content="Browse dexterous robot hand URDF models and watch them retarget human hand motions with DexPilot.">
+<title>whatslab-sdk hand preview</title>
+<meta name="description" content="Browse the dexterous robot hands supported by whatslab-sdk and watch each one follow a human hand with DexPilot retargeting.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,101 +24,109 @@
 <script type="module" src="app.js"></script>
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="https://github.com/whats-lab/dexterous-hand-urdf">dexterous-hand-urdf</a>
-  <nav class="tabs" aria-label="Mode">
-    <button type="button" data-mode="motion" aria-pressed="true">Motions</button>
-    <button type="button" data-mode="live" aria-pressed="false">Live camera</button>
-  </nav>
-  <button class="hands-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Hands</button>
+<header class="mobile-top">
+  <button class="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"/></svg>Menu
+  </button>
+  <a class="brand" href="#intro">whatslab-sdk <span>hand preview</span></a>
 </header>
 
-<main class="layout">
-  <aside id="sidebar" class="sidebar">
-    <label class="search">
-      <span class="visually-hidden">Search hands</span>
-      <input id="search" type="search" placeholder="Search name, maker, license" autocomplete="off">
-    </label>
-    <div id="hand-list" class="hand-list"></div>
-  </aside>
-
-  <section class="stage">
-    <div class="viewport">
-      <canvas id="view"></canvas>
-      <p id="status" class="status" role="status"></p>
-      <p id="viewer-note" class="viewer-note" hidden>Robot meshes are not shown for this hand (proprietary mesh license). Joint angles are listed on the right.</p>
-      <div id="loading" class="loading" role="progressbar" aria-label="Loading meshes" aria-valuemin="0" aria-valuemax="100" hidden>
-        <div class="loading-track"><span class="loading-fill"></span></div>
-        <p class="loading-text mono"></p>
-        <p class="loading-failed mono" hidden></p>
-      </div>
-      <div id="live-loading" class="loading live-loading" hidden>
-        <div class="loading-row" data-part="tracker" role="progressbar" aria-label="Hand tracker download" aria-valuemin="0" aria-valuemax="100">
-          <p class="loading-line mono"><span>Hand tracker</span><span class="loading-value"></span></p>
-          <div class="loading-track"><span class="loading-fill"></span></div>
-        </div>
-        <div class="loading-row" data-part="engine" role="progressbar" aria-label="Retargeting engine download" aria-valuemin="0" aria-valuemax="100">
-          <p class="loading-line mono"><span>Retargeting engine</span><span class="loading-value"></span></p>
-          <div class="loading-track"><span class="loading-fill"></span></div>
-        </div>
-      </div>
-      <div id="live-panel" class="live-panel" hidden>
-        <div class="cam">
-          <video id="cam" playsinline muted></video>
-          <canvas id="cam-fit" aria-hidden="true"></canvas>
-        </div>
-        <p id="live-note" class="live-note" role="status"></p>
-        <p class="live-note">The camera gives 21 hand points. A hand model with the same skeleton as the human hand on the left is fitted to them in the image, and its 26 OpenXR joints drive the retargeter. The fitted skeleton is drawn on the video. Video stays in this browser.</p>
-        <button id="live-start" type="button" class="primary">Start camera</button>
-      </div>
+<div id="backdrop" class="backdrop" hidden></div>
+<aside id="sidebar" class="sidebar">
+  <div class="side-head">
+    <a class="brand" href="#intro">whatslab-sdk</a>
+    <p class="brand-sub">Dexterous hand preview</p>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#intro" data-nav="intro">Intro</a>
+    <button type="button" class="toc-toggle" aria-expanded="true" aria-controls="hands-panel">Hands <span id="hand-count"></span></button>
+    <div id="hands-panel" class="hands-panel">
+      <label class="search">
+        <span class="visually-hidden">Search hands</span>
+        <input id="search" type="search" placeholder="Search name, maker, license" autocomplete="off">
+      </label>
+      <div id="hand-list" class="hand-list"></div>
     </div>
+    <a href="#about" data-nav="about">About</a>
+  </nav>
+</aside>
 
-    <div class="controls">
-      <div class="row" id="motion-row">
-        <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
-      </div>
-      <div class="row transport" id="transport">
-        <button id="play" type="button" class="icon-btn" aria-label="Pause">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z"/><path class="i-play" d="M4 2.5v11l9-5.5z"/></svg>
-        </button>
-        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position">
-        <output id="time" class="mono">0.00 s</output>
-        <label class="field">Speed
-          <select id="speed">
-            <option value="0.25">0.25×</option>
-            <option value="0.5">0.5×</option>
-            <option value="1" selected>1×</option>
-            <option value="2">2×</option>
-          </select>
-        </label>
-      </div>
-      <div class="row options">
-        <div class="segmented small" id="side" role="radiogroup" aria-label="Side">
-          <button type="button" role="radio" data-side="right">Right</button>
-          <button type="button" role="radio" data-side="left">Left</button>
-        </div>
-        <div class="segmented small" id="human" role="radiogroup" aria-label="Human hand">
-          <button type="button" role="radio" data-human="off">Robot only</button>
-          <button type="button" role="radio" data-human="beside">Human beside</button>
-          <button type="button" role="radio" data-human="overlay">Human overlay</button>
-        </div>
-      </div>
-    </div>
+<main class="main">
+  <section id="gallery-view" class="page">
+    <section id="intro" class="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">Dexterous hands you can teleoperate</h1>
+      <p class="lead">This site is built with <a href="https://github.com/whats-lab/whatslab-sdk" rel="noopener">whatslab-sdk</a>. The hands are collected in <a href="https://github.com/whats-lab/dexterous-hand-urdf" rel="noopener">dexterous-hand-urdf</a> from each maker's official repository. Every hand shown here can be teleoperated with whatslab-sdk: DexPilot retargeting from OpenXR hand tracking or an AirGlove.</p>
+      <p class="lead">Open a hand to watch it follow a human hand through six synthetic motions, retargeted ahead of time with the DexPilot config bundled in the SDK.</p>
+    </section>
+    <h2 id="gallery-title" class="section-title">Gallery</h2>
+    <div id="gallery" class="grid" aria-labelledby="gallery-title"></div>
   </section>
 
-  <aside class="info">
-    <details class="about" open>
-      <summary>About this preview</summary>
-      <ul>
-        <li>These are the hands officially supported by whatslab-sdk 1.0.0: the 43 human-like four- and five-finger hands of dexhand-description 1.0.0. Each one is retargeted with the DexPilot config bundled in the SDK.</li>
-        <li>URDFs and meshes come from each maker's or lab's official repository; every hand lists its source, commit and license. We do not rehost meshes: your browser downloads them from upstream at a pinned commit.</li>
-        <li>The first time you open a hand, the mesh download can take a while (a few MB to tens of MB; the size is shown below). After that the browser cache makes it fast.</li>
-        <li>Hands whose mesh license forbids redistribution show their joints only.</li>
-        <li>Motions are synthetic hand motions retargeted ahead of time. Live camera is approximate webcam tracking.</li>
-      </ul>
-    </details>
-    <div id="info"></div>
-  </aside>
+  <section id="detail-view" class="page detail" hidden>
+    <a class="back" href="#gallery">All hands</a>
+    <header class="detail-head">
+      <h1 id="d-name"></h1>
+      <p id="d-meta" class="meta"></p>
+    </header>
+
+    <div class="stage">
+      <div class="viewport">
+        <canvas id="view"></canvas>
+        <p id="status" class="status" role="status"></p>
+        <p id="viewer-note" class="viewer-note" hidden>Robot meshes are not shown for this hand (proprietary mesh license). Joint angles are listed below.</p>
+        <div id="loading" class="loading" role="progressbar" aria-label="Loading meshes" aria-valuemin="0" aria-valuemax="100" hidden>
+          <div class="loading-track"><span class="loading-fill"></span></div>
+          <p class="loading-text mono"></p>
+          <p class="loading-failed mono" hidden></p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="row" id="motion-row">
+          <div class="segmented" id="motions" role="radiogroup" aria-label="Motion"></div>
+        </div>
+        <div class="row transport" id="transport">
+          <button id="play" type="button" class="icon-btn" aria-label="Pause">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-pause" d="M4 3h3v10H4zM9 3h3v10H9z"/><path class="i-play" d="M4 2.5v11l9-5.5z"/></svg>
+          </button>
+          <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position">
+          <output id="time" class="mono">0.00 s</output>
+          <label class="field">Speed
+            <select id="speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+            </select>
+          </label>
+        </div>
+        <div class="row options">
+          <div class="segmented small" id="side" role="radiogroup" aria-label="Side">
+            <button type="button" role="radio" data-side="right">Right</button>
+            <button type="button" role="radio" data-side="left">Left</button>
+          </div>
+          <div class="segmented small" id="human" role="radiogroup" aria-label="Human hand">
+            <button type="button" role="radio" data-human="off">Robot only</button>
+            <button type="button" role="radio" data-human="beside">Human beside</button>
+            <button type="button" role="radio" data-human="overlay">Human overlay</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="info" class="detail-body"></div>
+  </section>
+
+  <section id="about" class="page about" aria-labelledby="about-title">
+    <h2 id="about-title">About</h2>
+    <ul>
+      <li>URDFs come from each maker's or lab's official repository and are collected, with any fixes listed in each hand's <span class="mono">PATCHES.txt</span>, in <a href="https://github.com/whats-lab/dexterous-hand-urdf" rel="noopener">dexterous-hand-urdf</a>. Every hand page links its source repository, commit, license and license files.</li>
+      <li>Meshes are not rehosted. Your browser downloads the upstream originals at a pinned commit, so the first visit to a hand can take a while (a few MB to tens of MB, shown on each hand page); after that the browser cache makes it fast.</li>
+      <li>Hands whose mesh license forbids redistribution (Proception ProHand Gen2) show their joint angles only.</li>
+      <li>The human hand is the WebXR generic hand from <a href="https://github.com/immersive-web/webxr-input-profiles" rel="noopener">immersive-web/webxr-input-profiles</a> (MIT, Copyright 2019 Amazon).</li>
+      <li>Retargeting runs in <a href="https://github.com/whats-lab/whatslab-sdk" rel="noopener">whatslab-sdk</a> 1.0.0, which supports the 43 hands of dexhand-description 1.0.0 with a bundled DexPilot config for each.</li>
+    </ul>
+  </section>
 </main>
 </body>
 </html>

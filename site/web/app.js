@@ -31,11 +31,12 @@ const PALM_TO_WORLD = new THREE.Matrix4().set(
 );
 
 const state = {
+  view: "gallery",
+  section: "gallery",
   hand: null,
   motion: "pinch_index",
   side: "right",
   human: "beside",
-  mode: "motion",
   playing: true,
   t: 0,
   speed: 1,
@@ -49,7 +50,6 @@ const handsById = new Map(catalog.hands.map((h) => [h.id, h]));
 const handData = new Map();
 const robots = new Map();
 let current = null;
-let liveApi = null;
 
 const css = getComputedStyle(document.documentElement);
 const color = (name) => new THREE.Color(css.getPropertyValue(name).trim());
@@ -529,7 +529,6 @@ async function show() {
   const animated = Boolean(sideData.clips);
   document.querySelectorAll("#motions button, #human button, #play, #scrub")
     .forEach((b) => { b.disabled = !animated; });
-  $(".hands-toggle").textContent = hand.name;
   renderInfo();
   applyHuman();
   if (!window.__firstRender) {
@@ -654,8 +653,9 @@ let lastTable = 0;
 function renderInfo() {
   const h = current.hand;
   const sd = current.sideData;
-  const info = $("#info");
   const urdfName = sd.urdf.split("/").pop();
+  $("#d-name").textContent = h.name;
+  $("#d-meta").textContent = `${h.maker} · ${h.dof} actuated DoF · ${h.fingers} fingers · ${h.license}`;
   const mirrored = sd.mirrored
     ? `<p class="note">This repository has no ${state.side} model of this hand. The ${state.side === "left" ? "right" : "left"} model is shown${sd.clips ? ", driven by the mirrored motion" : ""}.</p>`
     : "";
@@ -666,22 +666,29 @@ function renderInfo() {
   const unclear = h.licenseUnclear
     ? `<p class="note">License unclear upstream. Included for non-commercial research use; see the folder's license notes.</p>`
     : "";
-  info.innerHTML = `
-    <h1>${esc(h.name)}</h1>
-    <p class="id mono">${esc(h.id)}</p>
-    <dl>
-      <dt>Maker</dt><dd>${h.website ? `<a href="${esc(h.website)}" rel="noopener">${esc(h.maker)}</a>` : esc(h.maker)}</dd>
-      <dt>DoF</dt><dd>${h.dof}</dd>
-      <dt>Fingers</dt><dd>${h.fingers}</dd>
-      <dt>License</dt><dd>${esc(h.license)}</dd>
-      <dt>Source</dt><dd>${h.sourceUrl ? `<a class="mono" href="${esc(h.sourceUrl)}" rel="noopener">${esc(h.source)}</a>` : esc(h.source)}</dd>
-      <dt>Model</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
-      <dt>Meshes</dt><dd>${current.data.meshes ? `${sd.meshFiles} files · ${(sd.meshBytes / 1e6).toFixed(1)} MB download` : "not shown"}</dd>
-      ${notes ? `<dt>Files</dt><dd>${notes}</dd>` : ""}
-    </dl>
-    ${mirrored}${unclear}${current.data.meshes ? "" : `<p class="note">Meshes not shown: proprietary mesh license (see MESHES-LICENSE).</p>`}${modelOnly}
-    <table class="joints"><caption>Joints</caption><tbody></tbody></table>`;
-  const body = info.querySelector("tbody");
+  const meshes = current.data.meshes ? `${(sd.meshBytes / 1e6).toFixed(1)} MB` : "not shown";
+  $("#info").innerHTML = `
+    <section class="panel stats" aria-label="Quick stats">
+      <div class="stat"><b>${h.dof}</b><span>actuated DoF</span></div>
+      <div class="stat"><b>${h.fingers}</b><span>fingers</span></div>
+      <div class="stat"><b>${meshes}</b><span>${current.data.meshes ? `mesh download, ${sd.meshFiles} files` : "meshes (proprietary license)"}</span></div>
+    </section>
+    <section class="panel joints-panel">
+      <h2>Joints</h2>
+      <table class="joints"><tbody></tbody></table>
+    </section>
+    <section class="panel">
+      <h2>Source</h2>
+      <dl>
+        <dt>Maker</dt><dd>${h.website ? `<a href="${esc(h.website)}" rel="noopener">${esc(h.maker)}</a>` : esc(h.maker)}</dd>
+        <dt>License</dt><dd>${esc(h.license)}</dd>
+        <dt>Source</dt><dd>${h.sourceUrl ? `<a class="mono" href="${esc(h.sourceUrl)}" rel="noopener">${esc(h.source)}</a>` : esc(h.source)}</dd>
+        <dt>Model</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
+        ${notes ? `<dt>Files</dt><dd>${notes}</dd>` : ""}
+      </dl>
+      ${mirrored}${unclear}${current.data.meshes ? "" : `<p class="note">Meshes not shown: proprietary mesh license (see MESHES-LICENSE).</p>`}${modelOnly}
+    </section>`;
+  const body = $("#info tbody");
   jointCells.length = 0;
   for (const name of current.joints.slice(0, current.sideData.actuated || current.joints.length)) {
     const tr = document.createElement("tr");
@@ -716,38 +723,100 @@ function renderList(filter = "") {
     b.type = "button";
     b.className = "hand";
     b.dataset.id = h.id;
-    b.setAttribute("aria-selected", String(h.id === state.hand));
-    b.innerHTML = `<span class="name"></span><span class="spec"><b>${h.dof}</b> DoF<br>${h.retargeted ? `${h.fingers} fingers` : "model only"}</span><span class="maker"></span>`;
+    b.setAttribute("aria-selected", String(state.view === "detail" && h.id === state.hand));
+    b.innerHTML = `<span class="name"></span><span class="tag">${h.dof} DoF</span>`;
     b.querySelector(".name").textContent = h.name;
-    b.querySelector(".maker").textContent = `${h.maker}, ${h.license}`;
     b.title = `${h.name}\n${h.maker}\n${h.license}`;
     list.append(b);
     shown++;
   }
   if (!shown) list.innerHTML = `<p class="empty">No hand matches “${esc(filter)}”. Try a maker name or a license.</p>`;
+  $("#hand-count").textContent = String(catalog.hands.length);
+}
+
+function renderGallery() {
+  const grid = $("#gallery");
+  grid.innerHTML = "";
+  for (const h of catalog.hands) {
+    const a = document.createElement("a");
+    a.className = "card-hand";
+    a.href = `#${h.id}`;
+    const thumb = h.preview
+      ? `<img class="palm-img" src="previews/${esc(h.id)}_palm.webp" alt="" loading="lazy"><img class="back-img" src="previews/${esc(h.id)}_back.webp" alt="" loading="lazy">`
+      : `<span class="none">Meshes not shown<br>(proprietary mesh license)</span>`;
+    a.innerHTML = `<div class="thumb">${thumb}</div>
+      <div class="card-body">
+        <span class="name"></span>
+        <span class="maker"></span>
+        <span class="chips"><span class="tag">${h.dof} DoF</span><span class="tag">${h.fingers} fingers</span><span class="tag lic"></span></span>
+      </div>`;
+    a.querySelector(".name").textContent = h.name;
+    a.querySelector(".maker").textContent = h.maker;
+    a.querySelector(".lic").textContent = h.license;
+    grid.append(a);
+  }
 }
 
 function markSelected() {
-  document.querySelectorAll(".hand").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.id === state.hand)));
+  document.querySelectorAll(".hand").forEach((b) => b.setAttribute("aria-selected", String(state.view === "detail" && b.dataset.id === state.hand)));
   document.querySelectorAll("#motions button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.motion === state.motion)));
   document.querySelectorAll("#side button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.side === state.side)));
   document.querySelectorAll("#human button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.human === state.human)));
-  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+  const nav = state.view === "detail" ? "" : state.section;
+  document.querySelectorAll(".toc a").forEach((a) => a.setAttribute("aria-current", String(a.dataset.nav === nav)));
+}
+
+function detailHash() {
+  return `#${state.hand}&motion=${state.motion}&side=${state.side}`;
 }
 
 function writeHash() {
-  const h = `#hand=${state.hand}&motion=${state.motion}&side=${state.side}`;
+  if (state.view !== "detail") return;
+  const h = detailHash();
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 
-function readHash() {
-  const p = new URLSearchParams(location.hash.slice(1));
-  const hand = p.get("hand");
-  const motion = p.get("motion");
-  const side = p.get("side");
-  state.hand = handsById.has(hand) ? hand : state.hand || catalog.default;
-  if (motions.motions.some((m) => m.id === motion)) state.motion = motion;
-  if (side === "left" || side === "right") state.side = side;
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.slice(1));
+  const [head, ...rest] = raw.split("&");
+  const p = new URLSearchParams(rest.join("&"));
+  const legacy = new URLSearchParams(raw);
+  if (legacy.has("hand")) return { view: "detail", hand: legacy.get("hand"), motion: legacy.get("motion"), side: legacy.get("side") };
+  if (handsById.has(head)) return { view: "detail", hand: head, motion: p.get("motion"), side: p.get("side") };
+  return { view: "gallery", section: ["gallery", "about"].includes(head) ? head : "intro" };
+}
+
+function route() {
+  const r = parseHash();
+  closeDrawer();
+  if (r.view === "gallery") {
+    state.view = "gallery";
+    state.section = r.section;
+    $("#gallery-view").hidden = false;
+    $("#detail-view").hidden = true;
+    markSelected();
+    if (r.section === "gallery") $("#gallery-title").scrollIntoView({ block: "start" });
+    else if (r.section === "about") $("#about").scrollIntoView({ block: "start" });
+    else window.scrollTo(0, 0);
+    return;
+  }
+  const changes = { hand: handsById.has(r.hand) ? r.hand : catalog.default };
+  if (motions.motions.some((m) => m.id === r.motion)) changes.motion = r.motion;
+  if (r.side === "left" || r.side === "right") changes.side = r.side;
+  const entering = state.view !== "detail";
+  state.view = "detail";
+  $("#gallery-view").hidden = true;
+  $("#detail-view").hidden = false;
+  if (entering) window.scrollTo(0, 0);
+  Object.assign(state, changes);
+  if ("motion" in changes) state.t = 0;
+  markSelected();
+  const item = document.querySelector(`.hand[data-id="${state.hand}"]`);
+  if (item) item.scrollIntoView({ block: "nearest" });
+  if (!current || current.hand.id !== state.hand || current.side !== state.side) {
+    show();
+  }
+  writeHash();
 }
 
 function select(changes) {
@@ -756,32 +825,25 @@ function select(changes) {
   if ("motion" in changes) state.t = 0;
   markSelected();
   writeHash();
-  if (reload) {
-    show().then(() => liveApi && liveApi.setHand(current));
-  }
+  if (reload) show();
 }
 
-function setMode(mode) {
-  state.mode = mode;
-  markSelected();
-  const live = mode === "live";
-  $("#motion-row").hidden = live;
-  $("#transport").hidden = live;
-  $("#live-panel").hidden = !live;
-  if (live && !liveApi) {
-    import("./live.js").then((m) => {
-      liveApi = m.createLive({
-        video: $("#cam"),
-        overlay: $("#cam-fit"),
-        note: $("#live-note"),
-        button: $("#live-start"),
-        bars: $("#live-loading"),
-        onPose: (q, p) => current && state.mode === "live" && applyPose(q, p),
-      });
-      liveApi.setHand(current);
-    });
-  }
-  if (!live && liveApi) liveApi.stop();
+function setDrawer(open) {
+  $("#sidebar").classList.toggle("open", open);
+  $("#backdrop").hidden = !open;
+  $(".menu-toggle").setAttribute("aria-expanded", String(open));
+}
+
+const store = navigator.cookieEnabled ? window.localStorage : null;
+
+function setHandsOpen(open) {
+  $("#hands-panel").hidden = !open;
+  $(".toc-toggle").setAttribute("aria-expanded", String(open));
+  if (store) store.setItem("handsOpen", open ? "1" : "0");
+}
+
+function closeDrawer() {
+  setDrawer(false);
 }
 
 const motionsEl = $("#motions");
@@ -805,16 +867,17 @@ $("#human").addEventListener("click", (e) => {
 $("#hand-list").addEventListener("click", (e) => {
   const b = e.target.closest(".hand");
   if (!b) return;
-  select({ hand: b.dataset.id });
-  $("#sidebar").classList.remove("open");
-  $(".hands-toggle").setAttribute("aria-expanded", "false");
+  closeDrawer();
+  location.hash = `#${b.dataset.id}`;
 });
 $("#search").addEventListener("input", (e) => renderList(e.target.value));
-$(".hands-toggle").addEventListener("click", (e) => {
-  const open = $("#sidebar").classList.toggle("open");
-  e.currentTarget.setAttribute("aria-expanded", String(open));
+$(".menu-toggle").addEventListener("click", () => setDrawer(!$("#sidebar").classList.contains("open")));
+$(".toc-toggle").addEventListener("click", () => setHandsOpen($("#hands-panel").hidden));
+document.querySelectorAll(".toc > a").forEach((a) => a.addEventListener("click", closeDrawer));
+$("#backdrop").addEventListener("click", closeDrawer);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDrawer();
 });
-$(".tabs").addEventListener("click", (e) => e.target.dataset.mode && setMode(e.target.dataset.mode));
 const playBtn = $("#play");
 playBtn.addEventListener("click", () => {
   state.playing = !state.playing;
@@ -827,13 +890,7 @@ scrub.addEventListener("input", () => {
   state.t = (scrub.value / 1000) * duration();
 });
 $("#speed").addEventListener("change", (e) => { state.speed = Number(e.target.value); });
-window.addEventListener("hashchange", () => {
-  const before = { hand: state.hand, side: state.side, motion: state.motion };
-  readHash();
-  const next = { hand: state.hand, side: state.side, motion: state.motion };
-  Object.assign(state, before);
-  select(next);
-});
+window.addEventListener("hashchange", route);
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space" && e.target === document.body) {
     e.preventDefault();
@@ -858,7 +915,7 @@ function tick(now) {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   resize();
-  if (current && current.sideData.clips && state.mode === "motion") {
+  if (current && current.sideData.clips) {
     const d = duration();
     if (state.playing) state.t = (state.t + dt * state.speed) % (d + 0.6);
     const t = Math.min(state.t, d);
@@ -869,14 +926,16 @@ function tick(now) {
   }
   updateTable(now);
   drainQueue(4);
-  controls.update();
-  renderer.render(scene, camera);
+  if (state.view === "detail") {
+    controls.update();
+    renderer.render(scene, camera);
+  }
   requestAnimationFrame(tick);
 }
 
-readHash();
+state.hand = catalog.default;
+setHandsOpen(!store || store.getItem("handsOpen") !== "0");
 renderList();
-markSelected();
-writeHash();
-show();
+renderGallery();
+route();
 requestAnimationFrame(tick);

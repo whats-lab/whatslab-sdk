@@ -36,7 +36,6 @@ def parse_args():
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--motions", type=Path, default=HERE / "motions")
     p.add_argument("--out", type=Path, default=HERE.parent / "_site")
-    p.add_argument("--wheel", type=Path)
     p.add_argument("--repo-url", default="https://github.com/whats-lab/dexterous-hand-urdf")
     p.add_argument("--ref", default="master")
     p.add_argument("--jobs", type=int, default=os.cpu_count())
@@ -332,6 +331,8 @@ def main():
 
     urdf_files = set()
     missing_meshes = []
+    previews = args.repo / "doc" / "preview"
+    (out / "previews").mkdir()
     hands = []
     for hid in folders:
         row = rows[hid]
@@ -341,12 +342,11 @@ def main():
         data = {"id": hid, "meshes": mesh_sources(manifest), "sides": {}}
         for side, rel in urdfs.items():
             shown = display_urdf(hands_root, rel)
-            urdf_files |= {shown, rel}
+            urdf_files.add(shown)
             missing, count, size = mesh_download(manifest, visual_meshes(hands_root, shown))
             missing_meshes += [f"{shown}: {m}" for m in missing]
             entry = {
                 "urdf": f"robots/{shown}",
-                "engineUrdf": f"robots/{rel}",
                 "meshFiles": count,
                 "meshBytes": size,
             }
@@ -375,6 +375,9 @@ def main():
         structure = urdf_structure(hands_root / primary)
         notes = sorted(p.name for p in (hands_root / hid).iterdir() if NOTE_FILES.match(p.name))
         base = f"{args.repo_url}/tree/{args.ref}/robots/hands/{hid}"
+        shots = [previews / f"{hid}_{view}.webp" for view in ("palm", "back")]
+        for shot in shots if all(p.is_file() for p in shots) else []:
+            shutil.copyfile(shot, out / "previews" / shot.name)
         hands.append(
             {
                 "id": hid,
@@ -382,6 +385,7 @@ def main():
                 "dof": structure["dof"],
                 "fingers": structure["fingers"],
                 "retargeted": bool(solved_sides),
+                "preview": all(p.is_file() for p in shots),
                 "sides": [s for s in SIDES if s in urdfs and not data["sides"][s]["mirrored"]],
                 "folder": base,
                 "notes": [
@@ -429,10 +433,6 @@ def main():
         dst = out / "robots" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(hands_root / rel, dst)
-    if args.wheel:
-        (out / "py").mkdir()
-        shutil.copy2(args.wheel, out / "py" / args.wheel.name)
-        (out / "py" / "wheel.json").write_text(json.dumps({"wheel": args.wheel.name}))
     total = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(
         f"{len(hands)} hands ({len(retargeted)} retargeted), {len(urdf_files)} URDF files, "

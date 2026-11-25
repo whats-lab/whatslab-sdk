@@ -45,7 +45,7 @@ jobs:
         run: |
           uv venv --python 3.12 _venv
           uv pip install --python _venv dist/*.whl
-          _venv/bin/python site/build.py --repo _hands --out _site --wheel "$(ls dist/*.whl)" \
+          _venv/bin/python site/build.py --repo _hands --out _site \
             --repo-url "${{ github.server_url }}/${{ steps.hands.outputs.repo }}" \
             --ref "$(git -C _hands rev-parse HEAD)"
       - uses: actions/configure-pages@v6

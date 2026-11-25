@@ -56,9 +56,8 @@ mirroring the input.
 Configs for every hand in `dexhand-description` (human-shaped hands with 4 or 5 fingers), grouped as in
 that repository. Every hand is previewed with DexPilot retargeting in the browser at
 **[whats-lab.github.io/whatslab-sdk](https://whats-lab.github.io/whatslab-sdk/)**: synthetic motions (fist, pinches, V pose)
-retargeted offline next to a human hand, and a Live camera tab that tracks your hand with MediaPipe, fits it to a
-26-joint OpenXR hand and runs this SDK in the browser (Pyodide). Meshes are downloaded by the browser from each
-hand's upstream repository at the pinned commit; hands whose mesh license forbids redistribution show joints only.
+retargeted offline next to a human hand. Meshes are downloaded by the browser from each hand's upstream
+repository at the pinned commit; hands whose mesh license forbids redistribution show joints only.
 
 **Korean hands**
 
@@ -271,7 +270,7 @@ The hand preview site (`site/`, deployed by `.github/workflows/pages.yml`) build
 ```bash
 uv build --wheel --out-dir dist
 uv run --no-project --with dist/whatslab_sdk-1.0.0-py3-none-any.whl python site/build.py \
-    --repo ../dexterous-hand-urdf --wheel dist/whatslab_sdk-1.0.0-py3-none-any.whl
+    --repo ../dexterous-hand-urdf
 python -m http.server -d _site
 ```
 
