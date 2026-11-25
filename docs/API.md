@@ -205,7 +205,6 @@ from whatslab.retarget import HandRetargeter, DexEngine
 | `wuji_hand` | `wuji_hand/wuji_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 20축 |
 | `wuji_hand2` | `wuji_hand2/wuji_hand2_right.urdf` | `r_wrist` | Wuji Hand 2.1. 손가락 5개, 구동 20축; URDF 루트 `r_mount`(팔 플랜지)는 쓰지 않는다 |
 | `rysen_apex_hand` | `rysen_apex_hand/rysen_apex_hand_right.urdf` | `right_palm_link` | 손가락 5개, 구동 16축; mimic 5 |
-| `proception_prohand_gen2` | `proception_prohand_gen2/proception_prohand_gen2_right.urdf` | `R_right_forearm_palm` | 손가락 5개, 구동 20축; 팔뚝 포함 URDF, 손목 관절 2개(`R_wrist_abd`, `R_wrist_flex`) 0 고정; 말단 링크 + 손끝 오프셋. 메시는 Proception 독점 라이선스(재배포 금지) |
 | `dexhand_trs` | `dexhand_trs/dexhand_trs_right.urdf` | `index_bulk_1` | 손가락 5개, 구동 21축; 손목 관절 0 고정 |
 
 **해외 휴머노이드 손**
@@ -330,7 +329,7 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 0~107°. Allegro 는 굽힘 관절 한계(엄지 0~94.1/98.4°, MCP 0~92.2°, PIP 0~97.9°, DIP 0~92.7°)와 엄지 끝을
 `link_15.0` + `link_offsets` (0, 0, 0.0387) m(Wonik `allegro_hand_ros` v4 의 엄지 끝)로 둔다. 업스트림 비교 테스트
 (`test_dexpilot_close_to_dex_retargeting_0_5_0`)는 ORCA 에서 이 한계·거리를 빼고 dex-retargeting 0.5.0 과 비교한다.
-동봉 config 85개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
+동봉 config 83개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
 합성 주먹·핀치·손가락별 굽힘 스윕으로 관절별 `joint_weights`·게인, `weight`, `project_dist` 만 조정했다(오른손 값을 왼손에
 복사, 결과가 나쁜 왼손은 따로 조정). 85개 중앙값: 역행 14.5 → 1.9°, 드리프트 0.17 → 0.12°, 손끝 p95 32.0 mm 그대로.
 이어서 역행 3° 를 넘던 손을 다시 조정해 85개 중앙값 역행 1.59°, 드리프트 0.12°, 손끝 p95 29.6 mm 이다. 3° 를 넘는 것은

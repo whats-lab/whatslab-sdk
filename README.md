@@ -57,7 +57,7 @@ Configs for every hand in `dexhand-description` (human-shaped hands with 4 or 5 
 that repository. Every hand is previewed with DexPilot retargeting in the browser at
 **[whats-lab.github.io/whatslab-sdk](https://whats-lab.github.io/whatslab-sdk/)**: synthetic motions (fist, pinches, V pose)
 retargeted offline next to a human hand. Meshes are downloaded by the browser from each hand's upstream
-repository at the pinned commit; hands whose mesh license forbids redistribution show joints only.
+repository at the pinned commit.
 
 **Korean hands**
 
@@ -107,7 +107,6 @@ repository at the pinned commit; hands whose mesh license forbids redistribution
 | Wuji Hand | `dex:wuji_hand` | `wuji_hand_{left,right}.yaml` | 5 fingers, 20 actuated |
 | Wuji Hand 2 (2.1) | `dex:wuji_hand2` | `wuji_hand2_{left,right}.yaml` | 5 fingers, 20 actuated; URDF root is the arm-flange mount, wrist link `r_wrist` |
 | Rysen Apex Hand | `dex:rysen_apex_hand` | `rysen_apex_hand_{left,right}.yaml` | 5 fingers, 16 actuated; 5 mimic |
-| Proception ProHand Gen2 | `dex:proception_prohand_gen2` | `proception_prohand_gen2_{left,right}.yaml` | 5 fingers, 20 actuated; 2 wrist joints held at 0; tip offsets on distal links |
 | DexHand (TheRobotStudio) | `dex:dexhand_trs` | `dexhand_trs_{left,right}.yaml` | 5 fingers, 21 actuated; wrist joints held at 0 |
 
 **Foreign humanoid hands**
@@ -140,7 +139,7 @@ The model also holds Allegro and DG-5F-S prompts, trained against URDFs that are
 dexhand-description yet.
 
 Training: `whatslab-geort-train` (`pip install '.[train]'`) builds the training data from
-`configs/geort_train/<hand>.yaml` (43 right hands with 5 or 4 fingers) and trains and exports a model
+`configs/geort_train/<hand>.yaml` (42 right hands with 5 or 4 fingers) and trains and exports a model
 on any GPU host; see [API.md](docs/API.md). The training code and the bundled model are based on
 [facebookresearch/GeoRT](https://github.com/facebookresearch/GeoRT) (CC BY-NC 4.0) and are for
 **non-commercial use** only. Human hand-motion data is not included.
@@ -250,7 +249,7 @@ whatslab/
 ├── safety.py         SafetyFilter
 ├── viz/              HandViz, URDFScene (viser)
 ├── paths.py          configs / models roots
-└── configs/          hands/ (DexPilot, 85 files), geort/ (2 files), geort_train/ (43 files)
+└── configs/          hands/ (DexPilot, 83 files), geort/ (2 files), geort_train/ (42 files)
 ```
 
 ## Examples & tools
