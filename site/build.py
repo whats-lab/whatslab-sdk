@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import posixpath
 import re
 import shutil
 import xml.etree.ElementTree as ET
@@ -26,6 +27,7 @@ MOTIONS = (
 SIDES = ("right", "left")
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 RAW_URL = "https://raw.githubusercontent.com/{repo}/{commit}/"
+PACKAGE = "package://dexhand_description/"
 NOTE_FILES = re.compile(r"^((MESHES-)?LICENSE.*|PATCHES\.txt)$")
 
 
@@ -197,8 +199,29 @@ def quantize(a, scale):
     return np.rint(np.asarray(a) * scale).astype(int).tolist()
 
 
-def mesh_sources(hand_dir):
-    manifest = json.loads((hand_dir / "meshes.json").read_text())
+def visual_meshes(hands_root, rel):
+    hid, base = rel.split("/")[0], posixpath.dirname(rel)
+    paths = []
+    for visual in ET.parse(hands_root / rel).getroot().iter("visual"):
+        for mesh in visual.iter("mesh"):
+            name = mesh.get("filename")
+            if name.startswith(PACKAGE):
+                path = name[len(PACKAGE) :]
+            else:
+                path = posixpath.normpath(posixpath.join(base, name))
+            paths.append(path[len(hid) + 1 :] if path.startswith(hid + "/") else f"../{path}")
+    return paths
+
+
+def mesh_download(manifest, paths):
+    sizes = {e["path"]: e["size"] for e in manifest["files"]}
+    missing = sorted({p for p in paths if p not in sizes})
+    files = {p for p in paths if p in sizes}
+    files |= {p[:-4] + ".mtl" for p in files if p.endswith(".obj") and p[:-4] + ".mtl" in sizes}
+    return missing, len(files), sum(sizes[p] for p in files)
+
+
+def mesh_sources(manifest):
     if manifest.get("redistribute") is False:
         return None
     return {
@@ -308,16 +331,25 @@ def main():
             }
 
     urdf_files = set()
+    missing_meshes = []
     hands = []
     for hid in folders:
         row = rows[hid]
         solved_sides = retargeted.get(hid, {})
         urdfs = {s: solved_sides[s]["urdf"] for s in solved_sides} or folder_urdfs(hands_root, hid)
-        data = {"id": hid, "meshes": mesh_sources(hands_root / hid), "sides": {}}
+        manifest = json.loads((hands_root / hid / "meshes.json").read_text())
+        data = {"id": hid, "meshes": mesh_sources(manifest), "sides": {}}
         for side, rel in urdfs.items():
             shown = display_urdf(hands_root, rel)
             urdf_files |= {shown, rel}
-            entry = {"urdf": f"robots/{shown}", "engineUrdf": f"robots/{rel}"}
+            missing, count, size = mesh_download(manifest, visual_meshes(hands_root, shown))
+            missing_meshes += [f"{shown}: {m}" for m in missing]
+            entry = {
+                "urdf": f"robots/{shown}",
+                "engineUrdf": f"robots/{rel}",
+                "meshFiles": count,
+                "meshBytes": size,
+            }
             res = solved_sides.get(side)
             if res:
                 entry.update(
@@ -366,6 +398,10 @@ def main():
             f"fail={fails} fit={fit:.1e}"
         )
 
+    if missing_meshes:
+        raise SystemExit(
+            "visual meshes missing from meshes.json:\n  " + "\n  ".join(missing_meshes)
+        )
     hands.sort(key=lambda h: h["name"].casefold())
     (out / "data" / "hands.json").write_text(
         json.dumps(

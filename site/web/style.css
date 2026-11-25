@@ -251,6 +251,12 @@ a:hover { text-decoration: underline; }
   padding: 16px;
 }
 
+.about { margin: 0 0 16px; padding: 0 0 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+.about summary { cursor: pointer; color: var(--ink); font-weight: 600; font-size: 12px; }
+
+.about ul { margin: 8px 0 0; padding-left: 16px; display: grid; gap: 5px; line-height: 1.45; }
+
 .info h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
 
 .info .id { color: var(--muted); margin: 0 0 14px; }

@@ -283,19 +283,28 @@ function showLoading(stats) {
 function meshLoader(meshes, signal, manager, stats) {
   if (!meshes) return (path, _, material, done) => done(null);
   const robotsBase = new URL("robots/", location.href).href;
-  const resolveUrl = (u) => {
-    if (!u.startsWith(robotsBase)) return u;
+  const entryOf = (raw) => {
+    const u = new URL(raw, location.href).href;
+    if (!u.startsWith(robotsBase)) return null;
     const rel = decodeURIComponent(u.slice(robotsBase.length));
-    const entry = meshes.files[rel.slice(rel.indexOf("/") + 1)];
+    return meshes.files[rel.slice(rel.indexOf("/") + 1)] || null;
+  };
+  const resolveUrl = (u) => {
+    const entry = entryOf(u);
     return entry ? meshes.base + entry[0].split("/").map(encodeURIComponent).join("/") : u;
   };
   const sizeOf = (u) => {
-    const rel = decodeURIComponent(u.slice(robotsBase.length));
-    const entry = u.startsWith(robotsBase) && meshes.files[rel.slice(rel.indexOf("/") + 1)];
+    const entry = entryOf(u);
     return entry ? entry[1] : 0;
   };
   manager.setURLModifier(resolveUrl);
+  const fetched = new Map();
   const get = (path, kind) => {
+    const key = `${kind} ${new URL(path, location.href).href}`;
+    if (!fetched.has(key)) fetched.set(key, download(path, kind));
+    return fetched.get(key);
+  };
+  const download = (path, kind) => {
     const size = sizeOf(path);
     stats.total += size;
     stats.files += 1;
@@ -315,6 +324,10 @@ function meshLoader(meshes, signal, manager, stats) {
     const ext = path.split(".").pop().toLowerCase();
     const base = path.slice(0, path.lastIndexOf("/") + 1);
     const finish = (obj) => {
+      if (obj) {
+        obj.visible = false;
+        stats.meshes.push(obj);
+      }
       done(obj);
       manager.itemEnd(path);
     };
@@ -360,10 +373,12 @@ function addKinematics(robot) {
   const r = 0.0035;
   const ball = new THREE.SphereGeometry(r * 1.6, 16, 12);
   const rod = new THREE.CylinderGeometry(r, r, 1, 12);
+  const parts = [];
   for (const joint of Object.values(robot.joints)) {
     const sphere = new THREE.Mesh(ball, kinematicMaterial);
     sphere.castShadow = true;
     joint.add(sphere);
+    parts.push([sphere, joint.children.find((c) => c.isURDFLink)]);
     const len = joint.position.length();
     if (len < 1e-6) continue;
     const bar = new THREE.Mesh(rod, kinematicMaterial);
@@ -372,7 +387,45 @@ function addKinematics(robot) {
     bar.position.copy(joint.position).multiplyScalar(0.5);
     bar.quaternion.setFromUnitVectors(UP, joint.position.clone().normalize());
     joint.parent.add(bar);
+    parts.push([bar, joint.parent]);
   }
+  return parts;
+}
+
+function reveal(robot) {
+  const { meshes, parts, revealed } = robot.userData;
+  const empty = (link) => link && link.children.some((c) => c.isURDFVisual && !c.children.length);
+  for (const [part, link] of parts) part.visible = !meshes || empty(link);
+  if (!meshes || revealed) return;
+  robot.userData.revealed = true;
+  const mats = new Map();
+  for (const obj of robot.userData.loaded) {
+    obj.visible = true;
+    obj.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!mats.has(m)) mats.set(m, [m.transparent, m.opacity]);
+      }
+    });
+  }
+  mats.forEach(([, opacity], m) => {
+    m.transparent = true;
+    m.opacity = 0;
+    m.needsUpdate = true;
+  });
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min((now - start) / 350, 1);
+    mats.forEach(([transparent, opacity], m) => {
+      m.opacity = opacity * t;
+      if (t === 1) {
+        m.transparent = transparent;
+        m.needsUpdate = true;
+      }
+    });
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 function loadRobot(url, meshes) {
@@ -381,13 +434,15 @@ function loadRobot(url, meshes) {
   const controller = new AbortController();
   pending = controller;
   const manager = new THREE.LoadingManager();
-  const stats = { total: 0, done: 0, files: 0, finished: 0, failed: [] };
+  const stats = { total: 0, done: 0, files: 0, finished: 0, failed: [], meshes: [] };
   stats.report = () => controller.signal.aborted || showLoading(stats);
   const loader = new URDFLoader(manager);
   loader.loadMeshCb = meshLoader(meshes, controller.signal, manager, stats);
   loader.packages = { dexhand_description: new URL("robots", location.href).href };
+  let robot = null;
+  let markReady = null;
+  const ready = new Promise((resolve) => { markReady = resolve; });
   const p = new Promise((resolve) => {
-    let robot = null;
     manager.onLoad = () => {
       if (controller.signal.aborted || !robot) {
         robots.delete(url);
@@ -397,12 +452,24 @@ function loadRobot(url, meshes) {
         }
         return;
       }
-      if (!meshes) addKinematics(robot);
-      robot.userData.meshBytes = stats.done;
+      robot.userData.loaded = stats.meshes;
       robot.userData.failedMeshes = stats.failed;
-      resolve(robot);
+      markReady(robot);
     };
-    loader.load(url, (r) => { robot = r; });
+    loader.load(url, (r) => {
+      robot = r;
+      robot.traverse((o) => {
+        if (o.isURDFVisual && meshes) {
+          o.children.forEach((c) => {
+            c.visible = false;
+            stats.meshes.push(c);
+          });
+        }
+      });
+      robot.userData.meshes = Boolean(meshes);
+      robot.userData.parts = addKinematics(robot);
+      resolve({ robot, ready });
+    });
   });
   robots.set(url, p);
   return p;
@@ -463,11 +530,8 @@ async function show() {
   const url = new URL(sideData.urdf, location.href).href;
   setStatus("");
   showLoading({ total: 0, done: 0, files: 0, finished: 0, failed: [] });
-  const [robot] = await Promise.all([loadRobot(url, data.meshes), handModels]);
+  const [{ robot, ready }] = await Promise.all([loadRobot(url, data.meshes), handModels]);
   if (token !== loadToken) return;
-  showLoading(null);
-  const failed = robot.userData.failedMeshes;
-  setStatus(failed.length ? `${failed.length} of the model's meshes could not be downloaded and are not shown.` : "");
   mount.clear();
   mount.add(robot);
   mount.matrix.copy(placement(sideData));
@@ -492,6 +556,19 @@ async function show() {
     renderer.render(scene, camera);
     window.__firstRender = Math.round(performance.now());
   }
+  ready.then(() => {
+    if (token !== loadToken) return;
+    showLoading(null);
+    const failed = robot.userData.failedMeshes;
+    setStatus(failed.length ? `${failed.length} of the model's meshes could not be downloaded; those links are drawn as a skeleton.` : "");
+    reveal(robot);
+    if (sideData.clips) applyPose(poseAt(0).q, null);
+    scene.updateMatrixWorld(true);
+    current.box = new THREE.Box3().setFromObject(mount);
+    grid.position.y = current.box.min.y;
+    applyHuman();
+    window.__meshesReady = Math.round(performance.now());
+  });
 }
 
 function humanBox() {
@@ -615,6 +692,7 @@ function renderInfo() {
       <dt>License</dt><dd>${esc(h.license)}</dd>
       <dt>Source</dt><dd>${h.sourceUrl ? `<a class="mono" href="${esc(h.sourceUrl)}" rel="noopener">${esc(h.source)}</a>` : esc(h.source)}</dd>
       <dt>Model</dt><dd><a class="mono" href="${esc(h.folder)}" rel="noopener">${esc(urdfName)}</a></dd>
+      <dt>Meshes</dt><dd>${current.data.meshes ? `${sd.meshFiles} files · ${(sd.meshBytes / 1e6).toFixed(1)} MB download` : "not shown"}</dd>
       ${notes ? `<dt>Files</dt><dd>${notes}</dd>` : ""}
     </dl>
     ${mirrored}${unclear}${current.data.meshes ? "" : `<p class="note">Meshes not shown: proprietary mesh license (see MESHES-LICENSE).</p>`}${modelOnly}

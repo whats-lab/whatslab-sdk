@@ -105,7 +105,19 @@
     </div>
   </section>
 
-  <aside class="info" id="info"></aside>
+  <aside class="info">
+    <details class="about" open>
+      <summary>About this preview</summary>
+      <ul>
+        <li>These are the hands officially supported by whatslab-sdk 1.0.0: the 43 human-like four- and five-finger hands of dexhand-description 1.0.0. Each one is retargeted with the DexPilot config bundled in the SDK.</li>
+        <li>URDFs and meshes come from each maker's or lab's official repository; every hand lists its source, commit and license. We do not rehost meshes: your browser downloads them from upstream at a pinned commit.</li>
+        <li>The first time you open a hand, the mesh download can take a while (a few MB to tens of MB; the size is shown below). After that the browser cache makes it fast.</li>
+        <li>Hands whose mesh license forbids redistribution show their joints only.</li>
+        <li>Motions are synthetic hand motions retargeted ahead of time. Live camera is approximate webcam tracking.</li>
+      </ul>
+    </details>
+    <div id="info"></div>
+  </aside>
 </main>
 </body>
 </html>
