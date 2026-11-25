@@ -3,14 +3,14 @@ from __future__ import annotations
 import fnmatch
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import numpy as np
 import yaml
 from scipy.spatial.transform import Rotation
 
 from whatslab.core.constants import SIDES
-from whatslab.kinematics import Kinematics, parse_couplings
+from whatslab.kinematics import Kinematics, coupling_overrides, parse_couplings
 from whatslab.paths import configs_root, models_root
 
 from ..retargeter import DEX_PREFIX
@@ -63,6 +63,7 @@ class DexHandConfig:
     fixed_joints: Dict[str, float] = field(default_factory=dict)
     link_offsets: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)
     couplings: Dict[str, Tuple[str, float, float]] = field(default_factory=dict)
+    coupling_overrides: FrozenSet[str] = frozenset()
     joint_limits: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     human_hand_length: float = _DEFAULT_HUMAN_HAND_LENGTH
     mano_to_root_rpy: Optional[Tuple[float, float, float]] = None
@@ -101,6 +102,7 @@ class DexHandConfig:
             link_offsets={str(k): tuple(float(x) for x in v)
                           for k, v in (d.get("link_offsets") or {}).items()},
             couplings=parse_couplings(d.get("couplings")),
+            coupling_overrides=coupling_overrides(d.get("couplings")),
             joint_limits=limits,
             human_hand_length=float(d.get("human_hand_length", _DEFAULT_HUMAN_HAND_LENGTH)),
             mano_to_root_rpy=None if frame is None else tuple(float(v) for v in frame["rpy"]),
@@ -153,7 +155,7 @@ class DexEngine:
                         if n in cfg.fixed_joints})
         if fixed:
             raise ValueError(f"{cfg.name}: couplings 의 관절이 fixed_joints 에도 있다 {fixed}")
-        kin.couple(cfg.couplings)
+        kin.couple(cfg.couplings, cfg.coupling_overrides)
         shifted = {link: f"{link}_offset" for link in cfg.link_offsets}
         for link, offset in cfg.link_offsets.items():
             kin.add_frame(shifted[link], link, offset)

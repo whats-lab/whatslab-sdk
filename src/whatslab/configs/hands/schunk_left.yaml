@@ -2,6 +2,8 @@ name: schunk_left
 side: left
 urdf: schunk_hand/schunk_svh_hand_left.urdf
 palm_links: {index: left_hand_l, middle: left_hand_k, pinky: left_hand_i}
+couplings:
+  left_hand_j5: {source: left_hand_Thumb_Opposition, multiplier: -1.0, offset: 0.0, override_urdf: true}
 human_hand_length: 0.19
 max_evals: 10
 retargeting:
@@ -11,7 +13,7 @@ retargeting:
   low_pass_alpha: 0.5
   target_joint_names: [left_hand_Thumb_Opposition, left_hand_Thumb_Flexion, left_hand_Index_Finger_Proximal, left_hand_Index_Finger_Distal, left_hand_Middle_Finger_Proximal, left_hand_Middle_Finger_Distal, left_hand_Ring_Finger, left_hand_Pinky, left_hand_Finger_Spread]
 posture_prior:
-  weight: 0.02
+  weight: 0.01
   joints:
     left_hand_Finger_Spread: {index.spread: 0.333, ring.spread: -0.333, little.spread: -0.667}
     left_hand_Index_Finger_Proximal: {index.mcp: 1.0}
@@ -26,4 +28,4 @@ posture_prior:
     flex_joint: left_hand_j3
     step_deg: 2.0
     axis_weight: 0.5
-  joint_weights: {left_hand_Pinky: 0.3, left_hand_Ring_Finger: 0.3}
+  joint_weights: {left_hand_Pinky: 0.3}

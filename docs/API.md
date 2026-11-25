@@ -233,7 +233,7 @@ allegro·leap·ability·schunk·inspire·shadow 의 손목·손끝 링크(와 ab
 | `mano_to_root.rpy` | (선택) 위 자동 정렬 대신 고정 MANO → 루트 회전(xyz 오일러, rad). |
 | `link_offsets` | `{링크: [x, y, z]}` — 그 링크 프레임에서 오프셋만큼 옮긴 프레임 `<링크>_offset` 을 만들어 `wrist_link_name`·`finger_tip_link_names` 의 그 링크 대신 쓴다. 손끝 링크가 없는 URDF 는 말단 링크 + 메쉬 끝점 오프셋을, 원점이 손가락 뿌리 높이에 있는 손바닥(Allegro V5, LEAP V2 Adv)은 손목 오프셋을 준다. |
 | `fixed_joints` | `{관절: rad}` — 리타게팅에서 빼고 고정한다. ORCA 손목 관절은 손 리타게팅 대상이 아니라 0 으로 둔다. |
-| `couplings` | `{종속 관절: {source, multiplier: 1, offset: 0}}` — URDF 를 고치지 않고 관절 결합을 선언한다. URDF `<mimic>` 과 똑같이 처리한다: `q_종속 = multiplier·q_source + offset`, 결합의 결합은 구동 관절까지 따라가 합치고, 종속 관절은 `target_joint_names`(최적화 변수)에서 빠지며 `full_qpos`·`robot_joint_names` 에는 들어간다. 스키마 오류(모르는 키, `source` 없음, 자기 자신, 순환)는 로드 때, URDF 에 없는 관절·URDF mimic 관절과 겹침·URDF mimic 을 거치는 순환·`fixed_joints` 와 겹침은 `DexEngine` 생성 때 `ValueError`. IGRIS-C 는 구동 6축(엄지 회전·굽힘 + 네 손가락 middle)이고 distal 5축은 passive 라, 링크·텐던 연동으로 보고 middle 에 1:1 로 결합해 근사한다(실물 비율 미확인, ROBROS 확인 필요). 0 고정은 손끝 p95 73 mm 라 쓰지 않는다. `configs/geort_train` 도 같은 키를 받는다(종속 관절은 `fingers.joints` 에 적지 않는다). |
+| `couplings` | `{종속 관절: {source, multiplier: 1, offset: 0}}` — URDF 를 고치지 않고 관절 결합을 선언한다. URDF `<mimic>` 과 똑같이 처리한다: `q_종속 = multiplier·q_source + offset`, 결합의 결합은 구동 관절까지 따라가 합치고, 종속 관절은 `target_joint_names`(최적화 변수)에서 빠지며 `full_qpos`·`robot_joint_names` 에는 들어간다. URDF `<mimic>` 이 있는 관절은 항목에 `override_urdf: true` 를 줄 때만 덮어쓴다(업스트림 URDF 를 고치지 않고 mimic 오류를 보정; FK·최적화·`full_qpos`·GeoRT 학습 모두 덮어쓴 multiplier·offset 을 쓴다). 스키마 오류(모르는 키, `source` 없음, 자기 자신, 순환, `override_urdf` 가 bool 아님)는 로드 때, URDF 에 없는 관절·`override_urdf` 없이 URDF mimic 관절과 겹침·`override_urdf` 인데 URDF mimic 관절이 아님·URDF mimic 을 거치는 순환·`fixed_joints` 와 겹침은 `DexEngine` 생성 때 `ValueError`. IGRIS-C 는 구동 6축(엄지 회전·굽힘 + 네 손가락 middle)이고 distal 5축은 passive 라, 링크·텐던 연동으로 보고 middle 에 1:1 로 결합해 근사한다(실물 비율 미확인, ROBROS 확인 필요). 0 고정은 손끝 p95 73 mm 라 쓰지 않는다. `configs/geort_train` 도 같은 키를 받는다(종속 관절은 `fingers.joints` 에 적지 않는다). |
 | `joint_limits_deg` | `{관절 이름 glob: [lo, hi]}` — 최적화 한계를 덮어쓴다. DG-5F 손가락 PIP·DIP 는 URDF 가 ±90° 라 역방향으로 꺾는 해가 나와 −5..90° 로 자른다. |
 | `human_hand_length` | 사람 손목 → 중지 끝(m, 기본 0.19). `retargeting.scaling_factor` 가 없으면 로봇 같은 길이(q=0)를 이것으로 나눠 쓴다. |
 | `max_evals` | 틱당 SLSQP 반복 상한(scipy `maxiter`, 동봉값 10, 없으면 100). 반복마다 목적함수 평가가 1~2번이다. 지연 상한을 두려는 값이다 — 처음 동봉한 14개 config 에서 20 과 품질 지표(핀치 거리·오차, 뼈 각도, \|dq\| p95, 한계 비율)가 노이즈 안이고 실패가 없으면서 손당 p50 이 약 0.3 ms 줄어 10 으로 정했다. 값을 바꾸면 일부 프레임의 해가 크게 달라질 수 있다(비볼록 문제) — 바꾸면 벤치로 다시 확인한다. |
@@ -329,7 +329,11 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 합성 주먹·핀치·손가락별 굽힘 스윕으로 관절별 `joint_weights`·게인, `weight`, `project_dist` 만 조정했다(오른손 값을 왼손에
 복사, 결과가 나쁜 왼손은 따로 조정). 85개 중앙값: 역행 14.5 → 1.9°, 드리프트 0.17 → 0.12°, 손끝 p95 32.0 mm 그대로.
 역행이 3° 를 크게 넘게 남은 손: `leap_hand_v2_adv_right` 11.2°, `leap_left` 10.3°, `linkerhand_l25` 9.4°,
-`schunk_left` 7.6°, `allegro_v5_4f` 7.5°, `orca_v1` 7.1°, `leap_right` 7.0°.
+`allegro_v5_4f` 7.5°, `orca_v1` 7.1°, `leap_right` 7.0°.
+`schunk_left`: 업스트림 URDF 의 j5 mimic 부호 오류(`left_hand_j5` 한계가 [−0.988, 0] 인데 `Thumb_Opposition` 을
+multiplier 1 로 따라가 엄지를 맞세우면 새끼 쪽 손바닥이 거꾸로 벌어진다)를 config 덮어쓰기
+(`couplings.left_hand_j5: {source: left_hand_Thumb_Opposition, multiplier: -1, override_urdf: true}`)로 보정하고,
+사전항은 오른손 거울상(`weight` 0.01, `joint_weights` Pinky 0.3)이다. 역행 7.6 → 2.5°(오른손 2.6°), 드리프트 0.07°.
 
 ## whatslab.retarget.geort — GeoRT 소프트 프롬프트
 
@@ -400,7 +404,7 @@ whatslab-geort-train eval --model s2.npz --hands all --human H.npz  # 손끝 오
 | `palm: {index, middle, ring, shift}` | 손바닥 좌표계를 정하는 MCP 점(링크 이름 또는 `{link, offset}`). 셋 중 둘 이상. `middle` 이 없으면 index·ring 의 가운데, `ring` 이 없으면 middle 에 대해 index 를 뒤집은 점, `index` 가 없으면 그 반대. Z = 손목→중지 MCP, 가로 = 검지 MCP − 약지 MCP |
 | `fingers: [{name, link, offset, joints}]` | `name` = 따라갈 **사람 손가락**(thumb/index/middle/ring/little, thumb·middle 필수). `link`+`offset` = 손끝 점, `joints` = 그 손가락의 구동 관절(몸쪽→끝). mimic 관절은 적지 않는다 — URDF mimic(여러 단계도)대로 FK 에 들어가고 SDK 출력은 구동 관절뿐이다. 적지 않은 다른 관절은 0 에 고정 |
 | `limits_deg` | 관절 한계(도). URDF 한계와 교집합 |
-| `couplings` | (선택) hand config 와 같은 `{종속 관절: {source, multiplier, offset}}` — URDF mimic 처럼 FK 에 들어간다. 종속 관절은 `fingers.joints` 에 적지 않는다(IGRIS-C distal ← middle 1:1) |
+| `couplings` | (선택) hand config 와 같은 `{종속 관절: {source, multiplier, offset, override_urdf}}` — URDF mimic 처럼 FK 에 들어간다(`override_urdf: true` 면 URDF mimic 을 덮어쓴다). 종속 관절은 `fingers.joints` 에 적지 않는다(IGRIS-C distal ← middle 1:1) |
 | `posture` | `{관절: {사람 각: 배율}}` 자세 사전 목표. 사람 각 = `thumb.mcp/ip`, `<손가락>.mcp/pip/dip`, `+` 접미사는 양수 부분만 |
 | `collision` | `{margin_mm, pairs: [[[링크…], [링크…]], …]}` 엄지와 손바닥·검지·중지 사이 여유(메시 표면 점) |
 | `scale`, `tip_scale`, `abd_scale` | (선택) 사람→로봇 크기(기본: q=0 로봇 중지 길이 / 사람 중지 길이 p95), 손별 손끝·벌림 손실 배율(벌림 관절이 없는 커플링 손은 `abd_scale: 0`) |
@@ -435,7 +439,7 @@ whatslab-geort-train eval --model s2.npz --hands all --human H.npz  # 손끝 오
 
 | 심볼 | 설명 |
 |---|---|
-| `parse_couplings(raw)` / `Kinematics.couple(couplings)` | config `couplings` 를 `{종속: (source, multiplier, offset)}` 로 읽고(스키마·순환 검사), URDF mimic 에 더한다. 이후 `mimic_*`·`actuated_joint_names`·`forward_qpos` 가 결합을 포함한다. |
+| `parse_couplings(raw)` / `coupling_overrides(raw)` / `Kinematics.couple(couplings, overrides=frozenset())` | config `couplings` 를 `{종속: (source, multiplier, offset)}` 로 읽고(스키마·순환 검사), `override_urdf: true` 인 종속 관절 이름 집합을 따로 읽어, URDF mimic 에 더한다(`overrides` 에 든 관절만 URDF mimic 을 덮어쓴다). 이후 `mimic_*`·`actuated_joint_names`·`forward_qpos` 가 결합을 포함한다. |
 | `Kinematics(urdf_path)` / `Kinematics.from_string(xml)` | URDF 를 xml.etree 로 읽는다. revolute·continuous·prismatic·fixed 관절(그 밖의 type 은 `ValueError`). 관절 순서·한계는 pinocchio `buildModelFromUrdf` 와 같다(형제 관절은 이름순 깊이 우선). continuous 는 각도 1개, 한계 ±inf. `joint_names`, `joint_parents`, `joint_limits` `(n, 2)`, `link_names`, `link_joints`, `dof`, `neutral()`. |
 | mimic | `mimic_names`·`mimic_source_names`·`mimic_multipliers`·`mimic_offsets`·`idx_mimic`·`idx_source` — mimic 의 mimic 은 구동 관절까지 배율·오프셋을 합친다. `actuated_joint_names`, `forward_qpos(q)`(mimic 관절 채움, 제자리). |
 | `frame_ids(names)` / `add_frame(name, link, offset)` | 링크 이름 → 인덱스(없으면 `ValueError`). `add_frame` 은 링크 프레임에서 `offset` 만큼 옮긴 프레임을 더한다. |

@@ -1,12 +1,21 @@
 import dataclasses
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
 from test_hand_dex import _fd_check, _require_urdf, synthetic_right_hand
 
-from whatslab.kinematics import Kinematics, parse_couplings
+from whatslab.kinematics import Kinematics, coupling_overrides, parse_couplings
+from whatslab.paths import models_root
 from whatslab.retarget.dex import DexEngine, DexHandConfig
-from whatslab.retarget.geort.train.hand import HandKinematics, read_hand, urdf_path, urdf_tips
+from whatslab.retarget.geort.train.hand import (
+    HandKinematics,
+    coupled,
+    read_hand,
+    read_joints,
+    urdf_path,
+    urdf_tips,
+)
 
 CHAIN = """<robot name="c">
   <link name="base"/><link name="a"/><link name="b"/><link name="c"/><link name="tip"/>
@@ -60,6 +69,7 @@ def test_couplings_extend_urdf_mimic():
     ({"j2": {"multiplier": 1.0}}, "source"),
     ({"j2": {"source": "j2"}}, "자기 자신"),
     ({"j2": {"source": "j3"}, "j3": {"source": "j2"}}, "순환"),
+    ({"j2": {"source": "j1", "override_urdf": "yes"}}, "override_urdf"),
 ))
 def test_coupling_schema_errors(raw, match):
     with pytest.raises(ValueError, match=match):
@@ -71,10 +81,72 @@ def test_coupling_schema_errors(raw, match):
     ("", {"j2": {"source": "j9"}}, "없는"),
     (MIMIC2, {"j2": {"source": "j3"}}, "URDF mimic"),
     (MIMIC2, {"j1": {"source": "j2"}}, "순환"),
+    ("", {"j2": {"source": "j1", "override_urdf": True}}, "URDF mimic 관절이 아니다"),
 ))
 def test_coupling_urdf_errors(mimic2, raw, match):
     with pytest.raises(ValueError, match=match):
-        _chain(mimic2).couple(parse_couplings(raw))
+        _chain(mimic2).couple(parse_couplings(raw), coupling_overrides(raw))
+
+
+OVERRIDE = {"j2": {"source": "j1", "multiplier": -1.3, "offset": 0.2, "override_urdf": True}}
+PATCHED2 = '<mimic joint="j1" multiplier="-1.3" offset="0.2"/>'
+
+
+def test_override_urdf_coupling_matches_patched_urdf():
+    patched = _chain(PATCHED2, MIMIC3)
+    kin = _chain(MIMIC2, MIMIC3)
+    kin.couple(parse_couplings(OVERRIDE), coupling_overrides(OVERRIDE))
+    assert kin.mimic_names == patched.mimic_names
+    assert np.allclose(kin.mimic_multipliers, patched.mimic_multipliers)
+    assert np.allclose(kin.mimic_offsets, patched.mimic_offsets)
+    ids = kin.frame_ids(kin.link_names)
+    for v in (0.0, 0.4, 1.2):
+        q = np.array([v, 0.0, 0.0])
+        a = patched.link_placements(patched.forward_qpos(q.copy()))[ids]
+        b = kin.link_placements(kin.forward_qpos(q.copy()))[ids]
+        assert np.array_equal(a, b)
+
+
+def _chain_joints(mimic2):
+    return read_joints(ET.fromstring(CHAIN.format(mimic2=mimic2, mimic3=MIMIC3)))
+
+
+def test_geort_train_coupled_honours_override():
+    joints = _chain_joints(MIMIC2)
+    with pytest.raises(ValueError, match="URDF mimic"):
+        coupled(joints, parse_couplings(OVERRIDE))
+    out = coupled(joints, parse_couplings(OVERRIDE), coupling_overrides(OVERRIDE))
+    assert [j.mimic for j in out] == [j.mimic for j in _chain_joints(PATCHED2)]
+
+
+def test_schunk_left_override_matches_patched_urdf_and_mirrors_right():
+    left, right = _require_urdf("schunk_left"), _require_urdf("schunk_right")
+    path = f"{models_root()}/{left.urdf}"
+    text = open(path).read()
+    bug = '<mimic joint="left_hand_Thumb_Opposition" multiplier="1" offset="0"/>'
+    assert text.count(bug) == 1
+    patched = Kinematics.from_string(text.replace(bug, bug.replace('"1"', '"-1"')))
+    eng = DexEngine(left, posture_prior=False)
+    kin = eng.kinematics
+    ids = kin.frame_ids(patched.link_names)
+    pids = patched.frame_ids(patched.link_names)
+    lim = eng.joint_limits
+    for t in (0.0, 0.3, 0.8):
+        q = lim[:, 0] + t * (lim[:, 1] - lim[:, 0])
+        full = eng.full_qpos(q)
+        mine = kin.link_placements(full)[ids]
+        ref = patched.link_placements(patched.forward_qpos(full.copy()))[pids]
+        assert np.abs(mine - ref).max() < 1e-12
+    reng = DexEngine(right, posture_prior=False)
+    flip = np.array([1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0])
+    for qd in ([30, 0, 0, 0, 0, 0, 0, 0, 0], [50, 30, 20, 10, 20, 10, 30, 40, 15]):
+        qr = np.radians(qd)
+        tips = []
+        for e, q in ((reng, qr), (eng, qr * flip)):
+            ids = e.kinematics.frame_ids([e.wrist_frame, *e.tip_frames])
+            pos = e.kinematics.frames(e.full_qpos(q), ids)[0]
+            tips.append((pos[1:] - pos[0]) @ e.robot_palm.T)
+        assert np.abs(tips[0] * [1.0, -1.0, 1.0] - tips[1]).max() < 1e-4
 
 
 def _igris_coupled():

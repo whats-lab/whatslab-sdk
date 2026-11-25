@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Sequence, Tuple
+from typing import AbstractSet, Dict, FrozenSet, List, Sequence, Tuple
 
 import numpy as np
 
@@ -29,7 +29,7 @@ def origin_matrix(el) -> np.ndarray:
     return tf
 
 
-COUPLING_KEYS = frozenset({"source", "multiplier", "offset"})
+COUPLING_KEYS = frozenset({"source", "multiplier", "offset", "override_urdf"})
 
 
 def check_coupling_cycles(mimic: Dict[str, Tuple[str, float, float]]) -> None:
@@ -60,10 +60,28 @@ def parse_couplings(raw) -> Dict[str, Tuple[str, float, float]]:
             raise ValueError(f"couplings.{name}: source 가 필요하다")
         if str(spec["source"]) == str(name):
             raise ValueError(f"couplings.{name}: 자기 자신을 source 로 둘 수 없다")
+        if not isinstance(spec.get("override_urdf", False), bool):
+            raise ValueError(f"couplings.{name}: override_urdf 는 true|false 여야 한다 — "
+                             f"받은 값 {spec['override_urdf']!r}")
         out[str(name)] = (str(spec["source"]), float(spec.get("multiplier", 1.0)),
                           float(spec.get("offset", 0.0)))
     check_coupling_cycles(out)
     return out
+
+
+def coupling_overrides(raw) -> FrozenSet[str]:
+    return frozenset(str(n) for n, spec in (raw or {}).items() if spec.get("override_urdf"))
+
+
+def check_urdf_overrides(couplings: Dict, urdf_mimic: AbstractSet[str],
+                         overrides: AbstractSet[str]) -> None:
+    clash = sorted(n for n in couplings if n in urdf_mimic and n not in overrides)
+    if clash:
+        raise ValueError(f"couplings: URDF mimic 관절과 겹친다 {clash} — "
+                         "덮어쓰려면 항목에 override_urdf: true 를 준다")
+    stray = sorted(n for n in overrides if n not in urdf_mimic)
+    if stray:
+        raise ValueError(f"couplings: override_urdf 인데 URDF mimic 관절이 아니다 {stray}")
 
 
 def _skew(a: np.ndarray) -> np.ndarray:
@@ -198,14 +216,13 @@ class Kinematics:
         self.mimic_offsets = np.array([m[3] for m in resolved])
         self.actuated_joint_names = [n for n in self.joint_names if n not in mimic]
 
-    def couple(self, couplings: Dict[str, Tuple[str, float, float]]) -> None:
+    def couple(self, couplings: Dict[str, Tuple[str, float, float]],
+               overrides: AbstractSet[str] = frozenset()) -> None:
         unknown = sorted({n for name, (src, _, _) in couplings.items() for n in (name, src)
                           if n not in self.joint_names})
         if unknown:
             raise ValueError(f"couplings: URDF 에 없는 움직이는 관절 {unknown}")
-        clash = sorted(n for n in couplings if n in self._urdf_mimic)
-        if clash:
-            raise ValueError(f"couplings: URDF mimic 관절과 겹친다 {clash}")
+        check_urdf_overrides(couplings, set(self._urdf_mimic), overrides)
         mimic = {**self._mimic, **couplings}
         check_coupling_cycles(mimic)
         self._mimic = mimic
