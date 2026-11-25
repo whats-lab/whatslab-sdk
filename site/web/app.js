@@ -1,12 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { STLLoader } from "three/addons/loaders/STLLoader.js";
-import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
-import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import URDFLoader from "urdf-loader";
 
 const $ = (s) => document.querySelector(s);
@@ -26,7 +21,6 @@ const XR_BONES = [
   ...["index", "middle", "ring", "pinky"].flatMap((f) => ["metacarpal", "phalanx-proximal", "phalanx-intermediate", "phalanx-distal", "tip"]
     .map((b) => `${f}-finger-${b}`)),
 ];
-const CREASE = THREE.MathUtils.degToRad(35);
 const NEUTRAL = 0xa3a7ad;
 const SKIN = 0xd8a88a;
 const PALM_TO_WORLD = new THREE.Matrix4().set(
@@ -214,49 +208,6 @@ function fromUrdf(m) {
   }));
 }
 
-function embedded(m, linear) {
-  if (m.isMeshStandardMaterial) return m;
-  return convert(m, () => new THREE.MeshStandardMaterial({
-    color: linear ? THREE.ColorManagement.workingToColorSpace(m.color.clone(), THREE.SRGBColorSpace) : m.color,
-    map: m.map,
-    vertexColors: m.vertexColors,
-    roughness: 0.5,
-    metalness: 0.1,
-    transparent: m.transparent,
-    opacity: m.opacity,
-    side: m.side,
-  }));
-}
-
-function faceted(g) {
-  const n = g.attributes.normal;
-  if (!n) return true;
-  if (g.index) return false;
-  const tris = n.count / 3;
-  const step = Math.max(1, Math.floor(tris / 300));
-  let flat = 0;
-  let seen = 0;
-  for (let t = 0; t < tris; t += step) {
-    const i = t * 3;
-    seen++;
-    const same = (j) => n.getX(i) === n.getX(j) && n.getY(i) === n.getY(j) && n.getZ(i) === n.getZ(j);
-    if (same(i + 1) && same(i + 2)) flat++;
-  }
-  return flat > seen * 0.9;
-}
-
-function tidy(obj, urdfMaterial, own, linear) {
-  obj.traverse((o) => {
-    if (!o.isMesh) return;
-    o.castShadow = true;
-    if (faceted(o.geometry)) o.geometry = toCreasedNormals(o.geometry, CREASE);
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    const out = mats.map((m) => (own && m ? embedded(m, linear) : fromUrdf(urdfMaterial)));
-    o.material = Array.isArray(o.material) ? out : out[0];
-  });
-  return obj;
-}
-
 function setStatus(text) {
   $("#status").textContent = text;
 }
@@ -280,178 +231,213 @@ function showLoading(stats) {
   failed.textContent = `${stats.failed.length} failed`;
 }
 
-function meshLoader(meshes, signal, manager, stats) {
+const meshWorker = new Worker(new URL("mesh-worker.js", import.meta.url), { type: "module" });
+const workerJobs = new Map();
+meshWorker.onmessage = (e) => {
+  const job = workerJobs.get(e.data.load);
+  if (job) job(e.data);
+};
+const hiddenMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+const buildQueue = [];
+const cancelled = new Set();
+let loadSeq = 0;
+let pending = null;
+
+function drainQueue(budget) {
+  const t0 = performance.now();
+  while (buildQueue.length && performance.now() - t0 < budget) buildQueue.shift()();
+}
+
+function makeTexture(spec) {
+  const t = new THREE.Texture(spec.image);
+  t.flipY = spec.flipY;
+  t.colorSpace = spec.colorSpace;
+  t.wrapS = spec.wrapS;
+  t.wrapT = spec.wrapT;
+  t.repeat.fromArray(spec.repeat);
+  t.offset.fromArray(spec.offset);
+  t.needsUpdate = true;
+  return t;
+}
+
+function buildMaterial(spec, manager, base) {
+  const standard = spec.kind === "standard";
+  const m = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().fromArray(spec.color),
+    roughness: standard ? spec.roughness : 0.5,
+    metalness: standard ? spec.metalness : 0.1,
+    opacity: spec.opacity,
+    transparent: spec.transparent,
+    side: spec.side ?? THREE.FrontSide,
+    vertexColors: Boolean(spec.vertexColors),
+  });
+  if (standard && spec.emissive) m.emissive.fromArray(spec.emissive);
+  if (spec.map) m.map = makeTexture(spec.map);
+  if (spec.mapFile) {
+    m.map = new THREE.TextureLoader(manager).load(base + spec.mapFile);
+    m.map.colorSpace = THREE.SRGBColorSpace;
+  }
+  return m;
+}
+
+function buildGeometries(parts) {
+  return parts.map((part) => {
+    const g = new THREE.BufferGeometry();
+    for (const [name, a] of Object.entries(part.attributes)) {
+      g.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize, a.normalized));
+    }
+    if (part.index) g.setIndex(new THREE.BufferAttribute(part.index, 1));
+    part.groups.forEach((x) => g.addGroup(x.start, x.count, x.materialIndex));
+    return g;
+  });
+}
+
+function buildObject(parts, geoms, urdfMaterial, manager, base) {
+  const group = new THREE.Group();
+  const meshes = [];
+  parts.forEach((part, k) => {
+    const mats = part.materials
+      ? part.materials.map((spec) => (spec ? buildMaterial(spec, manager, base) : fromUrdf(urdfMaterial)))
+      : [fromUrdf(urdfMaterial)];
+    const real = part.multi ? mats : mats[0];
+    const mesh = new THREE.Mesh(geoms[k], part.multi ? mats.map(() => hiddenMaterial) : hiddenMaterial);
+    mesh.userData.real = real;
+    new THREE.Matrix4().fromArray(part.matrix).decompose(mesh.position, mesh.quaternion, mesh.scale);
+    group.add(mesh);
+    meshes.push(mesh);
+  });
+  return { group, meshes };
+}
+
+function meshLoader(load, meshes, manager, stats) {
   if (!meshes) return (path, _, material, done) => done(null);
   const robotsBase = new URL("robots/", location.href).href;
-  const entryOf = (raw) => {
+  const sizeOf = (raw) => {
     const u = new URL(raw, location.href).href;
-    if (!u.startsWith(robotsBase)) return null;
     const rel = decodeURIComponent(u.slice(robotsBase.length));
-    return meshes.files[rel.slice(rel.indexOf("/") + 1)] || null;
-  };
-  const resolveUrl = (u) => {
-    const entry = entryOf(u);
-    return entry ? meshes.base + entry[0].split("/").map(encodeURIComponent).join("/") : u;
-  };
-  const sizeOf = (u) => {
-    const entry = entryOf(u);
+    const entry = u.startsWith(robotsBase) && meshes.files[rel.slice(rel.indexOf("/") + 1)];
     return entry ? entry[1] : 0;
   };
-  manager.setURLModifier(resolveUrl);
-  const fetched = new Map();
-  const get = (path, kind) => {
-    const key = `${kind} ${new URL(path, location.href).href}`;
-    if (!fetched.has(key)) fetched.set(key, download(path, kind));
-    return fetched.get(key);
-  };
-  const download = (path, kind) => {
-    const size = sizeOf(path);
-    stats.total += size;
+  const requests = new Map();
+  const byReq = [];
+  workerJobs.set(load, (msg) => {
+    const r = byReq[msg.req];
+    if (msg.type === "fetched") {
+      stats.done += r.size;
+      stats.finished += 1;
+      if (!msg.ok) stats.failed.push(r.url);
+      stats.report();
+      return;
+    }
+    buildQueue.push(() => {
+      if (cancelled.has(load)) return;
+      if (!msg.parts) {
+        if (!stats.failed.includes(r.url)) stats.failed.push(r.url);
+        r.waiters.forEach((w) => w.finish(null));
+        return;
+      }
+      const geoms = buildGeometries(msg.parts);
+      r.waiters.forEach((w) => {
+        const { group, meshes: built } = buildObject(msg.parts, geoms, w.material, manager, r.base);
+        stats.meshes.push(...built);
+        w.finish(group);
+      });
+    });
+  });
+  meshWorker.postMessage({ type: "start", load, meshes, robotsBase });
+  return (path, _, material, done) => {
+    const url = new URL(path, location.href).href;
+    manager.itemStart(url);
+    const waiter = { material, finish: (obj) => { done(obj); manager.itemEnd(url); } };
+    if (requests.has(url)) {
+      requests.get(url).waiters.push(waiter);
+      return;
+    }
+    const r = { url, size: sizeOf(url), base: url.slice(0, url.lastIndexOf("/") + 1), waiters: [waiter] };
+    requests.set(url, r);
+    byReq.push(r);
+    stats.total += r.size;
     stats.files += 1;
     stats.report();
-    return fetch(resolveUrl(path), { signal, cache: "force-cache" })
-      .then((r) => (r.ok ? r[kind]() : null))
-      .then((body) => body, () => null)
-      .then((body) => {
-        stats.done += size;
-        stats.finished += 1;
-        if (!body && !signal.aborted) stats.failed.push(path);
-        stats.report();
-        return body;
-      });
-  };
-  return (path, _, material, done) => {
-    const ext = path.split(".").pop().toLowerCase();
-    const base = path.slice(0, path.lastIndexOf("/") + 1);
-    const finish = (obj) => {
-      if (obj) {
-        obj.visible = false;
-        stats.meshes.push(obj);
-      }
-      done(obj);
-      manager.itemEnd(path);
-    };
-    manager.itemStart(path);
-    get(path, ext === "dae" || ext === "obj" ? "text" : "arrayBuffer").then((body) => {
-      if (!body) {
-        finish(null);
-      } else if (ext === "stl") {
-        finish(tidy(new THREE.Mesh(new STLLoader().parse(body)), material, false));
-      } else if (ext === "dae") {
-        const yUp = body.replace(/<up_axis>\s*Z_UP\s*<\/up_axis>/, "<up_axis>Y_UP</up_axis>");
-        finish(tidy(new ColladaLoader(manager).parse(yUp, base).scene, material, true, true));
-      } else if (ext === "glb" || ext === "gltf") {
-        new GLTFLoader(manager).parse(body, base, (g) => finish(tidy(g.scene, material, true)), () => {
-          stats.failed.push(path);
-          finish(null);
-        });
-      } else if (ext === "obj") {
-        const lib = body.match(/^mtllib\s+(.+)$/m);
-        const mtl = lib ? get(base + lib[1].trim(), "text") : Promise.resolve(null);
-        mtl.then((text) => {
-          const loader = new OBJLoader();
-          const m = text && new MTLLoader(manager).parse(text, base);
-          if (m) {
-            m.preload();
-            loader.setMaterials(m);
-          }
-          finish(tidy(loader.parse(body), material, Boolean(m), true));
-        });
-      } else {
-        stats.failed.push(path);
-        finish(null);
-      }
-    });
+    meshWorker.postMessage({ type: "mesh", load, req: byReq.length - 1, url });
   };
 }
 
-let pending = null;
-const kinematicMaterial = new THREE.MeshStandardMaterial({ color: NEUTRAL, roughness: 0.5, metalness: 0.1 });
-const UP = new THREE.Vector3(0, 1, 0);
-
-function addKinematics(robot) {
-  const r = 0.0035;
-  const ball = new THREE.SphereGeometry(r * 1.6, 16, 12);
-  const rod = new THREE.CylinderGeometry(r, r, 1, 12);
-  const parts = [];
-  for (const joint of Object.values(robot.joints)) {
-    const sphere = new THREE.Mesh(ball, kinematicMaterial);
-    sphere.castShadow = true;
-    joint.add(sphere);
-    parts.push([sphere, joint.children.find((c) => c.isURDFLink)]);
-    const len = joint.position.length();
-    if (len < 1e-6) continue;
-    const bar = new THREE.Mesh(rod, kinematicMaterial);
-    bar.castShadow = true;
-    bar.scale.set(1, len, 1);
-    bar.position.copy(joint.position).multiplyScalar(0.5);
-    bar.quaternion.setFromUnitVectors(UP, joint.position.clone().normalize());
-    joint.parent.add(bar);
-    parts.push([bar, joint.parent]);
-  }
-  return parts;
+function jointBox(robot) {
+  robot.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  robot.traverse((o) => {
+    if (o.isURDFJoint || o.isURDFLink) box.expandByPoint(o.getWorldPosition(v));
+  });
+  return box.expandByScalar(0.01);
 }
 
 function reveal(robot) {
-  const { meshes, parts, revealed } = robot.userData;
-  const empty = (link) => link && link.children.some((c) => c.isURDFVisual && !c.children.length);
-  for (const [part, link] of parts) part.visible = !meshes || empty(link);
-  if (!meshes || revealed) return;
+  if (!robot.userData.meshes || robot.userData.revealed) return Promise.resolve();
   robot.userData.revealed = true;
   const mats = new Map();
-  for (const obj of robot.userData.loaded) {
-    obj.visible = true;
-    obj.traverse((o) => {
-      if (!o.isMesh) return;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-        if (!mats.has(m)) mats.set(m, [m.transparent, m.opacity]);
-      }
-    });
+  for (const mesh of robot.userData.loaded) {
+    mesh.material = mesh.userData.real;
+    mesh.castShadow = true;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (!mats.has(m)) mats.set(m, [m.transparent, m.opacity]);
+    }
   }
-  mats.forEach(([, opacity], m) => {
+  mats.forEach((_, m) => {
     m.transparent = true;
     m.opacity = 0;
-    m.needsUpdate = true;
   });
-  const start = performance.now();
-  const step = (now) => {
-    const t = Math.min((now - start) / 350, 1);
-    mats.forEach(([transparent, opacity], m) => {
-      m.opacity = opacity * t;
-      if (t === 1) {
-        m.transparent = transparent;
-        m.needsUpdate = true;
-      }
-    });
-    if (t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+  return renderer.compileAsync(mount, camera, scene).then(() => {
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min((now - start) / 350, 1);
+      mats.forEach(([transparent, opacity], m) => {
+        m.opacity = opacity * t;
+        if (t === 1) {
+          m.transparent = transparent;
+          m.needsUpdate = true;
+        }
+      });
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 function loadRobot(url, meshes) {
   if (robots.has(url)) return robots.get(url);
-  if (pending) pending.abort();
-  const controller = new AbortController();
-  pending = controller;
+  if (pending && !pending.complete) {
+    meshWorker.postMessage({ type: "cancel", load: pending.load });
+    workerJobs.delete(pending.load);
+    cancelled.add(pending.load);
+    robots.delete(pending.url);
+  }
+  const load = ++loadSeq;
+  pending = { load, url, complete: false };
+  const mine = pending;
   const manager = new THREE.LoadingManager();
   const stats = { total: 0, done: 0, files: 0, finished: 0, failed: [], meshes: [] };
-  stats.report = () => controller.signal.aborted || showLoading(stats);
+  stats.report = () => pending === mine && showLoading(stats);
   const loader = new URDFLoader(manager);
-  loader.loadMeshCb = meshLoader(meshes, controller.signal, manager, stats);
+  loader.loadMeshCb = meshLoader(load, meshes, manager, stats);
   loader.packages = { dexhand_description: new URL("robots", location.href).href };
   let robot = null;
   let markReady = null;
   const ready = new Promise((resolve) => { markReady = resolve; });
   const p = new Promise((resolve) => {
     manager.onLoad = () => {
-      if (controller.signal.aborted || !robot) {
-        robots.delete(url);
-        if (!robot && !controller.signal.aborted) {
+      if (pending !== mine || !robot) {
+        if (!robot && pending === mine) {
+          robots.delete(url);
           showLoading(null);
           setStatus("The model could not be loaded.");
         }
         return;
       }
+      mine.complete = true;
+      workerJobs.delete(load);
+      meshWorker.postMessage({ type: "cancel", load });
       robot.userData.loaded = stats.meshes;
       robot.userData.failedMeshes = stats.failed;
       markReady(robot);
@@ -459,15 +445,9 @@ function loadRobot(url, meshes) {
     loader.load(url, (r) => {
       robot = r;
       robot.traverse((o) => {
-        if (o.isURDFVisual && meshes) {
-          o.children.forEach((c) => {
-            c.visible = false;
-            stats.meshes.push(c);
-          });
-        }
+        if (o.isURDFVisual && meshes) o.children.forEach((c) => { c.visible = false; });
       });
       robot.userData.meshes = Boolean(meshes);
-      robot.userData.parts = addKinematics(robot);
       resolve({ robot, ready });
     });
   });
@@ -541,10 +521,10 @@ async function show() {
   if (sideData.joints) Object.values(robot.joints).forEach((j) => { j.mimicJoints = []; });
   for (const name of joints) robot.setJointValue(name, 0);
   scene.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(mount);
+  const box = !data.meshes ? new THREE.Box3() : robot.userData.revealed ? new THREE.Box3().setFromObject(mount) : jointBox(robot);
+  $("#viewer-note").hidden = Boolean(data.meshes);
   current = { hand, side: state.side, data, sideData, robot, box, joints, values: new Float32Array(joints.length) };
-  grid.position.y = box.min.y;
-  const span = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 3;
+  const span = box.isEmpty() ? 0 : Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 3;
   grid.scale.setScalar(Math.max(span, 0.3));
   const animated = Boolean(sideData.clips);
   document.querySelectorAll("#motions button, #human button, #play, #scrub")
@@ -560,14 +540,17 @@ async function show() {
     if (token !== loadToken) return;
     showLoading(null);
     const failed = robot.userData.failedMeshes;
-    setStatus(failed.length ? `${failed.length} of the model's meshes could not be downloaded; those links are drawn as a skeleton.` : "");
-    reveal(robot);
-    if (sideData.clips) applyPose(poseAt(0).q, null);
-    scene.updateMatrixWorld(true);
-    current.box = new THREE.Box3().setFromObject(mount);
-    grid.position.y = current.box.min.y;
-    applyHuman();
-    window.__meshesReady = Math.round(performance.now());
+    setStatus(failed.length ? `${failed.length} of the model's mesh files could not be downloaded.` : "");
+    reveal(robot).then(() => {
+      if (token !== loadToken) return;
+      if (data.meshes) {
+        if (sideData.clips) applyPose(poseAt(0).q, null);
+        scene.updateMatrixWorld(true);
+        current.box = new THREE.Box3().setFromObject(mount);
+        applyHuman();
+      }
+      window.__meshesReady = Math.round(performance.now());
+    });
   });
 }
 
@@ -596,13 +579,14 @@ function applyHuman() {
     applyPose(pose.q, pose.p);
     human.scale.setScalar(sd.scale);
     human.position.set(0, 0, 0);
-    if (!overlay) human.position.x = box.min.x - 0.25 * (box.max.x - box.min.x) - humanBox().max.x;
+    if (!overlay && !box.isEmpty()) human.position.x = box.min.x - 0.25 * (box.max.x - box.min.x) - humanBox().max.x;
     for (const o of [boneLines, dots]) {
       o.material.depthTest = !overlay;
       o.renderOrder = overlay ? 10 : 0;
     }
     box.union(humanBox());
   }
+  if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(0, 0.1, 0), new THREE.Vector3(0.2, 0.2, 0.2));
   grid.position.y = box.min.y;
   frameCamera(box);
 }
@@ -884,6 +868,7 @@ function tick(now) {
     timeEl.textContent = `${t.toFixed(2)} s`;
   }
   updateTable(now);
+  drainQueue(4);
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
