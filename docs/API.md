@@ -333,8 +333,10 @@ DG-5F-S·ORCA(v2)·Allegro(V4)(`dg5f_s`, `orca`, `allegro` 좌우)도 robotPlatf
 동봉 config 85개 모두 사전항 블록이 있다. 생성 블록이 역행 3° 또는 드리프트 1° 를 넘던 28손은 녹화 장갑 392프레임 +
 합성 주먹·핀치·손가락별 굽힘 스윕으로 관절별 `joint_weights`·게인, `weight`, `project_dist` 만 조정했다(오른손 값을 왼손에
 복사, 결과가 나쁜 왼손은 따로 조정). 85개 중앙값: 역행 14.5 → 1.9°, 드리프트 0.17 → 0.12°, 손끝 p95 32.0 mm 그대로.
-역행이 3° 를 크게 넘게 남은 손: `leap_hand_v2_adv_right` 11.2°, `leap_left` 10.3°, `linkerhand_l25` 9.4°,
-`allegro_v5_4f` 7.5°, `orca_v1` 7.1°, `leap_right` 7.0°.
+이어서 역행 3° 를 넘던 손을 다시 조정해 85개 중앙값 역행 1.59°, 드리프트 0.12°, 손끝 p95 29.6 mm 이다. 3° 를 넘는 것은
+`leap_left` 3.02° 하나다(엄지 관절 14 가 하한을 정한다). `abduction` 은 벌림 관절이 있는 63개 중 굽힘 중 벌림 표준편차가
+0.8 배 이하로 줄고 다른 지표가 회귀하지 않은 42개와 DG-5F-S(`dg5f_s` 좌우: 벌림 변화폭 29.5 → 6~7°, 손끝 p95
+10.9 → 12.0 mm)에 켰다. Allegro(V4)는 벌림 폭이 오히려 커져 끈다.
 `schunk_left`: 업스트림 URDF 의 j5 mimic 부호 오류(`left_hand_j5` 한계가 [−0.988, 0] 인데 `Thumb_Opposition` 을
 multiplier 1 로 따라가 엄지를 맞세우면 새끼 쪽 손바닥이 거꾸로 벌어진다)를 config 덮어쓰기
 (`couplings.left_hand_j5: {source: left_hand_Thumb_Opposition, multiplier: -1, override_urdf: true}`)로 보정하고,

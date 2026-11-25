@@ -15,6 +15,7 @@ retargeting:
   project_dist: 0.03
 posture_prior:
   weight: 0.01
+  abduction: {full_deg: 60.0, decay: 1.0, gain: 10.0}
   joints:
     joint_1_3: {thumb.mcp: 1.0}
     joint_1_4: {thumb.ip: 1.0}
